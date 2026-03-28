@@ -10,9 +10,10 @@ type ReferenceMode = 'browse' | 'fixed'
 
 interface ReferencePanelProps {
   overlayStrokes?: readonly Stroke[] | null
+  onReferenceImageSize?: (width: number, height: number) => void
 }
 
-export function ReferencePanel({ overlayStrokes }: ReferencePanelProps) {
+export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, toggleGrid } = useGuides()
   const [source, setSource] = useState<ReferenceSource>('none')
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>('browse')
@@ -131,6 +132,7 @@ export function ReferencePanel({ overlayStrokes }: ReferencePanelProps) {
             guideLines={lines}
             guideVersion={guideVersion}
             overlayStrokes={overlayStrokes ?? undefined}
+            onImageLoaded={onReferenceImageSize}
           />
         )}
       </Box>

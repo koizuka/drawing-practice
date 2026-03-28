@@ -13,12 +13,14 @@ interface ImageViewerProps {
   guideVersion: number
   /** Overlay strokes from the drawing panel */
   overlayStrokes?: readonly Stroke[]
+  /** Called when image is loaded with its natural dimensions */
+  onImageLoaded?: (width: number, height: number) => void
 }
 
 const TRACKPAD_ZOOM_SPEED = 0.01
 const OVERLAY_COLOR = 'rgba(0, 0, 255, 0.4)'
 
-export function ImageViewer({ imageUrl, viewResetVersion, grid, guideLines, guideVersion, overlayStrokes }: ImageViewerProps) {
+export function ImageViewer({ imageUrl, viewResetVersion, grid, guideLines, guideVersion, overlayStrokes, onImageLoaded }: ImageViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewTransformRef = useRef(new ViewTransform())
@@ -52,7 +54,8 @@ export function ImageViewer({ imageUrl, viewResetVersion, grid, guideLines, guid
     const cssHeight = canvas.height / dpr
     const topLeft = viewTransformRef.current.screenToCanvas(0, 0)
     const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
-    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale)
+    const imgCenter = img ? { x: img.naturalWidth / 2, y: img.naturalHeight / 2 } : undefined
+    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, imgCenter)
     drawGuideLines(ctx, guideLines, vt.scale)
 
     // Draw overlay strokes in canvas coordinate space (same grid coordinates as drawing panel)
@@ -116,10 +119,11 @@ export function ImageViewer({ imageUrl, viewResetVersion, grid, guideLines, guid
     const img = new Image()
     img.onload = () => {
       imageRef.current = img
+      onImageLoaded?.(img.naturalWidth, img.naturalHeight)
       fitImage()
     }
     img.src = imageUrl
-  }, [imageUrl, fitImage])
+  }, [imageUrl, fitImage, onImageLoaded])
 
   // ResizeObserver
   useEffect(() => {

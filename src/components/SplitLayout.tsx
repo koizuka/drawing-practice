@@ -10,9 +10,14 @@ export function SplitLayout() {
   const orientation = useOrientation()
   const isLandscape = orientation === 'landscape'
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null)
+  const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
 
   const handleOverlayStrokes = useCallback((strokes: readonly Stroke[] | null) => {
     setOverlayStrokes(strokes)
+  }, [])
+
+  const handleReferenceImageSize = useCallback((width: number, height: number) => {
+    setReferenceSize({ width, height })
   }, [])
 
   return (
@@ -27,10 +32,10 @@ export function SplitLayout() {
         }}
       >
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-          <ReferencePanel overlayStrokes={overlayStrokes} />
+          <ReferencePanel overlayStrokes={overlayStrokes} onReferenceImageSize={handleReferenceImageSize} />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
-          <DrawingPanel onOverlayStrokes={handleOverlayStrokes} />
+          <DrawingPanel onOverlayStrokes={handleOverlayStrokes} referenceSize={referenceSize} />
         </Box>
       </Box>
     </GuideProvider>
