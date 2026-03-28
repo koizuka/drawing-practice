@@ -31,9 +31,9 @@ npm run test:watch # Run tests in watch mode
 
 **SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels
 
-**ReferencePanel** - Reference source selection (Sketchfab/Image), toolbar with grid toggle, zoom reset
+**ReferencePanel** - Reference source selection (Sketchfab/Image), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle
 
-**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, grid, overlay compare, zoom reset, save, gallery), timer display, canvas
+**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Grid toggle is only on reference panel (synced via context).
 
 **DrawingCanvas** - Main canvas component with:
 - DPR-aware rendering
@@ -46,7 +46,7 @@ npm run test:watch # Run tests in watch mode
 - Viewer API embedding with screenshot capture ("Fix This Angle")
 - Screenshot becomes fixed image for drawing reference
 
-**ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, and stroke overlay for comparison
+**ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion)
 
 **Gallery** - Modal gallery showing saved drawings with thumbnails, timestamps, and delete
 
@@ -78,8 +78,11 @@ npm run test:watch # Run tests in watch mode
 ### Key Patterns
 
 - **Canvas coordinate space**: Grid, guide lines, strokes, and overlay all share the same coordinate space. Each panel applies its own ViewTransform independently.
+- **Initial view sync**: When a reference image is loaded, its dimensions are passed to DrawingCanvas via `fitSize` so both panels start with the same scale, ensuring grid alignment.
+- **Grid center line**: The grid line nearest to the image center is drawn thicker as a visual anchor for alignment.
 - **Overlay comparison**: Drawing strokes are passed as data (not screenshot) to the reference panel, rendered in the reference panel's coordinate space so grid positions align.
 - **DPR handling**: All canvas operations multiply by `window.devicePixelRatio`.
+- **Viewport sizing**: Uses `100dvh` instead of `100vh` to handle iPad Safari's dynamic toolbar correctly.
 
 ### File Structure
 
@@ -116,7 +119,8 @@ src/
 │   └── index.ts
 ├── hooks/
 │   ├── useOrientation.ts
-│   └── useTimer.ts
+│   ├── useTimer.ts
+│   └── useFullscreen.ts
 └── test/
     └── setup.ts
 ```
