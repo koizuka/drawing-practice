@@ -1,4 +1,4 @@
-name: Deploy to GitHub Pages
+name: Build and Deploy to GitHub Pages
 
 on:
   push:
@@ -10,25 +10,19 @@ on:
       - 'package-lock.json'
       - 'tsconfig*.json'
       - 'vite.config.ts'
+      - 'eslint.config.js'
       - '.github/workflows/gh-pages.yml'
 
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
-  group: pages
+  group: gh-pages-deploy
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
+  build-deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,18 +32,12 @@ jobs:
           cache: npm
 
       - run: npm ci
-
       - run: npm run build -- --base=/drawing-practice/
-
       - run: npm run lint
-
       - run: npm run test
 
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v4
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
