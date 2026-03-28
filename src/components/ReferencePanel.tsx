@@ -3,6 +3,7 @@ import { Box, Button, Tooltip, IconButton } from '@mui/material'
 import { SketchfabViewer } from './SketchfabViewer'
 import { ImageViewer } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
+import { useFullscreen } from '../hooks/useFullscreen'
 import type { Stroke } from '../drawing/types'
 
 type ReferenceSource = 'none' | 'sketchfab' | 'image'
@@ -15,6 +16,7 @@ interface ReferencePanelProps {
 
 export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, toggleGrid } = useGuides()
+  const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
   const [source, setSource] = useState<ReferenceSource>('none')
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>('browse')
   const [fixedImageUrl, setFixedImageUrl] = useState<string | null>(null)
@@ -71,6 +73,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
           minHeight: 40,
         }}
       >
+        {/* Source selection */}
         <Button size="small" variant={source === 'sketchfab' ? 'contained' : 'outlined'} onClick={handleOpenSketchfab}>
           Sketchfab
         </Button>
@@ -79,16 +82,14 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         </Button>
 
         {source === 'sketchfab' && referenceMode === 'fixed' && (
-          <>
-            <Box sx={{ flex: 1 }} />
-            <Button size="small" variant="outlined" onClick={handleChangeAngle}>
-              Change Angle
-            </Button>
-          </>
+          <Button size="small" variant="outlined" onClick={handleChangeAngle}>
+            Change Angle
+          </Button>
         )}
 
-        <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+        <Box sx={{ flex: 1 }} />
 
+        {/* View controls */}
         <Tooltip title="Toggle grid">
           <IconButton
             size="small"
@@ -107,6 +108,14 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
           <Tooltip title="Reset zoom">
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
               &#8858;
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {fullscreenSupported && (
+          <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+            <IconButton size="small" onClick={toggleFullscreen}>
+              {isFullscreen ? '\u2716' : '\u26F6'}
             </IconButton>
           </Tooltip>
         )}
