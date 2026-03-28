@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - 'index.html'
+              - 'vite.config.ts'
+              - 'package.json'
+              - 'package-lock.json'
+              - 'src/**'
+              - 'tsconfig*.json'
+              - 'eslint.config.js'
+              - '.github/workflows/test.yml'
+
+  build:
+    name: Build and Lint
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm run lint
+      - run: npm run test
+
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [changes, build]
+    if: always()
+
+    steps:
+      - name: Check CI Results
+        run: |
+          if [[ "${{ needs.changes.outputs.code }}" == "true" ]]; then
+            if [[ "${{ needs.build.result }}" != "success" ]]; then
+              echo "CI failed"
+              exit 1
+            fi
+          fi
+          echo "CI passed"
+
+  pr-preview:
+    name: PR Preview
+    if: github.event_name == 'pull_request' && needs.changes.outputs.code == 'true'
+    needs: [changes, build]
+    runs-on: ubuntu-latest
+    concurrency:
+      group: gh-pages-deploy
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build PR preview
+        run: npm run build -- --base=/drawing-practice/pr/${{ github.event.pull_request.number }}/
+
+      - name: Deploy PR Preview
+        uses: koizuka/pr-preview-action@v1
+        with:
+          action: deploy
+          source-dir: dist
+          base-url: https://koizuka.github.io/drawing-practice
+          token: ${{ secrets.GITHUB_TOKEN }}

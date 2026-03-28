@@ -1,0 +1,5 @@
+export { GuideManager } from './GuideManager'
+export { GuideProvider } from './GuideContext'
+export { useGuides } from './useGuides'
+export { DEFAULT_GUIDE_STATE } from './types'
+export type { GuideLine, GridSettings, GuideState } from './types'

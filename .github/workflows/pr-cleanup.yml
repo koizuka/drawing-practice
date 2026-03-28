@@ -1,0 +1,24 @@
+name: Cleanup PR Preview
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: gh-pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Cleanup PR Preview
+        uses: koizuka/pr-preview-action@v1
+        with:
+          action: cleanup
+          base-url: https://koizuka.github.io/drawing-practice
+          token: ${{ secrets.GITHUB_TOKEN }}

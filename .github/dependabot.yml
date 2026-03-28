@@ -1,0 +1,49 @@
+version: 2
+updates:
+- package-ecosystem: npm
+  directory: "/"
+  schedule:
+    interval: weekly
+  open-pull-requests-limit: 10
+  cooldown:
+    default-days: 7
+  groups:
+    eslint-core:
+      patterns:
+      - "eslint"
+      - "@eslint/*"
+    eslint-plugin:
+      patterns:
+      - "typescript-eslint"
+      - "eslint-*"
+    react:
+      patterns:
+      - "react"
+      - "react-dom"
+    types-react:
+      patterns:
+      - "@types/react"
+      - "@types/react-dom"
+    mui:
+      patterns:
+      - "@mui/*"
+    emotion:
+      patterns:
+      - "@emotion/*"
+    vitest:
+      patterns:
+      - "vitest"
+      - "@testing-library/*"
+- package-ecosystem: "github-actions"
+  directory: "/"
+  schedule:
+    interval: "weekly"
+  open-pull-requests-limit: 5
+  cooldown:
+    default-days: 7
+  labels:
+    - "dependencies"
+    - "github_actions"
+  commit-message:
+    prefix: "chore(deps)"
+    include: "scope"

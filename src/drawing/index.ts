@@ -1,0 +1,6 @@
+export { StrokeManager } from './StrokeManager'
+export { CanvasRenderer } from './CanvasRenderer'
+export { ViewTransform, IDENTITY_TRANSFORM } from './ViewTransform'
+export type { Point, Stroke } from './types'
+export type { Transform } from './ViewTransform'
+export type { CanvasRendererOptions } from './CanvasRenderer'
