@@ -28,7 +28,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
   const [showGallery, setShowGallery] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  const { grid, lines, version: guideVersion, toggleGrid } = useGuides()
+  const { grid, lines, version: guideVersion } = useGuides()
   const timer = useTimer()
 
   const syncUndoRedoState = useCallback(() => {
@@ -125,6 +125,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           minHeight: 40,
         }}
       >
+        {/* Drawing tools */}
         <Tooltip title="Pen">
           <IconButton
             size="small"
@@ -157,6 +158,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
+        {/* Edit */}
         <Tooltip title="Undo">
           <span>
             <IconButton size="small" onClick={handleUndo} disabled={!canUndo}>
@@ -173,8 +175,6 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </span>
         </Tooltip>
 
-        <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-
         <Tooltip title="Clear all &amp; reset timer">
           <span>
             <IconButton size="small" onClick={handleClear} disabled={strokeCount === 0}>
@@ -183,22 +183,9 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </span>
         </Tooltip>
 
-        <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+        <Box sx={{ flex: 1 }} />
 
-        <Tooltip title="Toggle grid">
-          <IconButton
-            size="small"
-            onClick={toggleGrid}
-            sx={{
-              bgcolor: grid.enabled ? 'info.main' : 'transparent',
-              color: grid.enabled ? 'white' : 'inherit',
-              '&:hover': { bgcolor: grid.enabled ? 'info.dark' : 'action.hover' },
-            }}
-          >
-            #
-          </IconButton>
-        </Tooltip>
-
+        {/* View & compare */}
         <Tooltip title="Compare with reference">
           <IconButton
             size="small"
@@ -220,8 +207,9 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </IconButton>
         </Tooltip>
 
-        {/* Timer */}
-        <Box sx={{ flex: 1 }} />
+        <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+
+        {/* Timer & data */}
         <Typography
           variant="body2"
           sx={{
