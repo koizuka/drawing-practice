@@ -22,6 +22,8 @@ interface DrawingCanvasProps {
   grid: GridSettings
   guideLines: readonly GuideLine[]
   guideVersion: number
+  /** If provided, initialize view transform to fit this size (match reference panel scale) */
+  fitSize?: { width: number; height: number }
 }
 
 const ERASER_THRESHOLD = 20
@@ -38,6 +40,7 @@ export function DrawingCanvas({
   grid,
   guideLines,
   guideVersion,
+  fitSize,
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -96,12 +99,26 @@ export function DrawingCanvas({
     const cssHeight = canvas.height / dpr
     const topLeft = viewTransformRef.current.screenToCanvas(0, 0)
     const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
-    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale)
+    const gridCenter = fitSize ? { x: fitSize.width / 2, y: fitSize.height / 2 } : undefined
+    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, gridCenter)
     drawGuideLines(ctx, guideLines, vt.scale)
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [highlightedStrokeIndex, strokeManagerRef, grid, guideLines])
+  }, [highlightedStrokeIndex, strokeManagerRef, grid, guideLines, fitSize])
+
+  const fitToSize = useCallback(() => {
+    const container = containerRef.current
+    if (!container || !fitSize) return
+    const rect = container.getBoundingClientRect()
+    const scaleX = rect.width / fitSize.width
+    const scaleY = rect.height / fitSize.height
+    const scale = Math.min(scaleX, scaleY)
+    const offsetX = (rect.width - fitSize.width * scale) / 2
+    const offsetY = (rect.height - fitSize.height * scale) / 2
+    viewTransformRef.current.reset()
+    viewTransformRef.current.applyPinch(0, 0, scale, offsetX, offsetY)
+  }, [fitSize])
 
   // Setup canvas with DPR
   const setupCanvas = useCallback(() => {
@@ -143,10 +160,22 @@ export function DrawingCanvas({
   // Reset view when viewResetVersion changes
   useEffect(() => {
     if (viewResetVersion > 0) {
-      viewTransformRef.current.reset()
+      if (fitSize) {
+        fitToSize()
+      } else {
+        viewTransformRef.current.reset()
+      }
       redrawAll()
     }
-  }, [viewResetVersion, redrawAll])
+  }, [viewResetVersion, redrawAll, fitSize, fitToSize])
+
+  // Re-fit when fitSize changes
+  useEffect(() => {
+    if (fitSize) {
+      fitToSize()
+      redrawAll()
+    }
+  }, [fitSize, fitToSize, redrawAll])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!

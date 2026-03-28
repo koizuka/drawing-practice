@@ -12,9 +12,10 @@ import type { Stroke } from '../drawing/types'
 interface DrawingPanelProps {
   onOverlayStrokes?: (strokes: readonly Stroke[] | null) => void
   referenceInfo?: string
+  referenceSize?: { width: number; height: number } | null
 }
 
-export function DrawingPanel({ onOverlayStrokes, referenceInfo = '' }: DrawingPanelProps) {
+export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSize }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -275,7 +276,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '' }: DrawingPa
           grid={grid}
           guideLines={lines}
           guideVersion={guideVersion}
-
+          fitSize={referenceSize ?? undefined}
         />
       </Box>
 
