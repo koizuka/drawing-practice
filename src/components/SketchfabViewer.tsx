@@ -215,20 +215,23 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Viewer iframe - always rendered when showViewer, hidden behind browse UI otherwise */}
       {showViewer && (
-        <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
-          <iframe
-            ref={iframeRef}
-            title="Sketchfab Viewer"
-            style={{ width: '100%', height: '100%', border: 'none' }}
-            allow="autoplay; fullscreen; xr-spatial-tracking"
-          />
-          {loading && (
-            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)' }}>
-              <Typography>Loading model...</Typography>
-            </Box>
-          )}
-          <Box sx={{ position: 'absolute', bottom: 8, left: 8, display: 'flex', gap: 1 }}>
-            <Button variant="outlined" size="small" onClick={handleBack} sx={{ bgcolor: 'rgba(255,255,255,0.8)' }}>
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+            <iframe
+              ref={iframeRef}
+              title="Sketchfab Viewer"
+              style={{ width: '100%', height: '100%', border: 'none' }}
+              allow="autoplay; fullscreen; xr-spatial-tracking"
+            />
+            {loading && (
+              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>
+                <Typography>Loading model...</Typography>
+              </Box>
+            )}
+          </Box>
+          {/* Buttons below iframe so they're always accessible on iPad */}
+          <Box sx={{ display: 'flex', gap: 1, p: 1, borderTop: '1px solid #ddd', bgcolor: '#fafafa' }}>
+            <Button variant="outlined" size="small" onClick={handleBack}>
               Back
             </Button>
             {isReady && (
