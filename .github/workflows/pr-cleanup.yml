@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: gh-pages-deploy
+  group: pr-preview-cleanup
   cancel-in-progress: true
 
 jobs:
