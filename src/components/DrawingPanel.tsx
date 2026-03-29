@@ -31,6 +31,12 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
   const { grid, lines, version: guideVersion } = useGuides()
   const timer = useTimer()
 
+  const syncOverlay = useCallback(() => {
+    if (overlayActive) {
+      onOverlayStrokes?.([...strokeManagerRef.current.getStrokes()])
+    }
+  }, [overlayActive, onOverlayStrokes])
+
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())
     setCanRedo(strokeManagerRef.current.canRedo())
@@ -39,8 +45,9 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
   const triggerRedraw = useCallback(() => {
     syncUndoRedoState()
+    syncOverlay()
     setRedrawVersion(v => v + 1)
-  }, [syncUndoRedoState])
+  }, [syncUndoRedoState, syncOverlay])
 
   const handleUndo = useCallback(() => {
     strokeManagerRef.current.undo()
@@ -81,22 +88,21 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
   const handleStrokeCountChange = useCallback(() => {
     syncUndoRedoState()
+    syncOverlay()
     // Auto-start timer on first stroke
     if (!timer.isRunning && strokeManagerRef.current.getStrokes().length > 0) {
       timer.start()
     }
-  }, [syncUndoRedoState, timer])
+  }, [syncUndoRedoState, syncOverlay, timer])
 
   const handleToggleOverlay = useCallback(() => {
     if (overlayActive) {
       setOverlayActive(false)
       onOverlayStrokes?.(null)
     } else {
+      setOverlayActive(true)
       const strokes = strokeManagerRef.current.getStrokes()
-      if (strokes.length > 0) {
-        setOverlayActive(true)
-        onOverlayStrokes?.([...strokes])
-      }
+      onOverlayStrokes?.(strokes.length > 0 ? [...strokes] : [])
     }
   }, [overlayActive, onOverlayStrokes])
 
@@ -190,7 +196,6 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           <IconButton
             size="small"
             onClick={handleToggleOverlay}
-            disabled={strokeCount === 0}
             sx={{
               bgcolor: overlayActive ? 'warning.main' : 'transparent',
               color: overlayActive ? 'white' : 'inherit',
