@@ -13,9 +13,11 @@ type ReferenceMode = 'browse' | 'fixed'
 interface ReferencePanelProps {
   overlayStrokes?: readonly Stroke[] | null
   onReferenceImageSize?: (width: number, height: number) => void
+  overlayActive?: boolean
+  onToggleOverlay?: () => void
 }
 
-export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: ReferencePanelProps) {
+export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayActive, onToggleOverlay }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, toggleGrid, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
   const [source, setSource] = useState<ReferenceSource>('none')
@@ -177,6 +179,20 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         )}
 
         {/* View controls */}
+        <Tooltip title={t('compare')}>
+          <IconButton
+            size="small"
+            onClick={onToggleOverlay}
+            sx={{
+              bgcolor: overlayActive ? 'warning.main' : 'transparent',
+              color: overlayActive ? 'white' : 'inherit',
+              '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
+            }}
+          >
+            &#9881;
+          </IconButton>
+        </Tooltip>
+
         <Tooltip title={t('toggleGrid')}>
           <IconButton
             size="small"
