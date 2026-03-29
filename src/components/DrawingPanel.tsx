@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import { StrokeManager } from '../drawing/StrokeManager'
@@ -8,15 +8,16 @@ import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
 import { t } from '../i18n'
-import type { Stroke } from '../drawing/types'
 
 interface DrawingPanelProps {
-  onOverlayStrokes?: (strokes: readonly Stroke[] | null) => void
   referenceInfo?: string
   referenceSize?: { width: number; height: number } | null
+  onStrokeManagerReady?: (sm: StrokeManager) => void
+  onStrokesChanged?: () => void
+  onOverlayClear?: () => void
 }
 
-export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSize }: DrawingPanelProps) {
+export function DrawingPanel({ referenceInfo = '', referenceSize, onStrokeManagerReady, onStrokesChanged, onOverlayClear }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -25,18 +26,16 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
   const [canRedo, setCanRedo] = useState(false)
   const [redrawVersion, setRedrawVersion] = useState(0)
   const [viewResetVersion, setViewResetVersion] = useState(0)
-  const [overlayActive, setOverlayActive] = useState(false)
   const [showGallery, setShowGallery] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const { grid, lines, version: guideVersion } = useGuides()
   const timer = useTimer()
 
-  const syncOverlay = useCallback(() => {
-    if (overlayActive) {
-      onOverlayStrokes?.([...strokeManagerRef.current.getStrokes()])
-    }
-  }, [overlayActive, onOverlayStrokes])
+  // Expose stroke manager to parent
+  useEffect(() => {
+    onStrokeManagerReady?.(strokeManagerRef.current)
+  }, [onStrokeManagerReady])
 
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())
@@ -46,9 +45,9 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
   const triggerRedraw = useCallback(() => {
     syncUndoRedoState()
-    syncOverlay()
+    onStrokesChanged?.()
     setRedrawVersion(v => v + 1)
-  }, [syncUndoRedoState, syncOverlay])
+  }, [syncUndoRedoState, onStrokesChanged])
 
   const handleUndo = useCallback(() => {
     strokeManagerRef.current.undo()
@@ -68,12 +67,8 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
     setMode('pen')
     timer.reset()
     triggerRedraw()
-    // Clear overlay
-    if (overlayActive) {
-      setOverlayActive(false)
-      onOverlayStrokes?.(null)
-    }
-  }, [triggerRedraw, timer, overlayActive, onOverlayStrokes])
+    onOverlayClear?.()
+  }, [triggerRedraw, timer, onOverlayClear])
 
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedStrokeIndex !== null) {
@@ -89,23 +84,11 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
   const handleStrokeCountChange = useCallback(() => {
     syncUndoRedoState()
-    syncOverlay()
-    // Auto-start timer on first stroke
+    onStrokesChanged?.()
     if (!timer.isRunning && strokeManagerRef.current.getStrokes().length > 0) {
       timer.start()
     }
-  }, [syncUndoRedoState, syncOverlay, timer])
-
-  const handleToggleOverlay = useCallback(() => {
-    if (overlayActive) {
-      setOverlayActive(false)
-      onOverlayStrokes?.(null)
-    } else {
-      setOverlayActive(true)
-      const strokes = strokeManagerRef.current.getStrokes()
-      onOverlayStrokes?.(strokes.length > 0 ? [...strokes] : [])
-    }
-  }, [overlayActive, onOverlayStrokes])
+  }, [syncUndoRedoState, onStrokesChanged, timer])
 
   const handleSave = useCallback(async () => {
     const strokes = strokeManagerRef.current.getStrokes()
@@ -128,7 +111,6 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           py: 0.5,
           borderBottom: '1px solid #ddd',
           bgcolor: '#fafafa',
-          flexWrap: 'wrap',
           minHeight: 40,
         }}
       >
@@ -192,21 +174,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
 
         <Box sx={{ flex: 1 }} />
 
-        {/* View & compare */}
-        <Tooltip title={t('compare')}>
-          <IconButton
-            size="small"
-            onClick={handleToggleOverlay}
-            sx={{
-              bgcolor: overlayActive ? 'warning.main' : 'transparent',
-              color: overlayActive ? 'white' : 'inherit',
-              '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
-            }}
-          >
-            &#9881;
-          </IconButton>
-        </Tooltip>
-
+        {/* View */}
         <Tooltip title={t('resetZoom')}>
           <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
             &#8858;
