@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Box, Typography, IconButton, Tooltip } from '@mui/material'
+import { Box, Typography, IconButton, Tooltip, Button } from '@mui/material'
 import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
+import type { ReferenceInfo } from './SketchfabViewer'
 
 interface GalleryProps {
   onClose: () => void
+  onLoadReference?: (info: ReferenceInfo) => void
 }
 
-export function Gallery({ onClose }: GalleryProps) {
+export function Gallery({ onClose, onLoadReference }: GalleryProps) {
   const [drawings, setDrawings] = useState<DrawingRecord[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -28,6 +30,13 @@ export function Gallery({ onClose }: GalleryProps) {
     setDrawings(prev => prev.filter(d => d.id !== id))
   }, [])
 
+  const handleLoadReference = useCallback((drawing: DrawingRecord) => {
+    const ref = drawing.reference
+    if (!ref) return
+    onLoadReference?.(ref)
+    onClose()
+  }, [onLoadReference, onClose])
+
   const formatDate = (date: Date) => {
     return new Date(date).toLocaleDateString(undefined, {
       year: 'numeric',
@@ -36,6 +45,20 @@ export function Gallery({ onClose }: GalleryProps) {
       hour: '2-digit',
       minute: '2-digit',
     })
+  }
+
+  const getRefLabel = (drawing: DrawingRecord): string => {
+    if (drawing.reference) {
+      const parts = [drawing.reference.title]
+      if (drawing.reference.author) parts.push(drawing.reference.author)
+      return parts.join(' - ')
+    }
+    return drawing.referenceInfo || ''
+  }
+
+  const canLoadReference = (drawing: DrawingRecord): boolean => {
+    if (!drawing.reference) return false
+    return drawing.reference.source === 'sketchfab' && !!drawing.reference.sketchfabUid
   }
 
   return (
@@ -87,46 +110,62 @@ export function Gallery({ onClose }: GalleryProps) {
           {!loading && drawings.length > 0 && (
             <Box sx={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
               gap: 2,
             }}>
-              {drawings.map(drawing => (
-                <Box
-                  key={drawing.id}
-                  sx={{
-                    border: '1px solid #ddd',
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                    '&:hover': { borderColor: 'primary.main' },
-                  }}
-                >
-                  {drawing.thumbnail && (
-                    <img
-                      src={drawing.thumbnail}
-                      alt={`#${drawing.id}`}
-                      style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
-                    />
-                  )}
-                  <Box sx={{ p: 1 }}>
-                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                      {formatDate(drawing.createdAt)}
-                    </Typography>
-                    <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                      {formatTime(drawing.elapsedMs)}
-                      {drawing.referenceInfo && ` - ${drawing.referenceInfo}`}
-                    </Typography>
-                    <Tooltip title={t('delete')}>
-                      <IconButton
-                        size="small"
-                        onClick={() => drawing.id != null && handleDelete(drawing.id)}
-                        sx={{ mt: 0.5 }}
-                      >
-                        &#128465;
-                      </IconButton>
-                    </Tooltip>
+              {drawings.map(drawing => {
+                const refLabel = getRefLabel(drawing)
+                return (
+                  <Box
+                    key={drawing.id}
+                    sx={{
+                      border: '1px solid #ddd',
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      '&:hover': { borderColor: 'primary.main' },
+                    }}
+                  >
+                    {drawing.thumbnail && (
+                      <img
+                        src={drawing.thumbnail}
+                        alt={`#${drawing.id}`}
+                        style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
+                      />
+                    )}
+                    <Box sx={{ p: 1 }}>
+                      {refLabel && (
+                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {refLabel}
+                        </Typography>
+                      )}
+                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+                        {formatDate(drawing.createdAt)} / {formatTime(drawing.elapsedMs)}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, alignItems: 'center' }}>
+                        {canLoadReference(drawing) && (
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleLoadReference(drawing)}
+                            sx={{ fontSize: '0.65rem', py: 0, minHeight: 24 }}
+                          >
+                            {t('loadReference')}
+                          </Button>
+                        )}
+                        <Box sx={{ flex: 1 }} />
+                        <Tooltip title={t('delete')}>
+                          <IconButton
+                            size="small"
+                            onClick={() => drawing.id != null && handleDelete(drawing.id)}
+                          >
+                            &#128465;
+                          </IconButton>
+                        </Tooltip>
+                      </Box>
+                    </Box>
                   </Box>
-                </Box>
-              ))}
+                )
+              })}
             </Box>
           )}
         </Box>

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Box } from '@mui/material'
 import { useOrientation } from '../hooks/useOrientation'
 import { GuideProvider } from '../guides/GuideContext'
@@ -6,6 +6,7 @@ import { ReferencePanel } from './ReferencePanel'
 import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
 import type { Stroke } from '../drawing/types'
+import type { ReferenceInfo } from './SketchfabViewer'
 
 export function SplitLayout() {
   const orientation = useOrientation()
@@ -13,7 +14,9 @@ export function SplitLayout() {
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null)
   const [overlayActive, setOverlayActive] = useState(false)
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
+  const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null)
   const strokeManagerRef = useRef<StrokeManager | null>(null)
+  const loadReferenceFnRef = useRef<((info: ReferenceInfo) => void) | null>(null)
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
@@ -35,19 +38,19 @@ export function SplitLayout() {
     strokeManagerRef.current = sm
   }, [])
 
-  // Sync overlay when strokes change (called by DrawingPanel)
   const handleStrokesChanged = useCallback(() => {
     if (overlayActive && strokeManagerRef.current) {
       setOverlayStrokes([...strokeManagerRef.current.getStrokes()])
     }
   }, [overlayActive])
 
-  // Clear overlay when drawing is cleared
-  useEffect(() => {
-    if (overlayActive && overlayStrokes && overlayStrokes.length === 0) {
-      // Keep overlay active even with no strokes (live mode)
-    }
-  }, [overlayActive, overlayStrokes])
+  const handleRegisterLoadReference = useCallback((loadFn: (info: ReferenceInfo) => void) => {
+    loadReferenceFnRef.current = loadFn
+  }, [])
+
+  const handleLoadReference = useCallback((info: ReferenceInfo) => {
+    loadReferenceFnRef.current?.(info)
+  }, [])
 
   return (
     <GuideProvider>
@@ -66,14 +69,18 @@ export function SplitLayout() {
             onReferenceImageSize={handleReferenceImageSize}
             overlayActive={overlayActive}
             onToggleOverlay={handleToggleOverlay}
+            onReferenceInfoChange={setReferenceInfo}
+            onRegisterLoadReference={handleRegisterLoadReference}
           />
         </Box>
         <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
           <DrawingPanel
             referenceSize={referenceSize}
+            referenceInfo={referenceInfo}
             onStrokeManagerReady={handleStrokeManagerReady}
             onStrokesChanged={handleStrokesChanged}
             onOverlayClear={() => { setOverlayActive(false); setOverlayStrokes(null) }}
+            onLoadReference={handleLoadReference}
           />
         </Box>
       </Box>

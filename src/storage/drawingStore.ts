@@ -1,16 +1,18 @@
 import { db, type DrawingRecord } from './db'
 import type { Stroke } from '../drawing/types'
+import type { ReferenceInfo } from '../components/SketchfabViewer'
 
 export async function saveDrawing(
   strokes: readonly Stroke[],
   thumbnail: string,
-  referenceInfo: string,
+  reference: ReferenceInfo | null,
   elapsedMs: number,
 ): Promise<number> {
   const id = await db.drawings.add({
     strokes: [...strokes],
     thumbnail,
-    referenceInfo,
+    referenceInfo: reference?.title ?? '',
+    reference: reference ?? undefined,
     createdAt: new Date(),
     elapsedMs,
   })

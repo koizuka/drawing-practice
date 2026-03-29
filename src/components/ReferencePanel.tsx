@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography } from '@mui/material'
 import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
@@ -15,9 +15,12 @@ interface ReferencePanelProps {
   onReferenceImageSize?: (width: number, height: number) => void
   overlayActive?: boolean
   onToggleOverlay?: () => void
+  onReferenceInfoChange?: (info: ReferenceInfo | null) => void
+  /** Called with a function to load a reference; parent stores it for later use */
+  onRegisterLoadReference?: (loadFn: (info: ReferenceInfo) => void) => void
 }
 
-export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayActive, onToggleOverlay }: ReferencePanelProps) {
+export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayActive, onToggleOverlay, onReferenceInfoChange, onRegisterLoadReference }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, toggleGrid, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
   const [source, setSource] = useState<ReferenceSource>('none')
@@ -43,18 +46,21 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
       if (!file) return
       const url = URL.createObjectURL(file)
       setLocalImageUrl(url)
-      setRefInfo({ title: file.name, author: '', source: 'image', fileName: file.name })
+      const info: ReferenceInfo = { title: file.name, author: '', source: 'image', fileName: file.name }
+      setRefInfo(info)
+      onReferenceInfoChange?.(info)
       setSource('image')
       setReferenceMode('fixed')
     }
     input.click()
-  }, [])
+  }, [onReferenceInfoChange])
 
   const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
     setFixedImageUrl(screenshotUrl)
     setRefInfo(info)
     setReferenceMode('fixed')
-  }, [])
+    onReferenceInfoChange?.(info)
+  }, [onReferenceInfoChange])
 
   const handleChangeAngle = useCallback(() => {
     setReferenceMode('browse')
@@ -69,7 +75,8 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
     setRefInfo(null)
     setGuideMode('none')
     setHighlightedGuideId(null)
-  }, [])
+    onReferenceInfoChange?.(null)
+  }, [onReferenceInfoChange])
 
   const handleOpenSketchfab = useCallback(() => {
     setSource('sketchfab')
@@ -82,6 +89,23 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
     setSfShowViewer(state.showViewer)
     setSfIsReady(state.isReady)
   }, [])
+
+  // Expose actions to parent
+  const handleLoadReference = useCallback((info: ReferenceInfo) => {
+    if (info.source === 'sketchfab' && info.sketchfabUid) {
+      setSource('sketchfab')
+      setReferenceMode('browse')
+      setFixedImageUrl(null)
+      setRefInfo(null)
+      requestAnimationFrame(() => {
+        sfActionsRef.current?.loadModelByUid(info.sketchfabUid!)
+      })
+    }
+  }, [])
+
+  useEffect(() => {
+    onRegisterLoadReference?.(handleLoadReference)
+  }, [onRegisterLoadReference, handleLoadReference])
 
   const handleAddGuideLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
     addLine(x1, y1, x2, y2)
