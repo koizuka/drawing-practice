@@ -6,7 +6,7 @@ describe('SplitLayout', () => {
     render(<SplitLayout />)
     // ReferencePanel renders source buttons in center when no source selected
     expect(screen.getByText('Sketchfab')).toBeInTheDocument()
-    expect(screen.getByText('Image')).toBeInTheDocument()
+    expect(screen.getByText('Local File')).toBeInTheDocument()
     // DrawingPanel renders toolbar buttons
     expect(screen.getByLabelText('Pen')).toBeInTheDocument()
     expect(screen.getByLabelText('Eraser')).toBeInTheDocument()

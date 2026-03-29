@@ -15,7 +15,7 @@ const messages = {
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
-    'image': 'Image',
+    'image': 'Local File',
     'changeAngle': 'Change Angle',
     'addGuideLine': 'Add guide line',
     'deleteGuideLine': 'Delete guide line',
@@ -52,6 +52,10 @@ const messages = {
     'noDrawings': 'No saved drawings yet.',
     'loadReference': 'Use this reference',
     'buildDate': 'Build',
+    'url': 'URL',
+    'urlPlaceholder': 'Image URL...',
+    'loadUrl': 'Load',
+    'urlLoadFailed': 'Failed to load image from URL.',
   },
   ja: {
     // DrawingPanel
@@ -69,7 +73,7 @@ const messages = {
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
-    'image': '画像',
+    'image': 'ファイル',
     'changeAngle': '角度変更',
     'addGuideLine': '補助線を追加',
     'deleteGuideLine': '補助線を削除',
@@ -106,6 +110,10 @@ const messages = {
     'noDrawings': '保存された絵はまだありません。',
     'loadReference': 'このお手本で練習',
     'buildDate': 'ビルド',
+    'url': 'URL',
+    'urlPlaceholder': '画像のURL...',
+    'loadUrl': '読込',
+    'urlLoadFailed': 'URLからの画像の読み込みに失敗しました。',
   },
 } as const
 

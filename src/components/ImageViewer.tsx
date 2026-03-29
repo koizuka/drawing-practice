@@ -15,6 +15,7 @@ interface ImageViewerProps {
   guideVersion: number
   overlayStrokes?: readonly Stroke[]
   onImageLoaded?: (width: number, height: number) => void
+  onImageError?: () => void
   /** Guide line interaction mode */
   guideMode: GuideInteractionMode
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void
@@ -30,7 +31,7 @@ const GUIDE_HIT_THRESHOLD = 15
 
 export function ImageViewer({
   imageUrl, viewResetVersion, grid, guideLines, guideVersion,
-  overlayStrokes, onImageLoaded,
+  overlayStrokes, onImageLoaded, onImageError,
   guideMode, onAddGuideLine,
   highlightedGuideId, onHighlightGuide,
 }: ImageViewerProps) {
@@ -150,16 +151,36 @@ export function ImageViewer({
     redraw()
   }, [redraw])
 
-  // Load image
+  // Load image: try without CORS first, then upgrade to CORS if possible
+  // Only depends on imageUrl to avoid re-triggering on prop changes
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => {
-      imageRef.current = img
-      onImageLoaded?.(img.naturalWidth, img.naturalHeight)
+    let cancelled = false
+
+    const applyImage = (loadedImg: HTMLImageElement) => {
+      if (cancelled) return
+      imageRef.current = loadedImg
+      onImageLoaded?.(loadedImg.naturalWidth, loadedImg.naturalHeight)
       fitImage()
     }
+
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      // Try CORS version for untainted canvas
+      const corsImg = new Image()
+      corsImg.crossOrigin = 'anonymous'
+      corsImg.onload = () => applyImage(corsImg)
+      corsImg.onerror = () => applyImage(img)
+      corsImg.src = imageUrl
+    }
+    img.onerror = () => {
+      if (!cancelled) onImageError?.()
+    }
     img.src = imageUrl
-  }, [imageUrl, fitImage, onImageLoaded])
+
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when URL changes
+  }, [imageUrl])
 
   // ResizeObserver
   useEffect(() => {

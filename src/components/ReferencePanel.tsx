@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, Tooltip, IconButton, Typography } from '@mui/material'
+import { Box, Button, Tooltip, IconButton, Typography, TextField } from '@mui/material'
 import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
@@ -7,7 +7,7 @@ import { useFullscreen } from '../hooks/useFullscreen'
 import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
 
-type ReferenceSource = 'none' | 'sketchfab' | 'image'
+type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url'
 type ReferenceMode = 'browse' | 'fixed'
 
 interface ReferencePanelProps {
@@ -31,6 +31,8 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none')
   const [refInfo, setRefInfo] = useState<ReferenceInfo | null>(null)
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null)
+  const [urlInput, setUrlInput] = useState('')
+  const [urlError, setUrlError] = useState<string | null>(null)
 
   // Sketchfab viewer state (reported by child)
   const [sfShowViewer, setSfShowViewer] = useState(false)
@@ -53,6 +55,56 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
       setReferenceMode('fixed')
     }
     input.click()
+  }, [onReferenceInfoChange])
+
+  const [urlLoading, setUrlLoading] = useState(false)
+
+  const handleLoadFromUrl = useCallback((url: string) => {
+    if (!url) return
+    setUrlError(null)
+    setUrlLoading(true)
+
+    // Validate URL format
+    try {
+      new URL(url)
+    } catch {
+      setUrlError(t('urlLoadFailed'))
+      setUrlLoading(false)
+      return
+    }
+
+    const onFail = () => {
+      setUrlError(t('urlLoadFailed'))
+      setUrlLoading(false)
+    }
+
+    const onSuccess = () => {
+      setUrlLoading(false)
+      const title = url.split('/').pop()?.split('?')[0] ?? url
+      const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url }
+      setFixedImageUrl(url)
+      setRefInfo(info)
+      onReferenceInfoChange?.(info)
+      setSource('url')
+      setReferenceMode('fixed')
+      setUrlInput('')
+    }
+
+    // Preload image: try CORS first, then without, check naturalWidth
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      if (img.naturalWidth > 0) { onSuccess() } else { onFail() }
+    }
+    img.onerror = () => {
+      const retry = new Image()
+      retry.onload = () => {
+        if (retry.naturalWidth > 0) { onSuccess() } else { onFail() }
+      }
+      retry.onerror = onFail
+      retry.src = url
+    }
+    img.src = url
   }, [onReferenceInfoChange])
 
   const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
@@ -100,12 +152,24 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
       requestAnimationFrame(() => {
         sfActionsRef.current?.loadModelByUid(info.sketchfabUid!)
       })
+    } else if (info.source === 'url' && info.imageUrl) {
+      handleLoadFromUrl(info.imageUrl)
     }
-  }, [])
+  }, [handleLoadFromUrl])
 
   useEffect(() => {
     onRegisterLoadReference?.(handleLoadReference)
   }, [onRegisterLoadReference, handleLoadReference])
+
+  const handleImageError = useCallback(() => {
+    setUrlError(t('urlLoadFailed'))
+    // Reset to none state so user sees the error
+    setSource('none')
+    setReferenceMode('browse')
+    setFixedImageUrl(null)
+    setRefInfo(null)
+    onReferenceInfoChange?.(null)
+  }, [onReferenceInfoChange])
 
   const handleAddGuideLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
     addLine(x1, y1, x2, y2)
@@ -127,7 +191,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
     setHighlightedGuideId(null)
   }, [])
 
-  const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl
+  const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl  // 'sketchfab' and 'url' use fixedImageUrl
   const isFixed = referenceMode === 'fixed' && !!displayImageUrl
   const isNone = source === 'none'
   // Sketchfab browse mode: either searching or viewing a model
@@ -300,6 +364,31 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
                 {t('image')}
               </Button>
             </Box>
+            <Box sx={{ display: 'flex', gap: 1, width: '80%', maxWidth: 400 }}>
+              <TextField
+                size="small"
+                placeholder={t('urlPlaceholder')}
+                value={urlInput}
+                onChange={e => { setUrlInput(e.target.value); setUrlError(null) }}
+                onKeyDown={e => { if (e.key === 'Enter' && urlInput) handleLoadFromUrl(urlInput) }}
+                sx={{ flex: 1 }}
+                fullWidth
+              />
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => handleLoadFromUrl(urlInput)}
+                disabled={!urlInput || urlLoading}
+              >
+                {t('loadUrl')}
+              </Button>
+            </Box>
+            {urlLoading && (
+              <Typography variant="caption" color="text.secondary">{t('loading')}</Typography>
+            )}
+            {urlError && (
+              <Typography variant="caption" color="error">{urlError}</Typography>
+            )}
             <Typography variant="caption" color="text.disabled">
               {t('buildDate')}: {new Date(import.meta.env.BUILD_DATE as string).toLocaleString()}
             </Typography>
@@ -355,6 +444,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
             guideVersion={guideVersion}
             overlayStrokes={overlayStrokes ?? undefined}
             onImageLoaded={onReferenceImageSize}
+            onImageError={handleImageError}
             guideMode={guideMode}
             onAddGuideLine={handleAddGuideLine}
             onDeleteGuideLine={removeLine}
