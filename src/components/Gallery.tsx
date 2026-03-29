@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Box, Typography, IconButton, Tooltip } from '@mui/material'
 import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
 import { formatTime } from '../hooks/useTimer'
+import { t } from '../i18n'
 
 interface GalleryProps {
   onClose: () => void
@@ -28,7 +29,7 @@ export function Gallery({ onClose }: GalleryProps) {
   }, [])
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString('ja-JP', {
+    return new Date(date).toLocaleDateString(undefined, {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -66,7 +67,7 @@ export function Gallery({ onClose }: GalleryProps) {
           borderBottom: '1px solid #ddd',
         }}>
           <Typography variant="h6" sx={{ flex: 1 }}>
-            Gallery ({drawings.length})
+            {t('galleryTitle')} ({drawings.length})
           </Typography>
           <IconButton onClick={onClose} size="small">
             &#10005;
@@ -76,11 +77,11 @@ export function Gallery({ onClose }: GalleryProps) {
         {/* Content */}
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
           {loading && (
-            <Typography color="text.secondary">Loading...</Typography>
+            <Typography color="text.secondary">{t('loading')}</Typography>
           )}
 
           {!loading && drawings.length === 0 && (
-            <Typography color="text.secondary">No saved drawings yet.</Typography>
+            <Typography color="text.secondary">{t('noDrawings')}</Typography>
           )}
 
           {!loading && drawings.length > 0 && (
@@ -102,7 +103,7 @@ export function Gallery({ onClose }: GalleryProps) {
                   {drawing.thumbnail && (
                     <img
                       src={drawing.thumbnail}
-                      alt={`Drawing ${drawing.id}`}
+                      alt={`#${drawing.id}`}
                       style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
                     />
                   )}
@@ -114,7 +115,7 @@ export function Gallery({ onClose }: GalleryProps) {
                       {formatTime(drawing.elapsedMs)}
                       {drawing.referenceInfo && ` - ${drawing.referenceInfo}`}
                     </Typography>
-                    <Tooltip title="Delete">
+                    <Tooltip title={t('delete')}>
                       <IconButton
                         size="small"
                         onClick={() => drawing.id != null && handleDelete(drawing.id)}

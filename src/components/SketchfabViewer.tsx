@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, TextField, Typography } from '@mui/material'
+import { t } from '../i18n'
 
 interface SketchfabViewerProps {
   onFixAngle: (screenshotUrl: string) => void
@@ -39,13 +40,13 @@ interface SearchResult {
 }
 
 const SKETCHFAB_CATEGORIES = [
-  { slug: 'animals-pets', label: 'Animals' },
-  { slug: 'cars-vehicles', label: 'Vehicles' },
-  { slug: 'characters-creatures', label: 'Characters' },
-  { slug: 'food-drink', label: 'Food' },
-  { slug: 'furniture-home', label: 'Furniture' },
-  { slug: 'nature-plants', label: 'Plants' },
-  { slug: 'science-technology', label: 'Technology' },
+  { slug: 'animals-pets', labelKey: 'animals' as const },
+  { slug: 'cars-vehicles', labelKey: 'vehicles' as const },
+  { slug: 'characters-creatures', labelKey: 'characters' as const },
+  { slug: 'food-drink', labelKey: 'food' as const },
+  { slug: 'furniture-home', labelKey: 'furniture' as const },
+  { slug: 'nature-plants', labelKey: 'plants' as const },
+  { slug: 'science-technology', labelKey: 'technology' as const },
 ]
 
 interface ThumbnailImage {
@@ -119,7 +120,7 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
         })
       },
       error: () => {
-        setError('Failed to load model')
+        setError(t('failedLoadModel'))
         setLoading(false)
       },
       autostart: 1,
@@ -155,7 +156,7 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
 
     api.getScreenShot({ width: 1024, height: 1024 }, (err, result) => {
       if (err) {
-        setError('Failed to capture screenshot')
+        setError(t('failedScreenshot'))
         return
       }
       onFixAngle(result)
@@ -178,7 +179,7 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
       const data = await res.json()
       setSearchResults(parseSearchResults(data))
     } catch {
-      setError('Search failed. Try again.')
+      setError(t('searchFailed'))
     }
   }, [])
 
@@ -197,7 +198,7 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
       .then(data => {
         setSearchResults(parseSearchResults(data))
       })
-      .catch(() => setError('Failed to fetch models'))
+      .catch(() => setError(t('failedFetchModels')))
   }, [])
 
   const handleSelectModel = useCallback((uid: string) => {
@@ -225,18 +226,18 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
             />
             {loading && (
               <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>
-                <Typography>Loading model...</Typography>
+                <Typography>{t('loadingModel')}</Typography>
               </Box>
             )}
           </Box>
           {/* Buttons below iframe so they're always accessible on iPad */}
           <Box sx={{ display: 'flex', gap: 1, p: 1, borderTop: '1px solid #ddd', bgcolor: '#fafafa' }}>
             <Button variant="outlined" size="small" onClick={handleBack}>
-              Back
+              {t('back')}
             </Button>
             {isReady && (
               <Button variant="contained" color="success" size="small" onClick={handleFixAngle}>
-                Fix This Angle
+                {t('fixThisAngle')}
               </Button>
             )}
           </Box>
@@ -250,14 +251,14 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              placeholder="Search models..."
+              placeholder={t('searchModels')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') handleSearch(searchQuery) }}
               sx={{ flex: 1 }}
             />
             <Button size="small" variant="contained" onClick={() => handleSearch(searchQuery)}>
-              Search
+              {t('search')}
             </Button>
           </Box>
 
@@ -265,7 +266,7 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
             {SKETCHFAB_CATEGORIES.map(cat => (
               <Button key={cat.slug} size="small" variant="outlined" onClick={() => handleRandomFromCategory(cat.slug)}>
-                {cat.label}
+                {t(cat.labelKey)}
               </Button>
             ))}
           </Box>
@@ -274,17 +275,17 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <TextField
               size="small"
-              placeholder="Model UID..."
+              placeholder={t('modelUid')}
               value={modelUid}
               onChange={e => setModelUid(e.target.value)}
               sx={{ flex: 1 }}
             />
             <Button size="small" variant="outlined" onClick={() => loadModel(modelUid)} disabled={!modelUid || !scriptLoaded}>
-              Load
+              {t('load')}
             </Button>
           </Box>
 
-          {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>Loading Sketchfab API...</Typography>}
+          {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('loadingApi')}</Typography>}
           {error && <Typography variant="body2" color="error" sx={{ mb: 1 }}>{error}</Typography>}
 
           {/* Search results grid */}
