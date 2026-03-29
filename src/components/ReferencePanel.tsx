@@ -4,6 +4,7 @@ import { SketchfabViewer } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
 import { useFullscreen } from '../hooks/useFullscreen'
+import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
 
 type ReferenceSource = 'none' | 'sketchfab' | 'image'
@@ -98,15 +99,15 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
       >
         {/* Source selection */}
         <Button size="small" variant={source === 'sketchfab' ? 'contained' : 'outlined'} onClick={handleOpenSketchfab}>
-          Sketchfab
+          {t('sketchfab')}
         </Button>
         <Button size="small" variant={source === 'image' ? 'contained' : 'outlined'} onClick={handleLoadLocalImage}>
-          Image
+          {t('image')}
         </Button>
 
         {source === 'sketchfab' && referenceMode === 'fixed' && (
           <Button size="small" variant="outlined" onClick={handleChangeAngle}>
-            Change Angle
+            {t('changeAngle')}
           </Button>
         )}
 
@@ -115,7 +116,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         {/* Guide line tools (only when image is fixed) */}
         {showGuideTools && (
           <>
-            <Tooltip title="Add guide line">
+            <Tooltip title={t('addGuideLine')}>
               <IconButton
                 size="small"
                 onClick={() => toggleGuideMode('add')}
@@ -129,7 +130,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
               </IconButton>
             </Tooltip>
 
-            <Tooltip title="Delete guide line">
+            <Tooltip title={t('deleteGuideLine')}>
               <span>
                 <IconButton
                   size="small"
@@ -146,7 +147,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
               </span>
             </Tooltip>
 
-            <Tooltip title="Clear all guide lines">
+            <Tooltip title={t('clearGuideLines')}>
               <span>
                 <IconButton
                   size="small"
@@ -166,17 +167,17 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         {highlightedGuideId && (
           <>
             <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
-              Delete
+              {t('delete')}
             </Button>
             <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
           </>
         )}
 
         {/* View controls */}
-        <Tooltip title="Toggle grid">
+        <Tooltip title={t('toggleGrid')}>
           <IconButton
             size="small"
             onClick={toggleGrid}
@@ -191,7 +192,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         </Tooltip>
 
         {showGuideTools && (
-          <Tooltip title="Reset zoom">
+          <Tooltip title={t('resetZoom')}>
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
               &#8858;
             </IconButton>
@@ -199,7 +200,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
         )}
 
         {fullscreenSupported && (
-          <Tooltip title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}>
+          <Tooltip title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}>
             <IconButton size="small" onClick={toggleFullscreen}>
               {isFullscreen ? '\u2716' : '\u26F6'}
             </IconButton>
@@ -211,12 +212,14 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize }: Referen
       <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {source === 'none' && (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
-            Select a reference source above
+            {t('selectReference')}
           </Box>
         )}
 
-        {source === 'sketchfab' && referenceMode === 'browse' && (
-          <SketchfabViewer onFixAngle={handleFixAngle} />
+        {source === 'sketchfab' && (
+          <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
+            <SketchfabViewer onFixAngle={handleFixAngle} />
+          </Box>
         )}
 
         {referenceMode === 'fixed' && displayImageUrl && (

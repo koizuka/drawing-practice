@@ -7,6 +7,7 @@ import { useTimer, formatTime } from '../hooks/useTimer'
 import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
+import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
 
 interface DrawingPanelProps {
@@ -132,7 +133,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
         }}
       >
         {/* Drawing tools */}
-        <Tooltip title="Pen">
+        <Tooltip title={t('pen')}>
           <IconButton
             size="small"
             onClick={() => { setMode('pen'); setHighlightedStrokeIndex(null) }}
@@ -147,7 +148,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Eraser">
+        <Tooltip title={t('eraser')}>
           <IconButton
             size="small"
             onClick={() => setMode('eraser')}
@@ -165,7 +166,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
         {/* Edit */}
-        <Tooltip title="Undo">
+        <Tooltip title={t('undo')}>
           <span>
             <IconButton size="small" onClick={handleUndo} disabled={!canUndo}>
               &#8630;
@@ -173,7 +174,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </span>
         </Tooltip>
 
-        <Tooltip title="Redo">
+        <Tooltip title={t('redo')}>
           <span>
             <IconButton size="small" onClick={handleRedo} disabled={!canRedo}>
               &#8631;
@@ -181,7 +182,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </span>
         </Tooltip>
 
-        <Tooltip title="Clear all &amp; reset timer">
+        <Tooltip title={t('clearAll')}>
           <span>
             <IconButton size="small" onClick={handleClear} disabled={strokeCount === 0}>
               &#128465;
@@ -192,7 +193,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
         <Box sx={{ flex: 1 }} />
 
         {/* View & compare */}
-        <Tooltip title="Compare with reference">
+        <Tooltip title={t('compare')}>
           <IconButton
             size="small"
             onClick={handleToggleOverlay}
@@ -206,7 +207,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </IconButton>
         </Tooltip>
 
-        <Tooltip title="Reset zoom">
+        <Tooltip title={t('resetZoom')}>
           <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
             &#8858;
           </IconButton>
@@ -228,7 +229,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <Tooltip title="Save drawing">
+        <Tooltip title={t('saveDrawing')}>
           <span>
             <IconButton size="small" onClick={handleSave} disabled={strokeCount === 0 || saving}>
               &#128190;
@@ -236,7 +237,7 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           </span>
         </Tooltip>
 
-        <Tooltip title="Gallery">
+        <Tooltip title={t('gallery')}>
           <IconButton size="small" onClick={() => setShowGallery(true)}>
             &#128444;
           </IconButton>
@@ -247,10 +248,10 @@ export function DrawingPanel({ onOverlayStrokes, referenceInfo = '', referenceSi
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
             <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
-              Delete
+              {t('delete')}
             </Button>
             <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
-              Cancel
+              {t('cancel')}
             </Button>
           </>
         )}
