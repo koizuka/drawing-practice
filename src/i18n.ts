@@ -15,7 +15,7 @@ const messages = {
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
-    'image': 'Local File',
+    'image': 'Image File',
     'changeAngle': 'Change Angle',
     'addGuideLine': 'Add guide line',
     'deleteGuideLine': 'Delete guide line',
@@ -73,7 +73,7 @@ const messages = {
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
-    'image': 'ファイル',
+    'image': '画像ファイル',
     'changeAngle': '角度変更',
     'addGuideLine': '補助線を追加',
     'deleteGuideLine': '補助線を削除',

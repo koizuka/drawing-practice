@@ -31,7 +31,7 @@ npm run test:watch # Run tests in watch mode
 
 **SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels
 
-**ReferencePanel** - Reference source selection (Sketchfab/Image), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle
+**ReferencePanel** - Reference source selection (Sketchfab/Local File/URL), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle
 
 **DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Grid toggle is only on reference panel (synced via context).
 
@@ -46,7 +46,7 @@ npm run test:watch # Run tests in watch mode
 - Viewer API embedding with screenshot capture ("Fix This Angle")
 - Screenshot becomes fixed image for drawing reference
 
-**ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion)
+**ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion). Loads images with non-CORS fallback for cross-origin URLs.
 
 **Gallery** - Modal gallery showing saved drawings with thumbnails, reference title/author, timestamps, delete, and "Use this reference" to reload the same Sketchfab model
 
