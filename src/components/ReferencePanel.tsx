@@ -286,17 +286,23 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
         {isNone && (
           <Box sx={{
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             height: '100%',
             gap: 2,
           }}>
-            <Button variant="outlined" size="large" onClick={handleOpenSketchfab}>
-              {t('sketchfab')}
-            </Button>
-            <Button variant="outlined" size="large" onClick={handleLoadLocalImage}>
-              {t('image')}
-            </Button>
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <Button variant="outlined" size="large" onClick={handleOpenSketchfab}>
+                {t('sketchfab')}
+              </Button>
+              <Button variant="outlined" size="large" onClick={handleLoadLocalImage}>
+                {t('image')}
+              </Button>
+            </Box>
+            <Typography variant="caption" color="text.disabled">
+              {t('buildDate')}: {new Date(import.meta.env.BUILD_DATE as string).toLocaleString()}
+            </Typography>
           </Box>
         )}
 
