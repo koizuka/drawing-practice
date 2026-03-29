@@ -2,8 +2,15 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, TextField, Typography } from '@mui/material'
 import { t } from '../i18n'
 
+export interface ReferenceInfo {
+  title: string
+  author: string
+  source: 'sketchfab' | 'image'
+  fileName?: string
+}
+
 interface SketchfabViewerProps {
-  onFixAngle: (screenshotUrl: string) => void
+  onFixAngle: (screenshotUrl: string, info: ReferenceInfo) => void
   /** Called when viewer state changes so parent can update toolbar */
   onStateChange?: (state: { showViewer: boolean; isReady: boolean }) => void
   /** Ref for imperative actions from parent */
@@ -45,6 +52,7 @@ declare global {
 interface SearchResult {
   uid: string
   name: string
+  author: string
   thumbnailUrl: string
 }
 
@@ -66,6 +74,7 @@ interface ThumbnailImage {
 interface ModelResult {
   uid: string
   name: string
+  user?: { displayName?: string; username?: string }
   thumbnails?: { images?: ThumbnailImage[] }
 }
 
@@ -73,6 +82,7 @@ function parseSearchResults(data: { results?: ModelResult[] }): SearchResult[] {
   return data.results?.map(m => ({
     uid: m.uid,
     name: m.name,
+    author: m.user?.displayName ?? m.user?.username ?? '',
     thumbnailUrl: m.thumbnails?.images?.find(t => t.width >= 200)?.url ?? '',
   })) ?? []
 }
@@ -88,6 +98,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   const [scriptLoaded, setScriptLoaded] = useState(!!window.Sketchfab)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
+  const [selectedModel, setSelectedModel] = useState<{ name: string; author: string } | null>(null)
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
 
@@ -168,9 +179,13 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
         setError(t('failedScreenshot'))
         return
       }
-      onFixAngle(result)
+      onFixAngle(result, {
+        title: selectedModel?.name ?? '',
+        author: selectedModel?.author ?? '',
+        source: 'sketchfab',
+      })
     })
-  }, [onFixAngle])
+  }, [onFixAngle, selectedModel])
 
   const handleSearch = useCallback(async (query: string, category?: string) => {
     setError(null)
@@ -210,9 +225,10 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       .catch(() => setError(t('failedFetchModels')))
   }, [])
 
-  const handleSelectModel = useCallback((uid: string) => {
-    setModelUid(uid)
-    loadModel(uid)
+  const handleSelectModel = useCallback((model: SearchResult) => {
+    setModelUid(model.uid)
+    setSelectedModel({ name: model.name, author: model.author })
+    loadModel(model.uid)
   }, [loadModel])
 
   const handleBack = useCallback(() => {
@@ -305,7 +321,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
               {searchResults.map(model => (
                 <Box
                   key={model.uid}
-                  onClick={() => handleSelectModel(model.uid)}
+                  onClick={() => handleSelectModel(model)}
                   sx={{
                     cursor: 'pointer',
                     border: '1px solid #ddd',
