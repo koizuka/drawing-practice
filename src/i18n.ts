@@ -51,6 +51,7 @@ const messages = {
     'loading': 'Loading...',
     'noDrawings': 'No saved drawings yet.',
     'loadReference': 'Use this reference',
+    'buildDate': 'Build',
   },
   ja: {
     // DrawingPanel
@@ -104,6 +105,7 @@ const messages = {
     'loading': '読み込み中...',
     'noDrawings': '保存された絵はまだありません。',
     'loadReference': 'このお手本で練習',
+    'buildDate': 'ビルド',
   },
 } as const
 
