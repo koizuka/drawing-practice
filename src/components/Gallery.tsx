@@ -58,7 +58,9 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
 
   const canLoadReference = (drawing: DrawingRecord): boolean => {
     if (!drawing.reference) return false
-    return drawing.reference.source === 'sketchfab' && !!drawing.reference.sketchfabUid
+    if (drawing.reference.source === 'sketchfab' && drawing.reference.sketchfabUid) return true
+    if (drawing.reference.source === 'url' && drawing.reference.imageUrl) return true
+    return false
   }
 
   return (
