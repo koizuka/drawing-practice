@@ -48,7 +48,7 @@ npm run test:watch # Run tests in watch mode
 
 **ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion)
 
-**Gallery** - Modal gallery showing saved drawings with thumbnails, timestamps, and delete
+**Gallery** - Modal gallery showing saved drawings with thumbnails, reference title/author, timestamps, delete, and "Use this reference" to reload the same Sketchfab model
 
 ### Drawing System (`src/drawing/`)
 
@@ -65,8 +65,9 @@ npm run test:watch # Run tests in watch mode
 
 ### Storage (`src/storage/`)
 
-- **Dexie.js** wrapping IndexedDB for persistent storage
-- Each drawing record: strokes, thumbnail PNG, reference info, timestamp, elapsed time
+- **Dexie.js** wrapping IndexedDB for persistent storage (schema v2)
+- Each drawing record: strokes, thumbnail PNG, structured `ReferenceInfo` (title, author, source, sketchfabUid), timestamp, elapsed time
+- Gallery shows reference title/author, and "Use this reference" button to reload the same Sketchfab model
 - Designed for 1000+ records
 
 ### Timer (`src/hooks/useTimer.ts`)
