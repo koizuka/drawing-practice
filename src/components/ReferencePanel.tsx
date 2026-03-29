@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react'
-import { Box, Button, Tooltip, IconButton } from '@mui/material'
-import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
+import { Box, Button, Tooltip, IconButton, Typography } from '@mui/material'
+import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -26,6 +26,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   const [localImageUrl, setLocalImageUrl] = useState<string | null>(null)
   const [viewResetVersion, setViewResetVersion] = useState(0)
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none')
+  const [refInfo, setRefInfo] = useState<ReferenceInfo | null>(null)
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null)
 
   // Sketchfab viewer state (reported by child)
@@ -42,14 +43,16 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
       if (!file) return
       const url = URL.createObjectURL(file)
       setLocalImageUrl(url)
+      setRefInfo({ title: file.name, author: '', source: 'image', fileName: file.name })
       setSource('image')
       setReferenceMode('fixed')
     }
     input.click()
   }, [])
 
-  const handleFixAngle = useCallback((screenshotUrl: string) => {
+  const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
     setFixedImageUrl(screenshotUrl)
+    setRefInfo(info)
     setReferenceMode('fixed')
   }, [])
 
@@ -63,6 +66,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
     setReferenceMode('browse')
     setFixedImageUrl(null)
     setLocalImageUrl(null)
+    setRefInfo(null)
     setGuideMode('none')
     setHighlightedGuideId(null)
   }, [])
@@ -280,6 +284,34 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
               onStateChange={handleSfStateChange}
               actionsRef={sfActionsRef}
             />
+          </Box>
+        )}
+
+        {/* Reference info overlay */}
+        {isFixed && refInfo && (refInfo.title || refInfo.author) && (
+          <Box sx={{
+            position: 'absolute',
+            bottom: 8,
+            left: 8,
+            zIndex: 5,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            color: 'white',
+            px: 1,
+            py: 0.5,
+            borderRadius: 1,
+            maxWidth: '80%',
+            pointerEvents: 'none',
+          }}>
+            {refInfo.title && (
+              <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refInfo.title}
+              </Typography>
+            )}
+            {refInfo.author && (
+              <Typography variant="caption" sx={{ display: 'block', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refInfo.author}
+              </Typography>
+            )}
           </Box>
         )}
 
