@@ -4,7 +4,7 @@ import { SplitLayout } from './SplitLayout'
 describe('SplitLayout', () => {
   it('renders both panels', () => {
     render(<SplitLayout />)
-    // ReferencePanel renders source buttons
+    // ReferencePanel renders source buttons in center when no source selected
     expect(screen.getByText('Sketchfab')).toBeInTheDocument()
     expect(screen.getByText('Image')).toBeInTheDocument()
     // DrawingPanel renders toolbar buttons

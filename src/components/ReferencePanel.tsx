@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { Box, Button, Tooltip, IconButton } from '@mui/material'
-import { SketchfabViewer } from './SketchfabViewer'
+import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -28,6 +28,11 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none')
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null)
 
+  // Sketchfab viewer state (reported by child)
+  const [sfShowViewer, setSfShowViewer] = useState(false)
+  const [sfIsReady, setSfIsReady] = useState(false)
+  const sfActionsRef = useRef<SketchfabActions | null>(null)
+
   const handleLoadLocalImage = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -53,11 +58,25 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
     setFixedImageUrl(null)
   }, [])
 
+  const handleClose = useCallback(() => {
+    setSource('none')
+    setReferenceMode('browse')
+    setFixedImageUrl(null)
+    setLocalImageUrl(null)
+    setGuideMode('none')
+    setHighlightedGuideId(null)
+  }, [])
+
   const handleOpenSketchfab = useCallback(() => {
     setSource('sketchfab')
     setReferenceMode('browse')
     setFixedImageUrl(null)
     setLocalImageUrl(null)
+  }, [])
+
+  const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
+    setSfShowViewer(state.showViewer)
+    setSfIsReady(state.isReady)
   }, [])
 
   const handleAddGuideLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
@@ -81,7 +100,10 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   }, [])
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl
-  const showGuideTools = referenceMode === 'fixed' && displayImageUrl
+  const isFixed = referenceMode === 'fixed' && !!displayImageUrl
+  const isNone = source === 'none'
+  // Sketchfab browse mode: either searching or viewing a model
+  const isSfBrowse = source === 'sketchfab' && referenceMode === 'browse'
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -95,29 +117,37 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
           py: 0.5,
           borderBottom: '1px solid #ddd',
           bgcolor: '#fafafa',
-          flexWrap: 'wrap',
           minHeight: 40,
         }}
       >
-        {/* Source selection */}
-        <Button size="small" variant={source === 'sketchfab' ? 'contained' : 'outlined'} onClick={handleOpenSketchfab}>
-          {t('sketchfab')}
-        </Button>
-        <Button size="small" variant={source === 'image' ? 'contained' : 'outlined'} onClick={handleLoadLocalImage}>
-          {t('image')}
-        </Button>
+        {/* Close button (when source is set) */}
+        {!isNone && (
+          <Tooltip title={t('cancel')}>
+            <IconButton size="small" onClick={handleClose}>
+              &#10005;
+            </IconButton>
+          </Tooltip>
+        )}
 
-        {source === 'sketchfab' && referenceMode === 'fixed' && (
+        {/* Sketchfab model viewer: Fix This Angle button */}
+        {isSfBrowse && sfShowViewer && sfIsReady && (
+          <Button size="small" variant="contained" color="success" onClick={() => sfActionsRef.current?.fixAngle()}>
+            {t('fixThisAngle')}
+          </Button>
+        )}
+
+        {/* Fixed mode: Change Angle (Sketchfab only) */}
+        {isFixed && source === 'sketchfab' && (
           <Button size="small" variant="outlined" onClick={handleChangeAngle}>
             {t('changeAngle')}
           </Button>
         )}
 
-        <Box sx={{ flex: 1 }} />
-
-        {/* Guide line tools (only when image is fixed) */}
-        {showGuideTools && (
+        {/* Guide line tools (only when fixed) */}
+        {isFixed && (
           <>
+            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+
             <Tooltip title={t('addGuideLine')}>
               <IconButton
                 size="small"
@@ -151,47 +181,45 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
 
             <Tooltip title={t('clearGuideLines')}>
               <span>
-                <IconButton
-                  size="small"
-                  onClick={clearLines}
-                  disabled={lines.length === 0}
-                >
+                <IconButton size="small" onClick={clearLines} disabled={lines.length === 0}>
                   &#128465;
                 </IconButton>
               </span>
             </Tooltip>
-
-            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
           </>
         )}
 
         {/* Delete confirmation */}
         {highlightedGuideId && (
           <>
+            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
             <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
               {t('delete')}
             </Button>
             <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
               {t('cancel')}
             </Button>
-            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
           </>
         )}
 
-        {/* View controls */}
-        <Tooltip title={t('compare')}>
-          <IconButton
-            size="small"
-            onClick={onToggleOverlay}
-            sx={{
-              bgcolor: overlayActive ? 'warning.main' : 'transparent',
-              color: overlayActive ? 'white' : 'inherit',
-              '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
-            }}
-          >
-            &#9881;
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ flex: 1 }} />
+
+        {/* View controls (always visible) */}
+        {isFixed && (
+          <Tooltip title={t('compare')}>
+            <IconButton
+              size="small"
+              onClick={onToggleOverlay}
+              sx={{
+                bgcolor: overlayActive ? 'warning.main' : 'transparent',
+                color: overlayActive ? 'white' : 'inherit',
+                '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
+              }}
+            >
+              &#9881;
+            </IconButton>
+          </Tooltip>
+        )}
 
         <Tooltip title={t('toggleGrid')}>
           <IconButton
@@ -207,7 +235,7 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
           </IconButton>
         </Tooltip>
 
-        {showGuideTools && (
+        {isFixed && (
           <Tooltip title={t('resetZoom')}>
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
               &#8858;
@@ -226,19 +254,37 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
 
       {/* Content */}
       <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {source === 'none' && (
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
-            {t('selectReference')}
+        {/* No source: show selection buttons in center */}
+        {isNone && (
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            gap: 2,
+          }}>
+            <Button variant="outlined" size="large" onClick={handleOpenSketchfab}>
+              {t('sketchfab')}
+            </Button>
+            <Button variant="outlined" size="large" onClick={handleLoadLocalImage}>
+              {t('image')}
+            </Button>
           </Box>
         )}
 
+        {/* Sketchfab viewer (kept mounted when source is sketchfab) */}
         {source === 'sketchfab' && (
           <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
-            <SketchfabViewer onFixAngle={handleFixAngle} />
+            <SketchfabViewer
+              onFixAngle={handleFixAngle}
+              onStateChange={handleSfStateChange}
+              actionsRef={sfActionsRef}
+            />
           </Box>
         )}
 
-        {referenceMode === 'fixed' && displayImageUrl && (
+        {/* Fixed image */}
+        {isFixed && displayImageUrl && (
           <ImageViewer
             imageUrl={displayImageUrl}
             viewResetVersion={viewResetVersion}

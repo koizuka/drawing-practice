@@ -4,6 +4,15 @@ import { t } from '../i18n'
 
 interface SketchfabViewerProps {
   onFixAngle: (screenshotUrl: string) => void
+  /** Called when viewer state changes so parent can update toolbar */
+  onStateChange?: (state: { showViewer: boolean; isReady: boolean }) => void
+  /** Ref for imperative actions from parent */
+  actionsRef?: React.RefObject<SketchfabActions | null>
+}
+
+export interface SketchfabActions {
+  fixAngle: () => void
+  back: () => void
 }
 
 // Sketchfab Viewer API type (simplified)
@@ -68,7 +77,7 @@ function parseSearchResults(data: { results?: ModelResult[] }): SearchResult[] {
   })) ?? []
 }
 
-export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
+export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: SketchfabViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const apiRef = useRef<SketchfabAPI | null>(null)
   const [modelUid, setModelUid] = useState<string>('')
@@ -212,35 +221,37 @@ export function SketchfabViewer({ onFixAngle }: SketchfabViewerProps) {
     apiRef.current = null
   }, [])
 
+  // Notify parent of state changes
+  useEffect(() => {
+    onStateChange?.({ showViewer, isReady })
+  }, [showViewer, isReady, onStateChange])
+
+  // Expose actions to parent
+  useEffect(() => {
+    if (actionsRef) {
+      (actionsRef as React.MutableRefObject<SketchfabActions | null>).current = {
+        fixAngle: handleFixAngle,
+        back: handleBack,
+      }
+    }
+  }, [actionsRef, handleFixAngle, handleBack])
+
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Viewer iframe - always rendered when showViewer, hidden behind browse UI otherwise */}
       {showViewer && (
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
-            <iframe
-              ref={iframeRef}
-              title="Sketchfab Viewer"
-              style={{ width: '100%', height: '100%', border: 'none' }}
-              allow="autoplay; fullscreen; xr-spatial-tracking"
-            />
-            {loading && (
-              <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>
-                <Typography>{t('loadingModel')}</Typography>
-              </Box>
-            )}
-          </Box>
-          {/* Buttons below iframe so they're always accessible on iPad */}
-          <Box sx={{ display: 'flex', gap: 1, p: 1, borderTop: '1px solid #ddd', bgcolor: '#fafafa' }}>
-            <Button variant="outlined" size="small" onClick={handleBack}>
-              {t('back')}
-            </Button>
-            {isReady && (
-              <Button variant="contained" color="success" size="small" onClick={handleFixAngle}>
-                {t('fixThisAngle')}
-              </Button>
-            )}
-          </Box>
+        <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+          <iframe
+            ref={iframeRef}
+            title="Sketchfab Viewer"
+            style={{ width: '100%', height: '100%', border: 'none' }}
+            allow="autoplay; fullscreen; xr-spatial-tracking"
+          />
+          {loading && (
+            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>
+              <Typography>{t('loadingModel')}</Typography>
+            </Box>
+          )}
         </Box>
       )}
 
