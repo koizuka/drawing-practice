@@ -7,6 +7,7 @@ export interface ReferenceInfo {
   author: string
   source: 'sketchfab' | 'image'
   fileName?: string
+  sketchfabUid?: string
 }
 
 interface SketchfabViewerProps {
@@ -20,6 +21,7 @@ interface SketchfabViewerProps {
 export interface SketchfabActions {
   fixAngle: () => void
   back: () => void
+  loadModelByUid: (uid: string) => void
 }
 
 // Sketchfab Viewer API type (simplified)
@@ -183,9 +185,10 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
         title: selectedModel?.name ?? '',
         author: selectedModel?.author ?? '',
         source: 'sketchfab',
+        sketchfabUid: modelUid || undefined,
       })
     })
-  }, [onFixAngle, selectedModel])
+  }, [onFixAngle, selectedModel, modelUid])
 
   const handleSearch = useCallback(async (query: string, category?: string) => {
     setError(null)
@@ -248,9 +251,10 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       (actionsRef as React.MutableRefObject<SketchfabActions | null>).current = {
         fixAngle: handleFixAngle,
         back: handleBack,
+        loadModelByUid: loadModel,
       }
     }
-  }, [actionsRef, handleFixAngle, handleBack])
+  }, [actionsRef, handleFixAngle, handleBack, loadModel])
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>

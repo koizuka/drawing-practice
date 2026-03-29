@@ -50,6 +50,7 @@ const messages = {
     'galleryTitle': 'Gallery',
     'loading': 'Loading...',
     'noDrawings': 'No saved drawings yet.',
+    'loadReference': 'Use this reference',
   },
   ja: {
     // DrawingPanel
@@ -102,6 +103,7 @@ const messages = {
     'galleryTitle': 'ギャラリー',
     'loading': '読み込み中...',
     'noDrawings': '保存された絵はまだありません。',
+    'loadReference': 'このお手本で練習',
   },
 } as const
 

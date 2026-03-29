@@ -8,16 +8,18 @@ import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
 import { t } from '../i18n'
+import type { ReferenceInfo } from '../components/SketchfabViewer'
 
 interface DrawingPanelProps {
-  referenceInfo?: string
   referenceSize?: { width: number; height: number } | null
+  referenceInfo?: ReferenceInfo | null
   onStrokeManagerReady?: (sm: StrokeManager) => void
   onStrokesChanged?: () => void
   onOverlayClear?: () => void
+  onLoadReference?: (info: ReferenceInfo) => void
 }
 
-export function DrawingPanel({ referenceInfo = '', referenceSize, onStrokeManagerReady, onStrokesChanged, onOverlayClear }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -95,7 +97,7 @@ export function DrawingPanel({ referenceInfo = '', referenceSize, onStrokeManage
     if (strokes.length === 0) return
     setSaving(true)
     const thumbnail = generateThumbnail(strokes)
-    await saveDrawing(strokes, thumbnail, referenceInfo, timer.elapsedMs)
+    await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs)
     setSaving(false)
   }, [referenceInfo, timer.elapsedMs])
 
@@ -242,7 +244,7 @@ export function DrawingPanel({ referenceInfo = '', referenceSize, onStrokeManage
         />
       </Box>
 
-      {showGallery && <Gallery onClose={() => setShowGallery(false)} />}
+      {showGallery && <Gallery onClose={() => setShowGallery(false)} onLoadReference={onLoadReference} />}
     </Box>
   )
 }
