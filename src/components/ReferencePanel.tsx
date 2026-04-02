@@ -232,6 +232,13 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
           </Tooltip>
         )}
 
+        {/* Sketchfab model viewer: Back to search results */}
+        {isSfBrowse && sfShowViewer && (
+          <Button size="small" variant="outlined" onClick={() => sfActionsRef.current?.back()}>
+            {t('back')}
+          </Button>
+        )}
+
         {/* Sketchfab model viewer: Fix This Angle button */}
         {isSfBrowse && sfShowViewer && sfIsReady && (
           <Button size="small" variant="contained" color="success" onClick={() => sfActionsRef.current?.fixAngle()}>
