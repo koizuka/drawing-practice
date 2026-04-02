@@ -178,18 +178,29 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedGuideId) {
       removeLine(highlightedGuideId)
-      setHighlightedGuideId(null)
+      // 削除後、削除した線の一つ前を自動選択
+      const idx = lines.findIndex(l => l.id === highlightedGuideId)
+      const prevIdx = idx - 1
+      setHighlightedGuideId(prevIdx >= 0 ? lines[prevIdx].id : null)
     }
-  }, [highlightedGuideId, removeLine])
+  }, [highlightedGuideId, removeLine, lines])
 
   const handleCancelHighlight = useCallback(() => {
     setHighlightedGuideId(null)
   }, [])
 
   const toggleGuideMode = useCallback((mode: GuideInteractionMode) => {
-    setGuideMode(prev => prev === mode ? 'none' : mode)
-    setHighlightedGuideId(null)
-  }, [])
+    setGuideMode(prev => {
+      const nextMode = prev === mode ? 'none' : mode
+      // deleteモードに入る時、最新の補助線を自動選択
+      if (nextMode === 'delete' && lines.length > 0) {
+        setHighlightedGuideId(lines[lines.length - 1].id)
+      } else {
+        setHighlightedGuideId(null)
+      }
+      return nextMode
+    })
+  }, [lines])
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl  // 'sketchfab' and 'url' use fixedImageUrl
   const isFixed = referenceMode === 'fixed' && !!displayImageUrl
