@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, TextField, Typography } from '@mui/material'
+import { Box, Button, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
 import { t } from '../i18n'
 
 export interface ReferenceInfo {
@@ -81,7 +81,29 @@ interface ModelResult {
   thumbnails?: { images?: ThumbnailImage[] }
 }
 
-function parseSearchResults(data: { results?: ModelResult[] }): SearchResult[] {
+type TimeFilter = 'all' | 'week' | 'month' | 'year'
+
+const TIME_FILTER_DAYS: Record<TimeFilter, number | null> = {
+  all: null,
+  week: 7,
+  month: 30,
+  year: 365,
+}
+
+function getPublishedSince(filter: TimeFilter): string | null {
+  const days = TIME_FILTER_DAYS[filter]
+  if (days == null) return null
+  const d = new Date()
+  d.setDate(d.getDate() - days)
+  return d.toISOString()
+}
+
+interface SearchResponse {
+  results?: ModelResult[]
+  next?: string | null
+}
+
+function parseSearchResults(data: SearchResponse): SearchResult[] {
   return data.results?.map(m => ({
     uid: m.uid,
     name: m.name,
@@ -102,6 +124,10 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [selectedModel, setSelectedModel] = useState<{ name: string; author: string } | null>(null)
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
+  const [nextPageUrl, setNextPageUrl] = useState<string | null>(null)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const lastSearchRef = useRef<{ type: 'search'; query: string; category?: string } | { type: 'category'; slug: string } | null>(null)
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
 
@@ -191,43 +217,74 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
     })
   }, [onFixAngle, selectedModel, modelUid])
 
-  const handleSearch = useCallback(async (query: string, category?: string) => {
+  const handleSearch = useCallback(async (query: string, category?: string, filter?: TimeFilter) => {
+    lastSearchRef.current = { type: 'search', query, category }
     setError(null)
     try {
+      // /v3/search supports keyword search but ignores published_since
+      // /v3/models supports published_since but has poor keyword search
+      const useSearchEndpoint = !!query
       const params = new URLSearchParams({
-        type: 'models',
-        count: '12',
+        count: '24',
       })
+      if (useSearchEndpoint) params.set('type', 'models')
       if (query) params.set('q', query)
       if (category) params.set('categories', category)
+      if (!useSearchEndpoint) {
+        const publishedSince = getPublishedSince(filter ?? timeFilter)
+        if (publishedSince) params.set('published_since', publishedSince)
+      }
 
-      const res = await fetch(`https://api.sketchfab.com/v3/search?${params}`)
+      const endpoint = useSearchEndpoint
+        ? `https://api.sketchfab.com/v3/search?${params}`
+        : `https://api.sketchfab.com/v3/models?${params}`
+      const res = await fetch(endpoint)
       if (!res.ok) throw new Error('Search failed')
 
-      const data = await res.json()
+      const data: SearchResponse = await res.json()
       setSearchResults(parseSearchResults(data))
+      setNextPageUrl(data.next ?? null)
     } catch {
       setError(t('searchFailed'))
     }
-  }, [])
+  }, [timeFilter])
 
-  const handleRandomFromCategory = useCallback((categorySlug: string) => {
+  const handleRandomFromCategory = useCallback((categorySlug: string, filter?: TimeFilter) => {
+    lastSearchRef.current = { type: 'category', slug: categorySlug }
     const offset = Math.floor(Math.random() * 50)
     const params = new URLSearchParams({
-      type: 'models',
       categories: categorySlug,
-      count: '12',
+      count: '24',
       sort_by: '-likeCount',
       offset: String(offset),
     })
+    const publishedSince = getPublishedSince(filter ?? timeFilter)
+    if (publishedSince) params.set('published_since', publishedSince)
 
-    fetch(`https://api.sketchfab.com/v3/search?${params}`)
+    fetch(`https://api.sketchfab.com/v3/models?${params}`)
       .then(r => r.json())
-      .then(data => {
+      .then((data: SearchResponse) => {
         setSearchResults(parseSearchResults(data))
+        setNextPageUrl(data.next ?? null)
       })
       .catch(() => setError(t('failedFetchModels')))
-  }, [])
+  }, [timeFilter])
+
+  const handleLoadMore = useCallback(async () => {
+    if (!nextPageUrl || isLoadingMore) return
+    setIsLoadingMore(true)
+    try {
+      const res = await fetch(nextPageUrl)
+      if (!res.ok) throw new Error('Load more failed')
+      const data: SearchResponse = await res.json()
+      setSearchResults(prev => [...prev, ...parseSearchResults(data)])
+      setNextPageUrl(data.next ?? null)
+    } catch {
+      setError(t('searchFailed'))
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }, [nextPageUrl, isLoadingMore])
 
   const handleSelectModel = useCallback((model: SearchResult) => {
     setModelUid(model.uid)
@@ -294,10 +351,36 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
             </Button>
           </Box>
 
+          {/* Time filter */}
+          <ToggleButtonGroup
+            value={timeFilter}
+            exclusive
+            onChange={(_e, val) => {
+              if (val === null) return
+              const newFilter = val as TimeFilter
+              setTimeFilter(newFilter)
+              const last = lastSearchRef.current
+              if (last) {
+                if (last.type === 'search') {
+                  handleSearch(last.query, last.category, newFilter)
+                } else {
+                  handleRandomFromCategory(last.slug, newFilter)
+                }
+              }
+            }}
+            size="small"
+            sx={{ mb: 1 }}
+          >
+            <ToggleButton value="all">{t('allTime')}</ToggleButton>
+            <ToggleButton value="week">{t('thisWeek')}</ToggleButton>
+            <ToggleButton value="month">{t('thisMonth')}</ToggleButton>
+            <ToggleButton value="year">{t('thisYear')}</ToggleButton>
+          </ToggleButtonGroup>
+
           {/* Categories */}
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
             {SKETCHFAB_CATEGORIES.map(cat => (
-              <Button key={cat.slug} size="small" variant="outlined" onClick={() => handleRandomFromCategory(cat.slug)}>
+              <Button key={cat.slug} size="small" variant="outlined" onClick={() => { setSearchQuery(''); handleRandomFromCategory(cat.slug) }}>
                 {t(cat.labelKey)}
               </Button>
             ))}
@@ -322,32 +405,46 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
 
           {/* Search results grid */}
           {searchResults.length > 0 && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
-              {searchResults.map(model => (
-                <Box
-                  key={model.uid}
-                  onClick={() => handleSelectModel(model)}
-                  sx={{
-                    cursor: 'pointer',
-                    border: '1px solid #ddd',
-                    borderRadius: 1,
-                    overflow: 'hidden',
-                    '&:hover': { borderColor: 'primary.main' },
-                  }}
-                >
-                  {model.thumbnailUrl && (
-                    <img
-                      src={model.thumbnailUrl}
-                      alt={model.name}
-                      style={{ width: '100%', height: 80, objectFit: 'cover' }}
-                    />
-                  )}
-                  <Typography variant="caption" sx={{ display: 'block', p: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {model.name}
-                  </Typography>
+            <>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
+                {searchResults.map(model => (
+                  <Box
+                    key={model.uid}
+                    onClick={() => handleSelectModel(model)}
+                    sx={{
+                      cursor: 'pointer',
+                      border: '1px solid #ddd',
+                      borderRadius: 1,
+                      overflow: 'hidden',
+                      '&:hover': { borderColor: 'primary.main' },
+                    }}
+                  >
+                    {model.thumbnailUrl && (
+                      <img
+                        src={model.thumbnailUrl}
+                        alt={model.name}
+                        style={{ width: '100%', height: 80, objectFit: 'cover' }}
+                      />
+                    )}
+                    <Typography variant="caption" sx={{ display: 'block', p: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {model.name}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+              {nextPageUrl && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                  <Button
+                    variant="outlined"
+                    onClick={handleLoadMore}
+                    disabled={isLoadingMore}
+                    startIcon={isLoadingMore ? <CircularProgress size={16} /> : undefined}
+                  >
+                    {t('loadMore')}
+                  </Button>
                 </Box>
-              ))}
-            </Box>
+              )}
+            </>
           )}
         </Box>
       )}
