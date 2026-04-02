@@ -178,9 +178,10 @@ export function ReferencePanel({ overlayStrokes, onReferenceImageSize, overlayAc
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedGuideId) {
       removeLine(highlightedGuideId)
-      // 削除後、残りの末尾を自動選択（連続削除を容易にする）
-      const remaining = lines.filter(l => l.id !== highlightedGuideId)
-      setHighlightedGuideId(remaining.length > 0 ? remaining[remaining.length - 1].id : null)
+      // 削除後、削除した線の一つ前を自動選択
+      const idx = lines.findIndex(l => l.id === highlightedGuideId)
+      const prevIdx = idx - 1
+      setHighlightedGuideId(prevIdx >= 0 ? lines[prevIdx].id : null)
     }
   }, [highlightedGuideId, removeLine, lines])
 
