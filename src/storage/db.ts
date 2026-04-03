@@ -1,6 +1,8 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Stroke } from '../drawing/types'
 import type { ReferenceInfo } from '../components/SketchfabViewer'
+import type { GuideLine, GridSettings } from '../guides/types'
+import type { ReferenceSource } from '../types'
 
 export interface DrawingRecord {
   id?: number
@@ -12,8 +14,32 @@ export interface DrawingRecord {
   elapsedMs: number  // drawing time in milliseconds
 }
 
-const db = new Dexie('DrawingPracticeDB') as Dexie & {
+export interface SessionDraft {
+  id: 1  // singleton
+  strokes: Stroke[]
+  redoStack: Stroke[]
+  elapsedMs: number
+  source: ReferenceSource
+  referenceInfo: ReferenceInfo | null
+  referenceImageData: string | null  // base64 data URL for images that don't survive reload
+  guideState: {
+    grid: GridSettings
+    lines: GuideLine[]
+  }
+  updatedAt: Date
+}
+
+// Scope database name by deploy path so PR previews don't share data.
+// Keep the original name for the main deployment to preserve existing data.
+const DB_BASE_NAME = 'DrawingPracticeDB'
+const PR_DB_PREFIX = `${DB_BASE_NAME}_`
+const basePath = import.meta.env.BASE_URL ?? '/'
+const isMainDeployment = basePath === '/' || basePath === '/drawing-practice/'
+const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`
+
+const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>
+  session: EntityTable<SessionDraft, 'id'>
 }
 
 db.version(1).stores({
@@ -24,4 +50,30 @@ db.version(2).stores({
   drawings: '++id, createdAt',
 })
 
+db.version(3).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+})
+
 export { db }
+
+/**
+ * Delete IndexedDB databases left behind by closed PR previews.
+ * Called on main deployment startup only.
+ */
+export async function cleanupStalePrDatabases(): Promise<void> {
+  if (!isMainDeployment) return
+  if (typeof globalThis.indexedDB === 'undefined') return
+  if (typeof indexedDB.databases !== 'function') return
+
+  try {
+    const allDbs = await indexedDB.databases()
+    for (const { name } of allDbs) {
+      if (name && name.startsWith(PR_DB_PREFIX)) {
+        indexedDB.deleteDatabase(name)
+      }
+    }
+  } catch {
+    // indexedDB.databases() may not be available in all browsers
+  }
+}

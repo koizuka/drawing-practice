@@ -67,8 +67,18 @@ export function useTimer() {
     return () => cancelAnimationFrame(rafIdRef.current)
   }, [])
 
-  return { elapsedMs, isRunning, start, pause, reset }
+  const restore = useCallback((ms: number) => {
+    cancelAnimationFrame(rafIdRef.current)
+    startTimeRef.current = null
+    accumulatedRef.current = ms
+    setElapsedMs(ms)
+    setIsRunning(false)
+  }, [])
+
+  return { elapsedMs, isRunning, start, pause, reset, restore }
 }
+
+export type TimerHandle = ReturnType<typeof useTimer>
 
 export function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000)

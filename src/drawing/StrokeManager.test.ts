@@ -154,6 +154,56 @@ describe('StrokeManager', () => {
     })
   })
 
+  describe('loadState', () => {
+    it('restores strokes and redo stack', () => {
+      const strokes = [
+        { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 },
+        { points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 },
+      ]
+      const redoStack = [
+        { points: [{ x: 40, y: 40 }, { x: 50, y: 50 }], timestamp: 3000 },
+      ]
+
+      manager.loadState(strokes, redoStack)
+
+      expect(manager.getStrokes()).toHaveLength(2)
+      expect(manager.getRedoStack()).toHaveLength(1)
+      expect(manager.canUndo()).toBe(true)
+      expect(manager.canRedo()).toBe(true)
+    })
+
+    it('clears current stroke on load', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.loadState([], [])
+
+      expect(manager.getCurrentStroke()).toBeNull()
+      expect(manager.getStrokes()).toHaveLength(0)
+    })
+
+    it('creates independent copies of input arrays', () => {
+      const strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 }]
+      manager.loadState(strokes, [])
+
+      strokes.push({ points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 })
+      expect(manager.getStrokes()).toHaveLength(1)
+    })
+  })
+
+  describe('getRedoStack', () => {
+    it('returns empty redo stack initially', () => {
+      expect(manager.getRedoStack()).toHaveLength(0)
+    })
+
+    it('returns redo stack after undo', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.undo()
+      expect(manager.getRedoStack()).toHaveLength(1)
+    })
+  })
+
   describe('clear', () => {
     it('removes all strokes and resets state', () => {
       manager.startStroke({ x: 0, y: 0 })

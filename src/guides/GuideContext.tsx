@@ -1,6 +1,6 @@
 import { createContext, useRef, useState, useCallback, type ReactNode } from 'react'
 import { GuideManager } from './GuideManager'
-import type { GuideLine, GridSettings } from './types'
+import type { GuideLine, GridSettings, GuideState } from './types'
 import { DEFAULT_GUIDE_STATE } from './types'
 
 interface GuideContextValue {
@@ -13,6 +13,7 @@ interface GuideContextValue {
   addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine
   removeLine: (id: string) => void
   clearLines: () => void
+  restoreGuides: (state: GuideState) => void
 }
 
 const GuideContext = createContext<GuideContextValue | null>(null)
@@ -56,6 +57,11 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     sync()
   }, [sync])
 
+  const restoreGuides = useCallback((state: GuideState) => {
+    guideManagerRef.current.importState(state)
+    sync()
+  }, [sync])
+
   return (
     <GuideContext.Provider value={{
       guideManagerRef,
@@ -67,6 +73,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
       addLine,
       removeLine,
       clearLines,
+      restoreGuides,
     }}>
       {children}
     </GuideContext.Provider>

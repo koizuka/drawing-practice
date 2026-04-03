@@ -88,6 +88,16 @@ export class StrokeManager {
     return bestIndex
   }
 
+  loadState(strokes: Stroke[], redoStack: Stroke[]): void {
+    this.strokes = [...strokes]
+    this.redoStack = [...redoStack]
+    this.currentStroke = null
+  }
+
+  getRedoStack(): readonly Stroke[] {
+    return this.redoStack
+  }
+
   clear(): void {
     this.strokes = []
     this.redoStack = []
