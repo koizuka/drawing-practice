@@ -29,7 +29,15 @@ export interface SessionDraft {
   updatedAt: Date
 }
 
-const db = new Dexie('DrawingPracticeDB') as Dexie & {
+// Scope database name by deploy path so PR previews don't share data.
+// Keep the original name for the main deployment to preserve existing data.
+const DB_BASE_NAME = 'DrawingPracticeDB'
+const PR_DB_PREFIX = `${DB_BASE_NAME}_`
+const basePath = import.meta.env.BASE_URL ?? '/'
+const isMainDeployment = basePath === '/' || basePath === '/drawing-practice/'
+const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`
+
+const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>
   session: EntityTable<SessionDraft, 'id'>
 }
@@ -48,3 +56,24 @@ db.version(3).stores({
 })
 
 export { db }
+
+/**
+ * Delete IndexedDB databases left behind by closed PR previews.
+ * Called on main deployment startup only.
+ */
+export async function cleanupStalePrDatabases(): Promise<void> {
+  if (!isMainDeployment) return
+  if (typeof globalThis.indexedDB === 'undefined') return
+  if (typeof indexedDB.databases !== 'function') return
+
+  try {
+    const allDbs = await indexedDB.databases()
+    for (const { name } of allDbs) {
+      if (name && name.startsWith(PR_DB_PREFIX)) {
+        indexedDB.deleteDatabase(name)
+      }
+    }
+  } catch {
+    // indexedDB.databases() may not be available in all browsers
+  }
+}

@@ -66,6 +66,8 @@ npm run test:watch # Run tests in watch mode
 ### Storage (`src/storage/`)
 
 - **Dexie.js** wrapping IndexedDB for persistent storage (schema v3)
+- Database name is scoped by `BASE_URL` to isolate PR preview deployments. Main deployment uses `DrawingPracticeDB`; PR previews use `DrawingPracticeDB_{basePath}`.
+- On main deployment startup, stale PR preview databases are automatically cleaned up via `indexedDB.databases()`.
 - `drawings` table: each record has strokes, thumbnail PNG, structured `ReferenceInfo` (title, author, source, sketchfabUid), timestamp, elapsed time
 - `session` table: singleton draft record for autosave (strokes, redo stack, reference state, guide state, timer elapsed)
 - **sessionStore** - Draft CRUD: `saveDraft`, `loadDraft`, `clearDraft`

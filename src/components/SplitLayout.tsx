@@ -9,6 +9,7 @@ import { ReferencePanel } from './ReferencePanel'
 import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { loadDraft } from '../storage/sessionStore'
+import { cleanupStalePrDatabases } from '../storage/db'
 import type { Stroke } from '../drawing/types'
 import type { ReferenceInfo } from './SketchfabViewer'
 import type { ReferenceSource, ReferenceMode } from '../types'
@@ -140,8 +141,10 @@ function SplitLayoutInner() {
     }
   }, [guideVersion, incrementChangeVersion])
 
-  // Restore draft on mount
+  // Restore draft on mount and clean up stale PR databases
   useEffect(() => {
+    cleanupStalePrDatabases()
+
     let cancelled = false
     loadDraft().then(draft => {
       if (cancelled || !draft) {
