@@ -61,6 +61,7 @@ const messages = {
     'urlPlaceholder': 'Image URL...',
     'loadUrl': 'Load',
     'urlLoadFailed': 'Failed to load image from URL.',
+    'autosaveDisabled': 'Autosave is disabled because another tab is active. Changes in this tab will not be saved automatically.',
   },
   ja: {
     // DrawingPanel
@@ -124,6 +125,7 @@ const messages = {
     'urlPlaceholder': '画像のURL...',
     'loadUrl': '読込',
     'urlLoadFailed': 'URLからの画像の読み込みに失敗しました。',
+    'autosaveDisabled': '別のタブが開いているため、オートセーブが無効です。このタブの変更は自動保存されません。',
   },
 } as const
 

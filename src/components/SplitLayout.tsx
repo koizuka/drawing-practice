@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from 'react'
-import { Box } from '@mui/material'
+import { Box, Alert } from '@mui/material'
 import { useOrientation } from '../hooks/useOrientation'
 import { useTimer } from '../hooks/useTimer'
 import { useAutosave } from '../hooks/useAutosave'
+import { useSessionLock } from '../hooks/useSessionLock'
 import { GuideProvider } from '../guides/GuideContext'
 import { useGuides } from '../guides/useGuides'
 import { ReferencePanel } from './ReferencePanel'
@@ -10,6 +11,7 @@ import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
+import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
 import type { ReferenceInfo } from './SketchfabViewer'
 import type { ReferenceSource, ReferenceMode } from '../types'
@@ -23,6 +25,7 @@ function useTrackedSetter<T>(
 }
 
 function SplitLayoutInner() {
+  const hasSessionLock = useSessionLock()
   const orientation = useOrientation()
   const isLandscape = orientation === 'landscape'
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null)
@@ -56,8 +59,13 @@ function SplitLayoutInner() {
     setChangeVersion(v => v + 1)
   }, [])
 
-  // Suppress autosave during restore
+  // Suppress autosave during restore or when another tab holds the lock
   const suppressAutosaveRef = useRef(true)
+  useEffect(() => {
+    if (!hasSessionLock) {
+      suppressAutosaveRef.current = true
+    }
+  }, [hasSessionLock])
 
   // Tracked setters: setState + incrementChangeVersion in one call
   const handleSourceChange = useTrackedSetter(setSource, incrementChangeVersion)
@@ -141,9 +149,16 @@ function SplitLayoutInner() {
     }
   }, [guideVersion, incrementChangeVersion])
 
-  // Restore draft on mount and clean up stale PR databases
+  // Clean up stale PR databases on mount
   useEffect(() => {
     cleanupStalePrDatabases()
+  }, [])
+
+  // Restore draft when session lock is acquired
+  const restoredRef = useRef(false)
+  useEffect(() => {
+    if (!hasSessionLock || restoredRef.current) return
+    restoredRef.current = true
 
     let cancelled = false
     loadDraft().then(draft => {
@@ -190,18 +205,24 @@ function SplitLayoutInner() {
 
     return () => { cancelled = true }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [hasSessionLock])
 
   return (
     <Box
       sx={{
         display: 'flex',
-        flexDirection: isLandscape ? 'row' : 'column',
+        flexDirection: 'column',
         width: '100vw',
         height: '100dvh',
         overflow: 'hidden',
       }}
     >
+      {!hasSessionLock && (
+        <Alert severity="warning" sx={{ py: 0, borderRadius: 0, flexShrink: 0 }}>
+          {t('autosaveDisabled')}
+        </Alert>
+      )}
+      <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         <ReferencePanel
           overlayStrokes={overlayStrokes}
@@ -232,6 +253,7 @@ function SplitLayoutInner() {
           timer={timer}
           restoreVersion={restoreVersion}
         />
+      </Box>
       </Box>
     </Box>
   )
