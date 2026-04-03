@@ -1,5 +1,12 @@
 import { render, screen } from '@testing-library/react'
+import { vi } from 'vitest'
 import { SplitLayout } from './SplitLayout'
+
+vi.mock('../storage/sessionStore', () => ({
+  saveDraft: vi.fn().mockResolvedValue(undefined),
+  loadDraft: vi.fn().mockResolvedValue(undefined),
+  clearDraft: vi.fn().mockResolvedValue(undefined),
+}))
 
 describe('SplitLayout', () => {
   it('renders both panels', () => {

@@ -3,7 +3,7 @@ import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { useGuides } from '../guides/useGuides'
-import { useTimer, formatTime } from '../hooks/useTimer'
+import { formatTime, type TimerHandle } from '../hooks/useTimer'
 import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
@@ -17,9 +17,11 @@ interface DrawingPanelProps {
   onStrokesChanged?: () => void
   onOverlayClear?: () => void
   onLoadReference?: (info: ReferenceInfo) => void
+  timer: TimerHandle
+  restoreVersion?: number
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, timer, restoreVersion }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -32,12 +34,21 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [saving, setSaving] = useState(false)
 
   const { grid, lines, version: guideVersion } = useGuides()
-  const timer = useTimer()
 
   // Expose stroke manager to parent
   useEffect(() => {
     onStrokeManagerReady?.(strokeManagerRef.current)
   }, [onStrokeManagerReady])
+
+  // Sync UI state after restore
+  useEffect(() => {
+    if (restoreVersion && restoreVersion > 0) {
+      setCanUndo(strokeManagerRef.current.canUndo())
+      setCanRedo(strokeManagerRef.current.canRedo())
+      setStrokeCount(strokeManagerRef.current.getStrokes().length)
+      setRedrawVersion(v => v + 1)
+    }
+  }, [restoreVersion])
 
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())

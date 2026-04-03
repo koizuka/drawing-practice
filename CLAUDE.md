@@ -29,11 +29,11 @@ npm run test:watch # Run tests in watch mode
 
 ### Key Components
 
-**SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels
+**SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels. Manages lifted reference state (source, mode, image URLs), timer, and autosave/restore flow. Inner component (`SplitLayoutInner`) uses `useAutosave` hook for debounced draft persistence.
 
-**ReferencePanel** - Reference source selection (Sketchfab/Local File/URL), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle
+**ReferencePanel** - Reference source selection (Sketchfab/Local File/URL), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle. Reference state (source, mode, image URLs) is controlled by parent via props.
 
-**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Grid toggle is only on reference panel (synced via context).
+**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Timer and grid toggle are provided by parent (SplitLayout).
 
 **DrawingCanvas** - Main canvas component with:
 - DPR-aware rendering
@@ -65,8 +65,10 @@ npm run test:watch # Run tests in watch mode
 
 ### Storage (`src/storage/`)
 
-- **Dexie.js** wrapping IndexedDB for persistent storage (schema v2)
-- Each drawing record: strokes, thumbnail PNG, structured `ReferenceInfo` (title, author, source, sketchfabUid), timestamp, elapsed time
+- **Dexie.js** wrapping IndexedDB for persistent storage (schema v3)
+- `drawings` table: each record has strokes, thumbnail PNG, structured `ReferenceInfo` (title, author, source, sketchfabUid), timestamp, elapsed time
+- `session` table: singleton draft record for autosave (strokes, redo stack, reference state, guide state, timer elapsed)
+- **sessionStore** - Draft CRUD: `saveDraft`, `loadDraft`, `clearDraft`
 - Gallery shows reference title/author, and "Use this reference" button to reload the same Sketchfab model
 - Designed for 1000+ records
 
@@ -75,6 +77,14 @@ npm run test:watch # Run tests in watch mode
 - Auto-starts on first stroke completion
 - Pauses when app goes to background (visibilitychange API)
 - Resets on clear
+- `restore(ms)` sets elapsed time without starting (used by autosave restore)
+
+### Autosave (`src/hooks/useAutosave.ts`)
+
+- Debounced (2s) persistence of session state to IndexedDB `session` table
+- Tracks changes via a version counter incremented by state setters in SplitLayout
+- Suppressed during draft restore to avoid overwriting with partial state
+- Clears draft when session is empty (no strokes and no reference)
 
 ### Key Patterns
 
@@ -84,6 +94,7 @@ npm run test:watch # Run tests in watch mode
 - **Overlay comparison**: Drawing strokes are passed as data (not screenshot) to the reference panel, rendered in the reference panel's coordinate space so grid positions align.
 - **DPR handling**: All canvas operations multiply by `window.devicePixelRatio`.
 - **Viewport sizing**: Uses `100dvh` instead of `100vh` to handle iPad Safari's dynamic toolbar correctly.
+- **Autosave/Restore**: Session state (strokes, redo stack, reference, guides, timer) is persisted to IndexedDB on change. On reload, state is restored from draft. Local file images are stored as data URLs (via `FileReader.readAsDataURL`) to survive page reload. URL references store only the URL. Sketchfab references store the screenshot as a data URL.
 
 ### File Structure
 
@@ -92,6 +103,7 @@ src/
 ├── main.tsx
 ├── App.tsx
 ├── index.css
+├── types.ts                # Shared types (ReferenceSource, ReferenceMode)
 ├── components/
 │   ├── SplitLayout.tsx
 │   ├── ReferencePanel.tsx
@@ -116,11 +128,13 @@ src/
 ├── storage/
 │   ├── db.ts
 │   ├── drawingStore.ts
+│   ├── sessionStore.ts     # Autosave draft CRUD
 │   ├── generateThumbnail.ts
 │   └── index.ts
 ├── hooks/
 │   ├── useOrientation.ts
 │   ├── useTimer.ts
+│   ├── useAutosave.ts      # Debounced session autosave
 │   └── useFullscreen.ts
 └── test/
     └── setup.ts

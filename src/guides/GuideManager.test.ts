@@ -55,6 +55,49 @@ describe('GuideManager', () => {
     })
   })
 
+  describe('importState', () => {
+    it('restores grid and lines from state', () => {
+      const state = {
+        grid: { enabled: true, spacing: 50 },
+        lines: [
+          { id: 'guide-100', x1: 0, y1: 0, x2: 100, y2: 100 },
+          { id: 'guide-101', x1: 50, y1: 50, x2: 200, y2: 200 },
+        ],
+      }
+
+      manager.importState(state)
+
+      expect(manager.getGrid().enabled).toBe(true)
+      expect(manager.getGrid().spacing).toBe(50)
+      expect(manager.getLines()).toHaveLength(2)
+      expect(manager.getLines()[0].id).toBe('guide-100')
+    })
+
+    it('avoids id collisions after import', () => {
+      manager.importState({
+        grid: { enabled: false, spacing: 100 },
+        lines: [{ id: 'guide-50', x1: 0, y1: 0, x2: 100, y2: 100 }],
+      })
+
+      const newLine = manager.addLine(0, 0, 50, 50)
+      // New line id should be > 50 to avoid collision
+      const idNum = parseInt(newLine.id.replace('guide-', ''), 10)
+      expect(idNum).toBeGreaterThan(50)
+    })
+
+    it('creates independent copy of input state', () => {
+      const state = {
+        grid: { enabled: true, spacing: 50 },
+        lines: [{ id: 'guide-1', x1: 0, y1: 0, x2: 100, y2: 100 }],
+      }
+
+      manager.importState(state)
+      state.lines.push({ id: 'guide-2', x1: 10, y1: 10, x2: 200, y2: 200 })
+
+      expect(manager.getLines()).toHaveLength(1)
+    })
+  })
+
   describe('findNearestLine', () => {
     it('finds nearest line within threshold', () => {
       const line = manager.addLine(0, 0, 100, 0)

@@ -48,6 +48,18 @@ export class GuideManager {
     this.state.lines = []
   }
 
+  importState(state: GuideState): void {
+    this.state = { grid: { ...state.grid }, lines: [...state.lines] }
+    // Update nextId to avoid collisions with imported line ids
+    for (const line of state.lines) {
+      const match = line.id.match(/^guide-(\d+)$/)
+      if (match) {
+        const id = parseInt(match[1], 10)
+        if (id >= nextId) nextId = id + 1
+      }
+    }
+  }
+
   findNearestLine(x: number, y: number, threshold: number): GuideLine | null {
     let best: GuideLine | null = null
     let bestDist = threshold
