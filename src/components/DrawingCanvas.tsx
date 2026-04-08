@@ -24,6 +24,7 @@ interface DrawingCanvasProps {
   guideVersion: number
   /** If provided, initialize view transform to fit this size (match reference panel scale) */
   fitSize?: { width: number; height: number }
+  isFlipped?: boolean
 }
 
 const ERASER_THRESHOLD = 20
@@ -41,6 +42,7 @@ export function DrawingCanvas({
   guideLines,
   guideVersion,
   fitSize,
+  isFlipped,
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -182,10 +184,14 @@ export function DrawingCanvas({
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
-    const screenX = clientX - rect.left
+    let screenX = clientX - rect.left
     const screenY = clientY - rect.top
+    // When CSS scaleX(-1) is applied, mirror the X coordinate
+    if (isFlipped) {
+      screenX = rect.width - screenX
+    }
     return viewTransformRef.current.screenToCanvas(screenX, screenY)
-  }, [])
+  }, [isFlipped])
 
   const requestRedraw = useCallback(() => {
     if (rafIdRef.current) return
@@ -204,16 +210,20 @@ export function DrawingCanvas({
       e.preventDefault()
 
       const rect = canvas.getBoundingClientRect()
-      const focalX = e.clientX - rect.left
+      let focalX = e.clientX - rect.left
       const focalY = e.clientY - rect.top
+      if (isFlipped) {
+        focalX = rect.width - focalX
+      }
 
       if (e.ctrlKey) {
         // Pinch zoom on trackpad (ctrlKey is set by the browser for pinch gestures)
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
         viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0)
       } else {
-        // Pan
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY)
+        // Pan — flip horizontal delta when flipped
+        const deltaX = isFlipped ? e.deltaX : -e.deltaX
+        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY)
       }
 
       requestRedraw()
@@ -221,7 +231,7 @@ export function DrawingCanvas({
 
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [requestRedraw])
+  }, [requestRedraw, isFlipped])
 
   // Touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -296,11 +306,15 @@ export function DrawingCanvas({
 
       const canvas = canvasRef.current!
       const rect = canvas.getBoundingClientRect()
-      const focalX = midX - rect.left
+      let focalX = midX - rect.left
       const focalY = midY - rect.top
+      if (isFlipped) {
+        focalX = rect.width - focalX
+      }
 
       const scaleDelta = dist / pinchRef.current.lastDist
-      const translateX = midX - pinchRef.current.lastMidX
+      const rawTranslateX = midX - pinchRef.current.lastMidX
+      const translateX = isFlipped ? -rawTranslateX : rawTranslateX
       const translateY = midY - pinchRef.current.lastMidY
 
       viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
@@ -321,7 +335,7 @@ export function DrawingCanvas({
     const point = getCanvasPoint(touch.clientX, touch.clientY)
     strokeManagerRef.current.appendStroke(point)
     requestRedraw()
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef])
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault()

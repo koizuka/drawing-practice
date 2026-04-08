@@ -30,6 +30,7 @@ function SplitLayoutInner() {
   const isLandscape = orientation === 'landscape'
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null)
   const [overlayActive, setOverlayActive] = useState(false)
+  const [isFlipped, setIsFlipped] = useState(false)
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null)
   const strokeManagerRef = useRef<StrokeManager | null>(null)
@@ -80,6 +81,10 @@ function SplitLayoutInner() {
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
+  }, [])
+
+  const handleToggleFlip = useCallback(() => {
+    setIsFlipped(prev => !prev)
   }, [])
 
   const handleToggleOverlay = useCallback(() => {
@@ -240,6 +245,8 @@ function SplitLayoutInner() {
           onLocalImageUrlChange={handleLocalImageUrlChange}
           refInfo={referenceInfo}
           onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
+          isFlipped={isFlipped}
+          onToggleFlip={handleToggleFlip}
         />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -252,6 +259,7 @@ function SplitLayoutInner() {
           onLoadReference={handleLoadReference}
           timer={timer}
           restoreVersion={restoreVersion}
+          isFlipped={isFlipped}
         />
       </Box>
       </Box>

@@ -19,9 +19,10 @@ interface DrawingPanelProps {
   onLoadReference?: (info: ReferenceInfo) => void
   timer: TimerHandle
   restoreVersion?: number
+  isFlipped?: boolean
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, timer, restoreVersion }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, timer, restoreVersion, isFlipped }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -239,7 +240,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
       </Box>
 
       {/* Canvas */}
-      <Box sx={{ flex: 1, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minHeight: 0, transform: isFlipped ? 'scaleX(-1)' : undefined }}>
         <DrawingCanvas
           mode={mode}
           highlightedStrokeIndex={highlightedStrokeIndex}
@@ -252,6 +253,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           guideLines={lines}
           guideVersion={guideVersion}
           fitSize={referenceSize ?? undefined}
+          isFlipped={isFlipped}
         />
       </Box>
 
