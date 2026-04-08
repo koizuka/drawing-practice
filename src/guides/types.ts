@@ -41,13 +41,27 @@ export function nextGridMode(current: GridMode): GridMode {
   return GRID_MODE_CYCLE[(idx + 1) % GRID_MODE_CYCLE.length]
 }
 
+/** Legacy grid settings stored before the GridMode migration */
+interface LegacyGridSettings {
+  enabled: boolean
+  spacing: number
+}
+
+function isGridSettings(grid: object): grid is GridSettings {
+  return 'mode' in grid && typeof (grid as GridSettings).mode === 'string'
+}
+
+function isLegacyGridSettings(grid: object): grid is LegacyGridSettings {
+  return 'enabled' in grid && typeof (grid as LegacyGridSettings).enabled === 'boolean'
+}
+
 /** Migrate legacy { enabled, spacing } format to { mode } */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function migrateGridSettings(grid: any): GridSettings {
-  if (grid && typeof grid.mode === 'string') return grid as GridSettings
-  // Legacy format: { enabled: boolean, spacing: number }
-  if (grid && typeof grid.enabled === 'boolean') {
-    return { mode: grid.enabled ? 'normal' : 'none' }
+export function migrateGridSettings(grid: unknown): GridSettings {
+  if (grid && typeof grid === 'object') {
+    if (isGridSettings(grid)) return grid
+    if (isLegacyGridSettings(grid)) {
+      return { mode: grid.enabled ? 'normal' : 'none' }
+    }
   }
   return DEFAULT_GUIDE_STATE.grid
 }
