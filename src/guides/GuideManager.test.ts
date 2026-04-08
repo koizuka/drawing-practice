@@ -1,6 +1,12 @@
 import { GuideManager } from './GuideManager'
 import type { GuideLine, GuideState } from './types'
 
+/** Simulates the legacy persisted format before GridMode migration */
+interface LegacyGuideState {
+  grid: { enabled: boolean; spacing: number }
+  lines: GuideLine[]
+}
+
 describe('GuideManager', () => {
   let manager: GuideManager
 
@@ -76,7 +82,7 @@ describe('GuideManager', () => {
     })
 
     it('migrates legacy enabled/spacing format', () => {
-      const legacyState = {
+      const legacyState: LegacyGuideState = {
         grid: { enabled: true, spacing: 50 },
         lines: [{ id: 'guide-100', x1: 0, y1: 0, x2: 100, y2: 100 }],
       }
@@ -88,9 +94,9 @@ describe('GuideManager', () => {
     })
 
     it('migrates legacy disabled format', () => {
-      const legacyState = {
+      const legacyState: LegacyGuideState = {
         grid: { enabled: false, spacing: 100 },
-        lines: [] as GuideLine[],
+        lines: [],
       }
 
       manager.importState(legacyState as unknown as GuideState)
