@@ -63,13 +63,15 @@ interface ReferencePanelProps {
   onLocalImageUrlChange: (url: string | null) => void
   refInfo: ReferenceInfo | null
   onRegisterLoadSketchfabModel?: (fn: (uid: string) => void) => void
+  isFlipped?: boolean
+  onToggleFlip?: () => void
 }
 
 export function ReferencePanel({
   overlayStrokes, onReferenceImageSize, overlayActive, onToggleOverlay, onReferenceInfoChange,
   source, onSourceChange, referenceMode, onReferenceModeChange,
   fixedImageUrl, onFixedImageUrlChange, localImageUrl, onLocalImageUrlChange, refInfo,
-  onRegisterLoadSketchfabModel,
+  onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
@@ -383,6 +385,20 @@ export function ReferencePanel({
           </IconButton>
         </Tooltip>
 
+        <Tooltip title={t('flipHorizontal')}>
+          <IconButton
+            size="small"
+            onClick={onToggleFlip}
+            sx={{
+              bgcolor: isFlipped ? 'info.main' : 'transparent',
+              color: isFlipped ? 'white' : 'inherit',
+              '&:hover': { bgcolor: isFlipped ? 'info.dark' : 'action.hover' },
+            }}
+          >
+            &#8646;
+          </IconButton>
+        </Tooltip>
+
         {isFixed && (
           <Tooltip title={t('resetZoom')}>
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
@@ -401,7 +417,7 @@ export function ReferencePanel({
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
           <Box sx={{
@@ -518,6 +534,7 @@ export function ReferencePanel({
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
+            isFlipped={isFlipped}
           />
         )}
       </Box>

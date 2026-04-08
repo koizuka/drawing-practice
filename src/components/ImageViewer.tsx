@@ -23,6 +23,7 @@ interface ImageViewerProps {
   /** ID of the guide line currently highlighted for deletion */
   highlightedGuideId?: string | null
   onHighlightGuide?: (id: string | null) => void
+  isFlipped?: boolean
 }
 
 const TRACKPAD_ZOOM_SPEED = 0.01
@@ -34,6 +35,7 @@ export function ImageViewer({
   overlayStrokes, onImageLoaded, onImageError,
   guideMode, onAddGuideLine,
   highlightedGuideId, onHighlightGuide,
+  isFlipped,
 }: ImageViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -48,10 +50,13 @@ export function ImageViewer({
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
-    const screenX = clientX - rect.left
+    let screenX = clientX - rect.left
     const screenY = clientY - rect.top
+    if (isFlipped) {
+      screenX = rect.width - screenX
+    }
     return viewTransformRef.current.screenToCanvas(screenX, screenY)
-  }, [])
+  }, [isFlipped])
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
@@ -210,21 +215,25 @@ export function ImageViewer({
       if (guideMode !== 'none') return
       e.preventDefault()
       const rect = canvas.getBoundingClientRect()
-      const focalX = e.clientX - rect.left
+      let focalX = e.clientX - rect.left
       const focalY = e.clientY - rect.top
+      if (isFlipped) {
+        focalX = rect.width - focalX
+      }
 
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
         viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0)
       } else {
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY)
+        const deltaX = isFlipped ? e.deltaX : -e.deltaX
+        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY)
       }
       requestRedraw()
     }
 
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [requestRedraw, guideMode])
+  }, [requestRedraw, guideMode, isFlipped])
 
   // Mouse handlers for guide line interaction
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
