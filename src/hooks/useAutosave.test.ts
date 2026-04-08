@@ -26,7 +26,7 @@ describe('useAutosave', () => {
     source: 'sketchfab' as const,
     referenceInfo: { title: 'Test', author: 'Author', source: 'sketchfab' as const },
     referenceImageData: 'data:image/png;base64,abc',
-    grid: { enabled: true, spacing: 100 },
+    grid: { mode: 'normal' as const },
     lines: [],
     ...overrides,
   })

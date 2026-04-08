@@ -1,4 +1,5 @@
 import type { GridSettings, GuideLine } from './types'
+import { getGridSpacing } from './types'
 import type { Point } from '../drawing/types'
 
 const GRID_COLOR = 'rgba(0, 150, 255, 0.35)'
@@ -23,26 +24,29 @@ export function drawGrid(
   scale: number,
   center?: Point,
 ): void {
-  if (!grid.enabled || grid.spacing <= 0) return
+  if (grid.mode === 'none') return
+
+  const spacing = getGridSpacing(grid.mode)
+  if (spacing <= 0) return
 
   ctx.save()
-
-  const spacing = grid.spacing
-  const startX = Math.floor(visibleTopLeft.x / spacing) * spacing
-  const endX = visibleBottomRight.x
-  const startY = Math.floor(visibleTopLeft.y / spacing) * spacing
-  const endY = visibleBottomRight.y
 
   const normalWidth = 1 / scale
   const originWidth = 3 / scale
 
-  // Snap center to nearest grid line
-  const centerX = center ? Math.round(center.x / spacing) * spacing : null
-  const centerY = center ? Math.round(center.y / spacing) * spacing : null
+  // Use the exact center as the grid origin so that
+  // a grid line always passes through the center point.
+  const originX = center ? center.x : 0
+  const originY = center ? center.y : 0
+
+  const startX = originX + Math.floor((visibleTopLeft.x - originX) / spacing) * spacing
+  const endX = visibleBottomRight.x
+  const startY = originY + Math.floor((visibleTopLeft.y - originY) / spacing) * spacing
+  const endY = visibleBottomRight.y
 
   // Vertical lines
   for (let x = startX; x <= endX; x += spacing) {
-    const isCenter = centerX !== null && Math.abs(x - centerX) < spacing * 0.01
+    const isCenter = center != null && Math.abs(x - originX) < spacing * 0.01
     ctx.strokeStyle = isCenter ? GRID_ORIGIN_COLOR : GRID_COLOR
     ctx.lineWidth = isCenter ? originWidth : normalWidth
     ctx.beginPath()
@@ -53,7 +57,7 @@ export function drawGrid(
 
   // Horizontal lines
   for (let y = startY; y <= endY; y += spacing) {
-    const isCenter = centerY !== null && Math.abs(y - centerY) < spacing * 0.01
+    const isCenter = center != null && Math.abs(y - originY) < spacing * 0.01
     ctx.strokeStyle = isCenter ? GRID_ORIGIN_COLOR : GRID_COLOR
     ctx.lineWidth = isCenter ? originWidth : normalWidth
     ctx.beginPath()

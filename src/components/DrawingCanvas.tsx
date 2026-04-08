@@ -99,7 +99,9 @@ export function DrawingCanvas({
     const cssHeight = canvas.height / dpr
     const topLeft = viewTransformRef.current.screenToCanvas(0, 0)
     const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
-    const gridCenter = fitSize ? { x: fitSize.width / 2, y: fitSize.height / 2 } : undefined
+    const gridCenter = fitSize
+      ? { x: fitSize.width / 2, y: fitSize.height / 2 }
+      : viewTransformRef.current.screenToCanvas(cssWidth / 2, cssHeight / 2)
     drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, gridCenter)
     drawGuideLines(ctx, guideLines, vt.scale)
 

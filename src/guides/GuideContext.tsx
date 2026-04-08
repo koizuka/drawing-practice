@@ -8,8 +8,7 @@ interface GuideContextValue {
   grid: GridSettings
   lines: readonly GuideLine[]
   version: number
-  toggleGrid: () => void
-  setGridSpacing: (spacing: number) => void
+  cycleGridMode: () => void
   addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine
   removeLine: (id: string) => void
   clearLines: () => void
@@ -30,14 +29,8 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     setLines([...guideManagerRef.current.getLines()])
   }, [])
 
-  const toggleGrid = useCallback(() => {
-    const gm = guideManagerRef.current
-    gm.setGridEnabled(!gm.getGrid().enabled)
-    sync()
-  }, [sync])
-
-  const setGridSpacing = useCallback((spacing: number) => {
-    guideManagerRef.current.setGridSpacing(spacing)
+  const cycleGridMode = useCallback(() => {
+    guideManagerRef.current.cycleGridMode()
     sync()
   }, [sync])
 
@@ -68,8 +61,7 @@ export function GuideProvider({ children }: { children: ReactNode }) {
       grid,
       lines,
       version,
-      toggleGrid,
-      setGridSpacing,
+      cycleGridMode,
       addLine,
       removeLine,
       clearLines,

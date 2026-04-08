@@ -28,7 +28,7 @@ describe('sessionStore', () => {
     referenceInfo: { title: 'Test Model', author: 'Author', source: 'sketchfab', sketchfabUid: 'abc123' },
     referenceImageData: 'data:image/png;base64,abc',
     guideState: {
-      grid: { enabled: true, spacing: 50 },
+      grid: { mode: 'normal' },
       lines: [{ id: 'guide-1', x1: 0, y1: 0, x2: 100, y2: 100 }],
     },
   }

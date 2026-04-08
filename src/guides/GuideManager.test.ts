@@ -8,25 +8,27 @@ describe('GuideManager', () => {
   })
 
   describe('grid', () => {
-    it('starts with grid disabled', () => {
-      expect(manager.getGrid().enabled).toBe(false)
+    it('starts with grid mode none', () => {
+      expect(manager.getGrid().mode).toBe('none')
     })
 
-    it('toggles grid', () => {
-      manager.setGridEnabled(true)
-      expect(manager.getGrid().enabled).toBe(true)
-      manager.setGridEnabled(false)
-      expect(manager.getGrid().enabled).toBe(false)
+    it('sets grid mode', () => {
+      manager.setGridMode('normal')
+      expect(manager.getGrid().mode).toBe('normal')
+      manager.setGridMode('large')
+      expect(manager.getGrid().mode).toBe('large')
+      manager.setGridMode('none')
+      expect(manager.getGrid().mode).toBe('none')
     })
 
-    it('changes grid spacing', () => {
-      manager.setGridSpacing(100)
-      expect(manager.getGrid().spacing).toBe(100)
-    })
-
-    it('rejects spacing below 10', () => {
-      manager.setGridSpacing(5)
-      expect(manager.getGrid().spacing).toBe(100)
+    it('cycles grid mode: none → normal → large → none', () => {
+      expect(manager.getGrid().mode).toBe('none')
+      manager.cycleGridMode()
+      expect(manager.getGrid().mode).toBe('normal')
+      manager.cycleGridMode()
+      expect(manager.getGrid().mode).toBe('large')
+      manager.cycleGridMode()
+      expect(manager.getGrid().mode).toBe('none')
     })
   })
 
@@ -58,7 +60,7 @@ describe('GuideManager', () => {
   describe('importState', () => {
     it('restores grid and lines from state', () => {
       const state = {
-        grid: { enabled: true, spacing: 50 },
+        grid: { mode: 'normal' as const },
         lines: [
           { id: 'guide-100', x1: 0, y1: 0, x2: 100, y2: 100 },
           { id: 'guide-101', x1: 50, y1: 50, x2: 200, y2: 200 },
@@ -67,15 +69,39 @@ describe('GuideManager', () => {
 
       manager.importState(state)
 
-      expect(manager.getGrid().enabled).toBe(true)
-      expect(manager.getGrid().spacing).toBe(50)
+      expect(manager.getGrid().mode).toBe('normal')
       expect(manager.getLines()).toHaveLength(2)
       expect(manager.getLines()[0].id).toBe('guide-100')
     })
 
+    it('migrates legacy enabled/spacing format', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacyState: any = {
+        grid: { enabled: true, spacing: 50 },
+        lines: [{ id: 'guide-100', x1: 0, y1: 0, x2: 100, y2: 100 }],
+      }
+
+      manager.importState(legacyState)
+
+      expect(manager.getGrid().mode).toBe('normal')
+      expect(manager.getLines()).toHaveLength(1)
+    })
+
+    it('migrates legacy disabled format', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const legacyState: any = {
+        grid: { enabled: false, spacing: 100 },
+        lines: [],
+      }
+
+      manager.importState(legacyState)
+
+      expect(manager.getGrid().mode).toBe('none')
+    })
+
     it('avoids id collisions after import', () => {
       manager.importState({
-        grid: { enabled: false, spacing: 100 },
+        grid: { mode: 'none' },
         lines: [{ id: 'guide-50', x1: 0, y1: 0, x2: 100, y2: 100 }],
       })
 
@@ -87,7 +113,7 @@ describe('GuideManager', () => {
 
     it('creates independent copy of input state', () => {
       const state = {
-        grid: { enabled: true, spacing: 50 },
+        grid: { mode: 'normal' as const },
         lines: [{ id: 'guide-1', x1: 0, y1: 0, x2: 100, y2: 100 }],
       }
 
