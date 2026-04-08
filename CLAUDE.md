@@ -61,6 +61,8 @@ npm run test:watch # Run tests in watch mode
 - **GuideManager** - Grid settings and arbitrary guide line management
 - **GuideContext/useGuides** - Shared state between both panels via React context
 - **drawGuides** - Grid and guide line rendering in canvas coordinate space
+- Grid has 3 modes (`GridMode`): `none` (off), `normal` (100px spacing), `large` (200px spacing), cycled by button click
+- Grid lines are anchored to the center point (image center or viewport center) so center lines always align
 - Grid and guide lines are in a shared coordinate system between panels
 
 ### Storage (`src/storage/`)
@@ -92,7 +94,7 @@ npm run test:watch # Run tests in watch mode
 
 - **Canvas coordinate space**: Grid, guide lines, strokes, and overlay all share the same coordinate space. Each panel applies its own ViewTransform independently.
 - **Initial view sync**: When a reference image is loaded, its dimensions are passed to DrawingCanvas via `fitSize` so both panels start with the same scale, ensuring grid alignment.
-- **Grid center line**: The grid line nearest to the image center is drawn thicker as a visual anchor for alignment.
+- **Grid center line**: Grid is anchored to the exact center point (image center or viewport center when no reference is loaded). The center grid line is drawn thicker as a visual anchor for alignment.
 - **Overlay comparison**: Drawing strokes are passed as data (not screenshot) to the reference panel, rendered in the reference panel's coordinate space so grid positions align.
 - **DPR handling**: All canvas operations multiply by `window.devicePixelRatio`.
 - **Viewport sizing**: Uses `100dvh` instead of `100vh` to handle iPad Safari's dynamic toolbar correctly.

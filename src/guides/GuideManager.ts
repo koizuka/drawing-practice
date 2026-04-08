@@ -1,5 +1,5 @@
-import type { GuideLine, GridSettings, GuideState } from './types'
-import { DEFAULT_GUIDE_STATE } from './types'
+import type { GuideLine, GridSettings, GridMode, GuideState } from './types'
+import { DEFAULT_GUIDE_STATE, nextGridMode, migrateGridSettings } from './types'
 
 let nextId = 1
 
@@ -18,13 +18,12 @@ export class GuideManager {
     return this.state.grid
   }
 
-  setGridEnabled(enabled: boolean): void {
-    this.state.grid = { ...this.state.grid, enabled }
+  setGridMode(mode: GridMode): void {
+    this.state.grid = { mode }
   }
 
-  setGridSpacing(spacing: number): void {
-    if (spacing < 10) return
-    this.state.grid = { ...this.state.grid, spacing }
+  cycleGridMode(): void {
+    this.state.grid = { mode: nextGridMode(this.state.grid.mode) }
   }
 
   getLines(): readonly GuideLine[] {
@@ -49,7 +48,7 @@ export class GuideManager {
   }
 
   importState(state: GuideState): void {
-    this.state = { grid: { ...state.grid }, lines: [...state.lines] }
+    this.state = { grid: migrateGridSettings(state.grid), lines: [...state.lines] }
     // Update nextId to avoid collisions with imported line ids
     for (const line of state.lines) {
       const match = line.id.match(/^guide-(\d+)$/)
