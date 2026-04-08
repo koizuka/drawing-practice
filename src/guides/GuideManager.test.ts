@@ -1,4 +1,5 @@
 import { GuideManager } from './GuideManager'
+import type { GuideLine, GuideState } from './types'
 
 describe('GuideManager', () => {
   let manager: GuideManager
@@ -75,26 +76,24 @@ describe('GuideManager', () => {
     })
 
     it('migrates legacy enabled/spacing format', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const legacyState: any = {
+      const legacyState = {
         grid: { enabled: true, spacing: 50 },
         lines: [{ id: 'guide-100', x1: 0, y1: 0, x2: 100, y2: 100 }],
       }
 
-      manager.importState(legacyState)
+      manager.importState(legacyState as unknown as GuideState)
 
       expect(manager.getGrid().mode).toBe('normal')
       expect(manager.getLines()).toHaveLength(1)
     })
 
     it('migrates legacy disabled format', () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const legacyState: any = {
+      const legacyState = {
         grid: { enabled: false, spacing: 100 },
-        lines: [],
+        lines: [] as GuideLine[],
       }
 
-      manager.importState(legacyState)
+      manager.importState(legacyState as unknown as GuideState)
 
       expect(manager.getGrid().mode).toBe('none')
     })
