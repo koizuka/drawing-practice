@@ -33,6 +33,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [viewResetVersion, setViewResetVersion] = useState(0)
   const [showGallery, setShowGallery] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   const { grid, lines, version: guideVersion } = useGuides()
 
@@ -111,6 +112,8 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     const thumbnail = generateThumbnail(strokes)
     await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs)
     setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }, [referenceInfo, timer.elapsedMs])
 
   return (
@@ -211,10 +214,20 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <Tooltip title={t('saveDrawing')}>
+        <Tooltip title={saved ? t('saved') : t('saveDrawing')}>
           <span>
-            <IconButton size="small" onClick={handleSave} disabled={strokeCount === 0 || saving}>
-              &#128190;
+            <IconButton
+              size="small"
+              onClick={handleSave}
+              disabled={strokeCount === 0 || saving}
+              sx={{
+                bgcolor: saved ? 'success.main' : 'transparent',
+                color: saved ? 'white' : 'inherit',
+                '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
+                transition: 'background-color 0.3s, color 0.3s',
+              }}
+            >
+              {saved ? '\u2714' : '\u{1F4BE}'}
             </IconButton>
           </span>
         </Tooltip>
