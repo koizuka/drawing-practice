@@ -141,8 +141,13 @@ export function DrawingCanvas({
     ctx.scale(dpr, dpr)
 
     rendererRef.current = new CanvasRenderer(ctx)
+
+    // Re-fit to reference size on resize (matches ImageViewer behavior)
+    if (fitSize) {
+      fitToSize()
+    }
     redrawAll()
-  }, [redrawAll])
+  }, [redrawAll, fitSize, fitToSize])
 
   // ResizeObserver
   useEffect(() => {
