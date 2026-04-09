@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField } from '@mui/material'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { useGuides } from '../guides/useGuides'
@@ -267,7 +268,7 @@ export function ReferencePanel({
         {!isNone && (
           <Tooltip title={t('cancel')}>
             <IconButton size="small" onClick={handleClose}>
-              &#10005;
+              <X size={20} />
             </IconButton>
           </Tooltip>
         )}
@@ -308,7 +309,7 @@ export function ReferencePanel({
                   '&:hover': { bgcolor: guideMode === 'add' ? 'error.dark' : 'action.hover' },
                 }}
               >
-                &#9999;
+                <PenLine size={20} />
               </IconButton>
             </Tooltip>
 
@@ -324,7 +325,7 @@ export function ReferencePanel({
                     '&:hover': { bgcolor: guideMode === 'delete' ? 'error.dark' : 'action.hover' },
                   }}
                 >
-                  &#10060;
+                  <CircleX size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -332,7 +333,7 @@ export function ReferencePanel({
             <Tooltip title={t('clearGuideLines')}>
               <span>
                 <IconButton size="small" onClick={clearLines} disabled={lines.length === 0}>
-                  &#128465;
+                  <Trash2 size={20} />
                 </IconButton>
               </span>
             </Tooltip>
@@ -366,7 +367,7 @@ export function ReferencePanel({
                 '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
               }}
             >
-              &#9881;
+              <Layers size={20} />
             </IconButton>
           </Tooltip>
         )}
@@ -395,14 +396,14 @@ export function ReferencePanel({
               '&:hover': { bgcolor: isFlipped ? 'info.dark' : 'action.hover' },
             }}
           >
-            &#8646;
+            <FlipHorizontal2 size={20} />
           </IconButton>
         </Tooltip>
 
         {isFixed && (
           <Tooltip title={t('resetZoom')}>
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
-              &#8858;
+              <LocateFixed size={20} />
             </IconButton>
           </Tooltip>
         )}
@@ -410,7 +411,7 @@ export function ReferencePanel({
         {fullscreenSupported && (
           <Tooltip title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}>
             <IconButton size="small" onClick={toggleFullscreen}>
-              {isFullscreen ? '\u2716' : '\u26F6'}
+              {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
             </IconButton>
           </Tooltip>
         )}

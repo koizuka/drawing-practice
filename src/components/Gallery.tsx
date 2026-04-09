@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Box, Typography, IconButton, Tooltip, Button } from '@mui/material'
+import { X, Trash2 } from 'lucide-react'
 import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
@@ -95,7 +96,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
             {t('galleryTitle')} ({drawings.length})
           </Typography>
           <IconButton onClick={onClose} size="small">
-            &#10005;
+            <X size={20} />
           </IconButton>
         </Box>
 
@@ -160,7 +161,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
                             size="small"
                             onClick={() => drawing.id != null && handleDelete(drawing.id)}
                           >
-                            &#128465;
+                            <Trash2 size={20} />
                           </IconButton>
                         </Tooltip>
                       </Box>

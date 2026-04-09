@@ -32,7 +32,7 @@ npm run lint       # Lint
 ## Tech Stack
 
 - React + TypeScript + Vite
-- Material-UI
+- Material-UI + Lucide Icons
 - Vitest + React Testing Library
 - Dexie.js (IndexedDB)
 - Sketchfab Viewer API / Data API
