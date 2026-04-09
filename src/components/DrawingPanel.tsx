@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
+import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { useGuides } from '../guides/useGuides'
@@ -140,10 +141,9 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
               bgcolor: mode === 'pen' ? 'primary.main' : 'transparent',
               color: mode === 'pen' ? 'white' : 'inherit',
               '&:hover': { bgcolor: mode === 'pen' ? 'primary.dark' : 'action.hover' },
-              fontSize: '1.2rem',
             }}
           >
-            &#9998;
+            <Pen size={20} />
           </IconButton>
         </Tooltip>
 
@@ -155,10 +155,9 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
               bgcolor: mode === 'eraser' ? 'error.main' : 'transparent',
               color: mode === 'eraser' ? 'white' : 'inherit',
               '&:hover': { bgcolor: mode === 'eraser' ? 'error.dark' : 'action.hover' },
-              fontSize: '1.2rem',
             }}
           >
-            &#9003;
+            <Eraser size={20} />
           </IconButton>
         </Tooltip>
 
@@ -168,7 +167,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Tooltip title={t('undo')}>
           <span>
             <IconButton size="small" onClick={handleUndo} disabled={!canUndo}>
-              &#8630;
+              <Undo2 size={20} />
             </IconButton>
           </span>
         </Tooltip>
@@ -176,7 +175,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Tooltip title={t('redo')}>
           <span>
             <IconButton size="small" onClick={handleRedo} disabled={!canRedo}>
-              &#8631;
+              <Redo2 size={20} />
             </IconButton>
           </span>
         </Tooltip>
@@ -184,7 +183,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Tooltip title={t('clearAll')}>
           <span>
             <IconButton size="small" onClick={handleClear} disabled={strokeCount === 0}>
-              &#128465;
+              <Trash2 size={20} />
             </IconButton>
           </span>
         </Tooltip>
@@ -194,7 +193,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         {/* View */}
         <Tooltip title={t('resetZoom')}>
           <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
-            &#8858;
+            <LocateFixed size={20} />
           </IconButton>
         </Tooltip>
 
@@ -227,14 +226,14 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
                 transition: 'background-color 0.3s, color 0.3s',
               }}
             >
-              {saved ? '\u2714' : '\u{1F4BE}'}
+              {saved ? <Check size={20} /> : <Save size={20} />}
             </IconButton>
           </span>
         </Tooltip>
 
         <Tooltip title={t('gallery')}>
           <IconButton size="small" onClick={() => setShowGallery(true)}>
-            &#128444;
+            <Images size={20} />
           </IconButton>
         </Tooltip>
 
