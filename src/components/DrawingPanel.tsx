@@ -112,10 +112,11 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     setSaving(true)
     const thumbnail = generateThumbnail(strokes)
     await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs)
+    timer.pause()
     setSaving(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [referenceInfo, timer.elapsedMs])
+  }, [referenceInfo, timer])
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
