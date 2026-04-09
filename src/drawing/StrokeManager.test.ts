@@ -128,6 +128,152 @@ describe('StrokeManager', () => {
       manager.deleteStroke(0)
       expect(manager.canRedo()).toBe(false)
     })
+
+    it('can undo a delete operation', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 20, y: 20 })
+      manager.appendStroke({ x: 30, y: 30 })
+      manager.endStroke()
+
+      manager.deleteStroke(0)
+      expect(manager.getStrokes()).toHaveLength(1)
+      expect(manager.canUndo()).toBe(true)
+
+      manager.undo()
+      expect(manager.getStrokes()).toHaveLength(2)
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 0, y: 0 })
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 20, y: 20 })
+    })
+
+    it('undo after delete restores stroke at original index', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 20, y: 20 })
+      manager.appendStroke({ x: 30, y: 30 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 40, y: 40 })
+      manager.appendStroke({ x: 50, y: 50 })
+      manager.endStroke()
+
+      // Delete middle stroke
+      manager.deleteStroke(1)
+      expect(manager.getStrokes()).toHaveLength(2)
+
+      manager.undo()
+      expect(manager.getStrokes()).toHaveLength(3)
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 20, y: 20 })
+    })
+
+    it('can undo multiple consecutive deletes', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 20, y: 20 })
+      manager.appendStroke({ x: 30, y: 30 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 40, y: 40 })
+      manager.appendStroke({ x: 50, y: 50 })
+      manager.endStroke()
+
+      // Delete first, then second (now at index 0)
+      manager.deleteStroke(0)
+      manager.deleteStroke(0)
+      expect(manager.getStrokes()).toHaveLength(1)
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 40, y: 40 })
+
+      // Undo both deletes
+      manager.undo()
+      expect(manager.getStrokes()).toHaveLength(2)
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 20, y: 20 })
+
+      manager.undo()
+      expect(manager.getStrokes()).toHaveLength(3)
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 0, y: 0 })
+    })
+
+    it('undo interleaves add and delete in chronological order', () => {
+      // Draw 3 strokes
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 20, y: 20 })
+      manager.appendStroke({ x: 30, y: 30 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 40, y: 40 })
+      manager.appendStroke({ x: 50, y: 50 })
+      manager.endStroke()
+
+      // Delete middle stroke, then draw another
+      manager.deleteStroke(1)
+      expect(manager.getStrokes()).toHaveLength(2)
+
+      manager.startStroke({ x: 60, y: 60 })
+      manager.appendStroke({ x: 70, y: 70 })
+      manager.endStroke()
+      expect(manager.getStrokes()).toHaveLength(3)
+
+      // Undo should reverse: remove last added, then restore deleted
+      manager.undo() // undo add of (60,60)
+      expect(manager.getStrokes()).toHaveLength(2)
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 40, y: 40 })
+
+      manager.undo() // undo delete of (20,20)
+      expect(manager.getStrokes()).toHaveLength(3)
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 20, y: 20 })
+
+      manager.undo() // undo add of (40,40)
+      expect(manager.getStrokes()).toHaveLength(2)
+    })
+
+    it('redo replays delete after undo', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.startStroke({ x: 20, y: 20 })
+      manager.appendStroke({ x: 30, y: 30 })
+      manager.endStroke()
+
+      manager.deleteStroke(0)
+      expect(manager.getStrokes()).toHaveLength(1)
+
+      manager.undo() // restore deleted stroke
+      expect(manager.getStrokes()).toHaveLength(2)
+
+      manager.redo() // re-delete
+      expect(manager.getStrokes()).toHaveLength(1)
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 20, y: 20 })
+    })
+
+    it('new stroke clears delete undo', () => {
+      manager.startStroke({ x: 0, y: 0 })
+      manager.appendStroke({ x: 10, y: 10 })
+      manager.endStroke()
+
+      manager.deleteStroke(0)
+      expect(manager.getStrokes()).toHaveLength(0)
+      expect(manager.canUndo()).toBe(true)
+
+      // Draw a new stroke — delete undo is lost
+      manager.startStroke({ x: 50, y: 50 })
+      manager.appendStroke({ x: 60, y: 60 })
+      manager.endStroke()
+
+      expect(manager.getStrokes()).toHaveLength(1)
+      // Undo now undoes the new stroke, not the delete
+      manager.undo()
+      expect(manager.getStrokes()).toHaveLength(0)
+    })
   })
 
   describe('findNearestStroke', () => {

@@ -13,6 +13,7 @@ interface DrawingCanvasProps {
   mode: DrawingMode
   highlightedStrokeIndex: number | null
   onHighlightStroke: (index: number | null) => void
+  onDeleteHighlightedStroke?: () => void
   onStrokeCountChange: () => void
   strokeManagerRef: React.RefObject<StrokeManager>
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
@@ -34,6 +35,7 @@ export function DrawingCanvas({
   mode,
   highlightedStrokeIndex,
   onHighlightStroke,
+  onDeleteHighlightedStroke,
   onStrokeCountChange,
   strokeManagerRef,
   redrawVersion,
@@ -281,12 +283,16 @@ export function DrawingCanvas({
 
     if (mode === 'eraser') {
       const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / viewTransformRef.current.get().scale)
-      onHighlightStroke(index)
+      if (index !== null && index === highlightedStrokeIndex) {
+        onDeleteHighlightedStroke?.()
+      } else {
+        onHighlightStroke(index)
+      }
     } else {
       strokeManagerRef.current.startStroke(point)
       drawingPointCountRef.current = 1
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, strokeManagerRef])
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     e.preventDefault()
@@ -378,12 +384,16 @@ export function DrawingCanvas({
 
     if (mode === 'eraser') {
       const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / viewTransformRef.current.get().scale)
-      onHighlightStroke(index)
+      if (index !== null && index === highlightedStrokeIndex) {
+        onDeleteHighlightedStroke?.()
+      } else {
+        onHighlightStroke(index)
+      }
     } else {
       strokeManagerRef.current.startStroke(point)
       drawingPointCountRef.current = 1
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, strokeManagerRef])
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current || mode !== 'pen') return

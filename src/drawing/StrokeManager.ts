@@ -1,8 +1,19 @@
 import type { Point, Stroke } from './types'
 
+/** An entry on the undo stack records one reversible action. */
+type UndoEntry =
+  | { type: 'add' }
+  | { type: 'delete'; stroke: Stroke; index: number }
+
+/** An entry on the redo stack stores enough data to replay the action. */
+type RedoEntry =
+  | { type: 'add'; stroke: Stroke }
+  | { type: 'delete'; stroke: Stroke; index: number }
+
 export class StrokeManager {
   private strokes: Stroke[] = []
-  private redoStack: Stroke[] = []
+  private undoStack: UndoEntry[] = []
+  private redoStack: RedoEntry[] = []
   private currentStroke: Stroke | null = null
 
   startStroke(point: Point): void {
@@ -25,6 +36,7 @@ export class StrokeManager {
     }
     const stroke = this.currentStroke
     this.strokes.push(stroke)
+    this.undoStack.push({ type: 'add' })
     this.redoStack = []
     this.currentStroke = null
     return stroke
@@ -39,21 +51,37 @@ export class StrokeManager {
   }
 
   undo(): Stroke | null {
-    const stroke = this.strokes.pop()
-    if (!stroke) return null
-    this.redoStack.push(stroke)
-    return stroke
+    const entry = this.undoStack.pop()
+    if (!entry) return null
+
+    if (entry.type === 'add') {
+      const stroke = this.strokes.pop()!
+      this.redoStack.push({ type: 'add', stroke })
+      return stroke
+    } else {
+      this.strokes.splice(entry.index, 0, entry.stroke)
+      this.redoStack.push({ type: 'delete', stroke: entry.stroke, index: entry.index })
+      return entry.stroke
+    }
   }
 
   redo(): Stroke | null {
-    const stroke = this.redoStack.pop()
-    if (!stroke) return null
-    this.strokes.push(stroke)
-    return stroke
+    const entry = this.redoStack.pop()
+    if (!entry) return null
+
+    if (entry.type === 'add') {
+      this.strokes.push(entry.stroke)
+      this.undoStack.push({ type: 'add' })
+      return entry.stroke
+    } else {
+      const [removed] = this.strokes.splice(entry.index, 1)
+      this.undoStack.push({ type: 'delete', stroke: removed, index: entry.index })
+      return removed
+    }
   }
 
   canUndo(): boolean {
-    return this.strokes.length > 0
+    return this.undoStack.length > 0
   }
 
   canRedo(): boolean {
@@ -63,6 +91,7 @@ export class StrokeManager {
   deleteStroke(index: number): Stroke | null {
     if (index < 0 || index >= this.strokes.length) return null
     const [removed] = this.strokes.splice(index, 1)
+    this.undoStack.push({ type: 'delete', stroke: removed, index })
     this.redoStack = []
     return removed
   }
@@ -90,16 +119,20 @@ export class StrokeManager {
 
   loadState(strokes: Stroke[], redoStack: Stroke[]): void {
     this.strokes = [...strokes]
-    this.redoStack = [...redoStack]
+    this.undoStack = strokes.map(() => ({ type: 'add' as const }))
+    this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke }))
     this.currentStroke = null
   }
 
   getRedoStack(): readonly Stroke[] {
     return this.redoStack
+      .filter((e): e is RedoEntry & { type: 'add' } => e.type === 'add')
+      .map(e => e.stroke)
   }
 
   clear(): void {
     this.strokes = []
+    this.undoStack = []
     this.redoStack = []
     this.currentStroke = null
   }
