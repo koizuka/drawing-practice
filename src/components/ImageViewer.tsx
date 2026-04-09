@@ -14,6 +14,8 @@ interface ImageViewerProps {
   guideLines: readonly GuideLine[]
   guideVersion: number
   overlayStrokes?: readonly Stroke[]
+  overlayCurrentStrokeRef?: React.RefObject<Stroke | null>
+  onRegisterOverlayRedraw?: (redraw: () => void) => void
   onImageLoaded?: (width: number, height: number) => void
   onImageError?: () => void
   /** Guide line interaction mode */
@@ -27,12 +29,27 @@ interface ImageViewerProps {
 }
 
 const TRACKPAD_ZOOM_SPEED = 0.01
-const OVERLAY_COLOR = 'rgba(0, 0, 255, 0.4)'
+const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)'
+const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)'
 const GUIDE_HIT_THRESHOLD = 15
+
+function drawOverlayStrokePath(
+  ctx: CanvasRenderingContext2D,
+  points: readonly Point[],
+): void {
+  if (points.length < 2) return
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y)
+  }
+  ctx.stroke()
+}
 
 export function ImageViewer({
   imageUrl, viewResetVersion, grid, guideLines, guideVersion,
-  overlayStrokes, onImageLoaded, onImageError,
+  overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
+  onImageLoaded, onImageError,
   guideMode, onAddGuideLine,
   highlightedGuideId, onHighlightGuide,
   isFlipped,
@@ -101,25 +118,32 @@ export function ImageViewer({
       ctx.setLineDash([])
     }
 
-    // Draw overlay strokes
-    if (overlayStrokes && overlayStrokes.length > 0) {
-      ctx.strokeStyle = OVERLAY_COLOR
-      ctx.lineWidth = 2 / vt.scale
+    // Draw overlay strokes (completed + in-progress) with glow effect
+    const currentStroke = overlayCurrentStrokeRef?.current
+    const allOverlayPoints: (readonly Point[])[] = []
+    if (overlayStrokes) {
+      for (const stroke of overlayStrokes) allOverlayPoints.push(stroke.points)
+    }
+    if (currentStroke) allOverlayPoints.push(currentStroke.points)
+
+    if (allOverlayPoints.length > 0) {
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
-      for (const stroke of overlayStrokes) {
-        if (stroke.points.length < 2) continue
-        ctx.beginPath()
-        ctx.moveTo(stroke.points[0].x, stroke.points[0].y)
-        for (let i = 1; i < stroke.points.length; i++) {
-          ctx.lineTo(stroke.points[i].x, stroke.points[i].y)
+      const passes = [
+        { color: OVERLAY_HALO_COLOR, width: 5 / vt.scale },
+        { color: OVERLAY_COLOR, width: 2 / vt.scale },
+      ]
+      for (const pass of passes) {
+        ctx.strokeStyle = pass.color
+        ctx.lineWidth = pass.width
+        for (const points of allOverlayPoints) {
+          drawOverlayStrokePath(ctx, points)
         }
-        ctx.stroke()
       }
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [grid, guideLines, overlayStrokes, highlightedGuideId, dragStart, dragEnd])
+  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd])
 
   const requestRedraw = useCallback(() => {
     if (rafIdRef.current) return
@@ -205,6 +229,11 @@ export function ImageViewer({
   useEffect(() => {
     redraw()
   }, [guideVersion, overlayStrokes, redraw])
+
+  // Register overlay redraw callback for direct invocation (avoids re-render cascade)
+  useEffect(() => {
+    onRegisterOverlayRedraw?.(requestRedraw)
+  }, [onRegisterOverlayRedraw, requestRedraw])
 
   // Wheel zoom/pan (only when not in guide mode)
   useEffect(() => {

@@ -30,6 +30,8 @@ function SplitLayoutInner() {
   const isLandscape = orientation === 'landscape'
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null)
   const [overlayActive, setOverlayActive] = useState(false)
+  const currentStrokeRef = useRef<Stroke | null>(null)
+  const overlayRedrawFnRef = useRef<(() => void) | null>(null)
   const [isFlipped, setIsFlipped] = useState(false)
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null)
@@ -109,6 +111,17 @@ function SplitLayoutInner() {
     }
     incrementChangeVersion()
   }, [overlayActive, incrementChangeVersion])
+
+  const handleCurrentStrokeChange = useCallback((stroke: Stroke | null) => {
+    currentStrokeRef.current = stroke
+    if (overlayActive) {
+      overlayRedrawFnRef.current?.()
+    }
+  }, [overlayActive])
+
+  const handleRegisterOverlayRedraw = useCallback((fn: () => void) => {
+    overlayRedrawFnRef.current = fn
+  }, [])
 
   const handleRegisterLoadSketchfabModel = useCallback((fn: (uid: string) => void) => {
     loadSketchfabModelFnRef.current = fn
@@ -231,6 +244,8 @@ function SplitLayoutInner() {
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
         <ReferencePanel
           overlayStrokes={overlayStrokes}
+          overlayCurrentStrokeRef={currentStrokeRef}
+          onRegisterOverlayRedraw={handleRegisterOverlayRedraw}
           onReferenceImageSize={handleReferenceImageSize}
           overlayActive={overlayActive}
           onToggleOverlay={handleToggleOverlay}
@@ -255,6 +270,7 @@ function SplitLayoutInner() {
           referenceInfo={referenceInfo}
           onStrokeManagerReady={handleStrokeManagerReady}
           onStrokesChanged={handleStrokesChanged}
+          onCurrentStrokeChange={handleCurrentStrokeChange}
           onOverlayClear={() => { setOverlayActive(false); setOverlayStrokes(null) }}
           onLoadReference={handleLoadReference}
           timer={timer}

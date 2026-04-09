@@ -49,6 +49,8 @@ function GridIcon({ mode }: { mode: GridMode }) {
 
 interface ReferencePanelProps {
   overlayStrokes?: readonly Stroke[] | null
+  overlayCurrentStrokeRef?: React.RefObject<Stroke | null>
+  onRegisterOverlayRedraw?: (redraw: () => void) => void
   onReferenceImageSize?: (width: number, height: number) => void
   overlayActive?: boolean
   onToggleOverlay?: () => void
@@ -69,7 +71,8 @@ interface ReferencePanelProps {
 }
 
 export function ReferencePanel({
-  overlayStrokes, onReferenceImageSize, overlayActive, onToggleOverlay, onReferenceInfoChange,
+  overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
+  onReferenceImageSize, overlayActive, onToggleOverlay, onReferenceInfoChange,
   source, onSourceChange, referenceMode, onReferenceModeChange,
   fixedImageUrl, onFixedImageUrlChange, localImageUrl, onLocalImageUrlChange, refInfo,
   onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
@@ -528,6 +531,8 @@ export function ReferencePanel({
             guideLines={lines}
             guideVersion={guideVersion}
             overlayStrokes={overlayStrokes ?? undefined}
+            overlayCurrentStrokeRef={overlayCurrentStrokeRef}
+            onRegisterOverlayRedraw={onRegisterOverlayRedraw}
             onImageLoaded={onReferenceImageSize}
             onImageError={handleImageError}
             guideMode={guideMode}

@@ -10,6 +10,7 @@ import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../components/SketchfabViewer'
+import type { Stroke } from '../drawing/types'
 
 interface DrawingPanelProps {
   referenceSize?: { width: number; height: number } | null
@@ -18,12 +19,13 @@ interface DrawingPanelProps {
   onStrokesChanged?: () => void
   onOverlayClear?: () => void
   onLoadReference?: (info: ReferenceInfo) => void
+  onCurrentStrokeChange?: (stroke: Stroke | null) => void
   timer: TimerHandle
   restoreVersion?: number
   isFlipped?: boolean
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, timer, restoreVersion, isFlipped }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, timer, restoreVersion, isFlipped }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -268,6 +270,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           guideVersion={guideVersion}
           fitSize={referenceSize ?? undefined}
           isFlipped={isFlipped}
+          onCurrentStrokeChange={onCurrentStrokeChange}
         />
       </Box>
 

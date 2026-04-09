@@ -4,7 +4,7 @@ import { StrokeManager } from '../drawing/StrokeManager'
 import { CanvasRenderer } from '../drawing/CanvasRenderer'
 import { ViewTransform } from '../drawing/ViewTransform'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
-import type { Point } from '../drawing/types'
+import type { Point, Stroke } from '../drawing/types'
 import type { GridSettings, GuideLine } from '../guides/types'
 
 export type DrawingMode = 'pen' | 'eraser'
@@ -26,6 +26,8 @@ interface DrawingCanvasProps {
   /** If provided, initialize view transform to fit this size (match reference panel scale) */
   fitSize?: { width: number; height: number }
   isFlipped?: boolean
+  /** Called with the in-progress stroke during drawing, or null when stroke ends */
+  onCurrentStrokeChange?: (stroke: Stroke | null) => void
 }
 
 const ERASER_THRESHOLD = 20
@@ -45,6 +47,7 @@ export function DrawingCanvas({
   guideVersion,
   fitSize,
   isFlipped,
+  onCurrentStrokeChange,
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -345,8 +348,9 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(touch.clientX, touch.clientY)
     strokeManagerRef.current.appendStroke(point)
+    onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke())
     requestRedraw()
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped])
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault()
@@ -367,11 +371,12 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManagerRef.current.endStroke()
       if (stroke) {
+        onCurrentStrokeChange?.(null)
         notifyStrokeCount()
         redrawAll()
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef])
+  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange])
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false)
@@ -400,8 +405,9 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(e.clientX, e.clientY)
     strokeManagerRef.current.appendStroke(point)
+    onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke())
     requestRedraw()
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef])
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, onCurrentStrokeChange])
 
   const handleMouseUp = useCallback(() => {
     if (!isMouseDownRef.current) return
@@ -410,11 +416,12 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManagerRef.current.endStroke()
       if (stroke) {
+        onCurrentStrokeChange?.(null)
         notifyStrokeCount()
         redrawAll()
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef])
+  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange])
 
   return (
     <Box
