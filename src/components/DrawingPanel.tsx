@@ -258,6 +258,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           mode={mode}
           highlightedStrokeIndex={highlightedStrokeIndex}
           onHighlightStroke={setHighlightedStrokeIndex}
+          onDeleteHighlightedStroke={handleDeleteHighlighted}
           onStrokeCountChange={handleStrokeCountChange}
           strokeManagerRef={strokeManagerRef}
           redrawVersion={redrawVersion}
