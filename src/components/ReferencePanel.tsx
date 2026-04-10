@@ -10,6 +10,19 @@ import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
 import type { ReferenceSource, ReferenceMode } from '../types'
 
+/**
+ * Raw setters for the reference-related state living in SplitLayout. Exposed
+ * through `onReferenceChange(setters => ...)` so that every user-initiated
+ * mutation is routed through the undo history recording path.
+ */
+export interface ReferenceSetters {
+  setSource: (source: ReferenceSource) => void
+  setReferenceMode: (mode: ReferenceMode) => void
+  setFixedImageUrl: (url: string | null) => void
+  setLocalImageUrl: (url: string | null) => void
+  setReferenceInfo: (info: ReferenceInfo | null) => void
+}
+
 function GridIcon({ mode }: { mode: GridMode }) {
   const size = 20
   const color = 'currentColor'
@@ -54,17 +67,16 @@ interface ReferencePanelProps {
   onReferenceImageSize?: (width: number, height: number) => void
   overlayActive?: boolean
   onToggleOverlay?: () => void
-  onReferenceInfoChange?: (info: ReferenceInfo | null) => void
-  // Lifted state
+  // Read-only reference state (source of truth is SplitLayout)
   source: ReferenceSource
-  onSourceChange: (source: ReferenceSource) => void
   referenceMode: ReferenceMode
-  onReferenceModeChange: (mode: ReferenceMode) => void
   fixedImageUrl: string | null
-  onFixedImageUrlChange: (url: string | null) => void
   localImageUrl: string | null
-  onLocalImageUrlChange: (url: string | null) => void
   refInfo: ReferenceInfo | null
+  /** Apply a reference-state mutation with undo history recording. */
+  onReferenceChange: (mutate: (setters: ReferenceSetters) => void) => void
+  /** Non-undoable reset used when an image fails to load. */
+  onReferenceResetOnError: () => void
   onRegisterLoadSketchfabModel?: (fn: (uid: string) => void) => void
   isFlipped?: boolean
   onToggleFlip?: () => void
@@ -72,9 +84,9 @@ interface ReferencePanelProps {
 
 export function ReferencePanel({
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
-  onReferenceImageSize, overlayActive, onToggleOverlay, onReferenceInfoChange,
-  source, onSourceChange, referenceMode, onReferenceModeChange,
-  fixedImageUrl, onFixedImageUrlChange, localImageUrl, onLocalImageUrlChange, refInfo,
+  onReferenceImageSize, overlayActive, onToggleOverlay,
+  source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
+  onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
@@ -101,16 +113,19 @@ export function ReferencePanel({
       const reader = new FileReader()
       reader.onload = () => {
         const dataUrl = reader.result as string
-        onLocalImageUrlChange(dataUrl)
         const info: ReferenceInfo = { title: file.name, author: '', source: 'image', fileName: file.name }
-        onReferenceInfoChange?.(info)
-        onSourceChange('image')
-        onReferenceModeChange('fixed')
+        onReferenceChange(s => {
+          s.setLocalImageUrl(dataUrl)
+          s.setFixedImageUrl(null)
+          s.setReferenceInfo(info)
+          s.setSource('image')
+          s.setReferenceMode('fixed')
+        })
       }
       reader.readAsDataURL(file)
     }
     input.click()
-  }, [onReferenceInfoChange, onSourceChange, onReferenceModeChange, onLocalImageUrlChange])
+  }, [onReferenceChange])
 
   const [urlLoading, setUrlLoading] = useState(false)
 
@@ -137,10 +152,13 @@ export function ReferencePanel({
       setUrlLoading(false)
       const title = url.split('/').pop()?.split('?')[0] ?? url
       const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url }
-      onFixedImageUrlChange(url)
-      onReferenceInfoChange?.(info)
-      onSourceChange('url')
-      onReferenceModeChange('fixed')
+      onReferenceChange(s => {
+        s.setFixedImageUrl(url)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(info)
+        s.setSource('url')
+        s.setReferenceMode('fixed')
+      })
       setUrlInput('')
     }
 
@@ -159,35 +177,44 @@ export function ReferencePanel({
       retry.src = url
     }
     img.src = url
-  }, [onReferenceInfoChange, onSourceChange, onReferenceModeChange, onFixedImageUrlChange])
+  }, [onReferenceChange])
 
   const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
-    onFixedImageUrlChange(screenshotUrl)
-    onReferenceInfoChange?.(info)
-    onReferenceModeChange('fixed')
-  }, [onReferenceInfoChange, onReferenceModeChange, onFixedImageUrlChange])
+    onReferenceChange(s => {
+      s.setFixedImageUrl(screenshotUrl)
+      s.setReferenceInfo(info)
+      s.setReferenceMode('fixed')
+    })
+  }, [onReferenceChange])
 
   const handleChangeAngle = useCallback(() => {
-    onReferenceModeChange('browse')
-    onFixedImageUrlChange(null)
-  }, [onReferenceModeChange, onFixedImageUrlChange])
+    onReferenceChange(s => {
+      s.setReferenceMode('browse')
+      s.setFixedImageUrl(null)
+    })
+  }, [onReferenceChange])
 
   const handleClose = useCallback(() => {
-    onSourceChange('none')
-    onReferenceModeChange('browse')
-    onFixedImageUrlChange(null)
-    onLocalImageUrlChange(null)
+    onReferenceChange(s => {
+      s.setSource('none')
+      s.setReferenceMode('browse')
+      s.setFixedImageUrl(null)
+      s.setLocalImageUrl(null)
+      s.setReferenceInfo(null)
+    })
     setGuideMode('none')
     setHighlightedGuideId(null)
-    onReferenceInfoChange?.(null)
-  }, [onReferenceInfoChange, onSourceChange, onReferenceModeChange, onFixedImageUrlChange, onLocalImageUrlChange])
+  }, [onReferenceChange])
 
   const handleOpenSketchfab = useCallback(() => {
-    onSourceChange('sketchfab')
-    onReferenceModeChange('browse')
-    onFixedImageUrlChange(null)
-    onLocalImageUrlChange(null)
-  }, [onSourceChange, onReferenceModeChange, onFixedImageUrlChange, onLocalImageUrlChange])
+    onReferenceChange(s => {
+      s.setSource('sketchfab')
+      s.setReferenceMode('browse')
+      s.setFixedImageUrl(null)
+      s.setLocalImageUrl(null)
+      s.setReferenceInfo(null)
+    })
+  }, [onReferenceChange])
 
   const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
     setSfShowViewer(state.showViewer)
@@ -208,12 +235,10 @@ export function ReferencePanel({
 
   const handleImageError = useCallback(() => {
     setUrlError(t('urlLoadFailed'))
-    // Reset to none state so user sees the error
-    onSourceChange('none')
-    onReferenceModeChange('browse')
-    onFixedImageUrlChange(null)
-    onReferenceInfoChange?.(null)
-  }, [onReferenceInfoChange, onSourceChange, onReferenceModeChange, onFixedImageUrlChange])
+    // Non-undoable reset — undoing back to a broken URL would just trigger
+    // the same error again.
+    onReferenceResetOnError()
+  }, [onReferenceResetOnError])
 
   const handleAddGuideLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
     addLine(x1, y1, x2, y2)

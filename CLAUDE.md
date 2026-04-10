@@ -29,11 +29,11 @@ npm run test:watch # Run tests in watch mode
 
 ### Key Components
 
-**SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels. Manages lifted reference state (source, mode, image URLs), timer, and autosave/restore flow. Inner component (`SplitLayoutInner`) uses `useAutosave` hook for debounced draft persistence.
+**SplitLayout** - Root layout with GuideProvider context, connects overlay strokes between panels. Manages lifted reference state (source, mode, image URLs), timer, autosave/restore, and the `changeReference(mutate)` helper that records reference mutations into the StrokeManager undo history. Inner component (`SplitLayoutInner`) uses `useAutosave` hook for debounced draft persistence.
 
-**ReferencePanel** - Reference source selection (Sketchfab/Local File/URL), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle. Reference state (source, mode, image URLs) is controlled by parent via props.
+**ReferencePanel** - Reference source selection (Sketchfab/Local File/URL), toolbar with grid toggle, guide line tools (add/delete/clear), zoom reset, fullscreen toggle. Reference state is read-only from props; all mutations are routed through `onReferenceChange(setters => ...)` so every change is recorded as an undoable entry. Image-load errors use a separate non-undoable `onReferenceResetOnError` path.
 
-**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Timer and grid toggle are provided by parent (SplitLayout).
+**DrawingPanel** - Drawing tools toolbar (pen, eraser, undo/redo, clear, overlay compare, zoom reset, save, gallery), timer display, canvas. Undo/redo handles both strokes and reference changes (the parent's `captureReferenceSnapshot` is passed to `StrokeManager.undo/redo` so the restorer can swap back the previous reference). Timer and grid toggle are provided by parent (SplitLayout).
 
 **DrawingCanvas** - Main canvas component with:
 - DPR-aware rendering
@@ -52,7 +52,7 @@ npm run test:watch # Run tests in watch mode
 
 ### Drawing System (`src/drawing/`)
 
-- **StrokeManager** - Stroke recording, undo/redo stack, stroke-based eraser (find nearest + delete)
+- **StrokeManager** - Stroke recording + chronological undo/redo stack shared by strokes and reference changes. Discriminated union entries cover `add` / `delete` / `reference`. Reference entries are restored via an injected `ReferenceRestorer` callback; `undo(captureCurrentRef)` / `redo(captureCurrentRef)` callbacks pass in a snapshot factory so the opposite stack can record the "current" reference. `MAX_REFERENCE_HISTORY` (20) caps reference entries via `undoReferenceCount` for O(1) pruning.
 - **CanvasRenderer** - Stroke rendering with highlight support
 - **ViewTransform** - Pinch zoom/pan coordinate transformation (scale 0.25x-8x)
 
@@ -79,7 +79,7 @@ npm run test:watch # Run tests in watch mode
 ### Timer (`src/hooks/useTimer.ts`)
 
 - Auto-starts on first stroke completion, resumes on next stroke after any pause
-- Pauses on: app backgrounded (visibilitychange API), save, opening the gallery, and any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference"). Reference-related pausing is wired through a `pauseAndIncrementVersion` helper in `SplitLayout` that the reference tracked setters share.
+- Pauses on: app backgrounded (visibilitychange API), save, opening the gallery, and any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference"). Reference-related pausing is wired through a `pauseAndIncrementVersion` helper in `SplitLayout` that `changeReference` calls after recording the undo entry and applying the mutation.
 - Resets on clear
 - `restore(ms)` sets elapsed time without starting (used by autosave restore)
 
@@ -99,6 +99,7 @@ npm run test:watch # Run tests in watch mode
 - **DPR handling**: All canvas operations multiply by `window.devicePixelRatio`.
 - **Viewport sizing**: Uses `100dvh` instead of `100vh` to handle iPad Safari's dynamic toolbar correctly.
 - **Autosave/Restore**: Session state (strokes, redo stack, reference, guides, timer) is persisted to IndexedDB on change. On reload, state is restored from draft. Local file images are stored as data URLs (via `FileReader.readAsDataURL`) to survive page reload. URL references store only the URL. Sketchfab references store the screenshot as a data URL.
+- **Reference undo history**: Reference changes (Fix Angle retake, image swap, Close, Gallery load, initial load) are recorded into the same undo stack as strokes, so the user can undo a misclick that replaced a reference while strokes were already drawn. History is session-only (not persisted in the draft) to keep IndexedDB usage bounded — after a reload only the current reference plus strokes are restored. The `SplitLayout`-owned `captureReferenceSnapshot` / `applyReferenceSnapshot` (registered via `StrokeManager.setReferenceRestorer`) handle the capture+restore roundtrip. `historySyncVersion` is bumped by `changeReference` to refresh DrawingPanel's `canUndo`/`canRedo` UI after an external history push.
 
 ### File Structure
 
