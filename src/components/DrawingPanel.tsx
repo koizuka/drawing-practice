@@ -10,7 +10,7 @@ import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../components/SketchfabViewer'
-import type { Stroke } from '../drawing/types'
+import type { Stroke, ReferenceSnapshot } from '../drawing/types'
 
 interface DrawingPanelProps {
   referenceSize?: { width: number; height: number } | null
@@ -20,12 +20,23 @@ interface DrawingPanelProps {
   onOverlayClear?: () => void
   onLoadReference?: (info: ReferenceInfo) => void
   onCurrentStrokeChange?: (stroke: Stroke | null) => void
+  /**
+   * Called from undo/redo so StrokeManager can record the current reference
+   * state in the opposite history stack when popping a reference entry.
+   */
+  captureReferenceSnapshot?: () => ReferenceSnapshot
   timer: TimerHandle
   restoreVersion?: number
+  /**
+   * Incremented by the parent when the StrokeManager's undo/redo stacks
+   * change outside of DrawingPanel (e.g. a reference change recorded in
+   * SplitLayout). Triggers a canUndo/canRedo refresh.
+   */
+  historySyncVersion?: number
   isFlipped?: boolean
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, timer, restoreVersion, isFlipped }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -55,6 +66,15 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     }
   }, [restoreVersion])
 
+  // Refresh canUndo/canRedo when the parent records a reference change that
+  // grew the stroke manager's undo stack from outside DrawingPanel.
+  useEffect(() => {
+    if (historySyncVersion && historySyncVersion > 0) {
+      setCanUndo(strokeManagerRef.current.canUndo())
+      setCanRedo(strokeManagerRef.current.canRedo())
+    }
+  }, [historySyncVersion])
+
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())
     setCanRedo(strokeManagerRef.current.canRedo())
@@ -68,16 +88,16 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   }, [syncUndoRedoState, onStrokesChanged])
 
   const handleUndo = useCallback(() => {
-    strokeManagerRef.current.undo()
+    strokeManagerRef.current.undo(captureReferenceSnapshot)
     setHighlightedStrokeIndex(null)
     triggerRedraw()
-  }, [triggerRedraw])
+  }, [triggerRedraw, captureReferenceSnapshot])
 
   const handleRedo = useCallback(() => {
-    strokeManagerRef.current.redo()
+    strokeManagerRef.current.redo(captureReferenceSnapshot)
     setHighlightedStrokeIndex(null)
     triggerRedraw()
-  }, [triggerRedraw])
+  }, [triggerRedraw, captureReferenceSnapshot])
 
   const handleClear = useCallback(() => {
     strokeManagerRef.current.clear()

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, type Dispatch, type SetStateAction } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Alert } from '@mui/material'
 import { useOrientation } from '../hooks/useOrientation'
 import { useTimer } from '../hooks/useTimer'
@@ -6,23 +6,15 @@ import { useAutosave } from '../hooks/useAutosave'
 import { useSessionLock } from '../hooks/useSessionLock'
 import { GuideProvider } from '../guides/GuideContext'
 import { useGuides } from '../guides/useGuides'
-import { ReferencePanel } from './ReferencePanel'
+import { ReferencePanel, type ReferenceSetters } from './ReferencePanel'
 import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
 import { t } from '../i18n'
-import type { Stroke } from '../drawing/types'
+import type { Stroke, ReferenceSnapshot } from '../drawing/types'
 import type { ReferenceInfo } from './SketchfabViewer'
 import type { ReferenceSource, ReferenceMode } from '../types'
-
-/** Wraps a setState so it also bumps the change-version counter. */
-function useTrackedSetter<T>(
-  setter: Dispatch<SetStateAction<T>>,
-  bump: () => void,
-): (value: T) => void {
-  return useCallback((value: T) => { setter(value); bump() }, [setter, bump])
-}
 
 function SplitLayoutInner() {
   const hasSessionLock = useSessionLock()
@@ -58,6 +50,10 @@ function SplitLayoutInner() {
   const [changeVersion, setChangeVersion] = useState(0)
   // Restore version to notify DrawingPanel after draft restore
   const [restoreVersion, setRestoreVersion] = useState(0)
+  // History sync version: incremented when the StrokeManager's undo/redo
+  // stacks change outside DrawingPanel (e.g. SplitLayout records a reference
+  // change). DrawingPanel listens to this to refresh its canUndo/canRedo UI.
+  const [historySyncVersion, setHistorySyncVersion] = useState(0)
   const incrementChangeVersion = useCallback(() => {
     setChangeVersion(v => v + 1)
   }, [])
@@ -77,17 +73,61 @@ function SplitLayoutInner() {
     }
   }, [hasSessionLock])
 
-  // Tracked setters: setState + incrementChangeVersion in one call.
-  // Reference-related setters also pause the timer.
-  const handleSourceChange = useTrackedSetter(setSource, pauseAndIncrementVersion)
-  const handleReferenceModeChange = useTrackedSetter(setReferenceMode, pauseAndIncrementVersion)
-  const handleFixedImageUrlChange = useTrackedSetter(setFixedImageUrl, pauseAndIncrementVersion)
-  const handleLocalImageUrlChange = useTrackedSetter(setLocalImageUrl, pauseAndIncrementVersion)
+  // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
+  // remain a stable callback (prevents unnecessary child re-renders).
+  const referenceStateRef = useRef({ source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo })
+  referenceStateRef.current = { source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo }
 
-  const handleReferenceInfoChange = useCallback((info: ReferenceInfo | null) => {
-    setReferenceInfo(info)
-    incrementChangeVersion()
-  }, [incrementChangeVersion])
+  const captureReferenceSnapshot = useCallback((): ReferenceSnapshot => ({
+    ...referenceStateRef.current,
+  }), [])
+
+  // Restorer invoked by StrokeManager when undo/redo pops a reference entry.
+  // Keep it on a ref so we can register a stable callback with StrokeManager.
+  const applyReferenceSnapshotRef = useRef<(snap: ReferenceSnapshot) => void>(() => {})
+  applyReferenceSnapshotRef.current = (snap: ReferenceSnapshot) => {
+    setSource(snap.source)
+    setReferenceMode(snap.referenceMode)
+    setFixedImageUrl(snap.fixedImageUrl)
+    setLocalImageUrl(snap.localImageUrl)
+    setReferenceInfo(snap.referenceInfo)
+    pauseAndIncrementVersion()
+  }
+
+  /**
+   * Record the current reference state as an undoable entry, then apply the
+   * mutation. Used for all user-initiated reference changes (Fix Angle, image
+   * swap, Close, Gallery load). Routing every mutation through this helper
+   * ensures individual setter calls can't bypass history recording.
+   */
+  const changeReference = useCallback((mutate: (setters: ReferenceSetters) => void) => {
+    const prev = captureReferenceSnapshot()
+    strokeManagerRef.current?.recordReferenceChange(prev)
+    mutate({
+      setSource,
+      setReferenceMode,
+      setFixedImageUrl,
+      setLocalImageUrl,
+      setReferenceInfo,
+    })
+    pauseAndIncrementVersion()
+    setHistorySyncVersion(v => v + 1)
+  }, [captureReferenceSnapshot, pauseAndIncrementVersion])
+
+  /**
+   * Error-path reset. NOT recorded as an undoable entry — undoing back to a
+   * broken reference (e.g. a URL that failed to load) would just trigger the
+   * same error again. Pauses the timer like every other reference-change path
+   * so time doesn't keep ticking after the reference silently reverts.
+   */
+  const resetReferenceOnError = useCallback(() => {
+    setSource('none')
+    setReferenceMode('browse')
+    setFixedImageUrl(null)
+    setLocalImageUrl(null)
+    setReferenceInfo(null)
+    pauseAndIncrementVersion()
+  }, [pauseAndIncrementVersion])
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
@@ -111,6 +151,8 @@ function SplitLayoutInner() {
 
   const handleStrokeManagerReady = useCallback((sm: StrokeManager) => {
     strokeManagerRef.current = sm
+    // Register a stable restorer that always reads the latest closure via ref
+    sm.setReferenceRestorer(snap => applyReferenceSnapshotRef.current(snap))
   }, [])
 
   const handleStrokesChanged = useCallback(() => {
@@ -135,23 +177,26 @@ function SplitLayoutInner() {
     loadSketchfabModelFnRef.current = fn
   }, [])
 
-  // Gallery "load reference" handler
+  // Gallery "load reference" handler — routed through changeReference so the
+  // user can undo back to the previously-loaded reference.
   const handleLoadReference = useCallback((info: ReferenceInfo) => {
-    timer.pause()
-    if (info.source === 'sketchfab' && info.sketchfabUid) {
-      setSource('sketchfab')
-      setReferenceMode('browse')
-      setFixedImageUrl(null)
-      setReferenceInfo(null)
-      loadSketchfabModelFnRef.current?.(info.sketchfabUid)
-    } else if (info.source === 'url' && info.imageUrl) {
-      setSource('url')
-      setReferenceMode('fixed')
-      setFixedImageUrl(info.imageUrl)
-      setReferenceInfo(info)
-    }
-    incrementChangeVersion()
-  }, [incrementChangeVersion, timer])
+    changeReference(s => {
+      if (info.source === 'sketchfab' && info.sketchfabUid) {
+        s.setSource('sketchfab')
+        s.setReferenceMode('browse')
+        s.setFixedImageUrl(null)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(null)
+        loadSketchfabModelFnRef.current?.(info.sketchfabUid)
+      } else if (info.source === 'url' && info.imageUrl) {
+        s.setSource('url')
+        s.setReferenceMode('fixed')
+        s.setFixedImageUrl(info.imageUrl)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(info)
+      }
+    })
+  }, [changeReference])
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
   const getAutosaveState = useCallback(() => ({
@@ -258,16 +303,13 @@ function SplitLayoutInner() {
           onReferenceImageSize={handleReferenceImageSize}
           overlayActive={overlayActive}
           onToggleOverlay={handleToggleOverlay}
-          onReferenceInfoChange={handleReferenceInfoChange}
           source={source}
-          onSourceChange={handleSourceChange}
           referenceMode={referenceMode}
-          onReferenceModeChange={handleReferenceModeChange}
           fixedImageUrl={fixedImageUrl}
-          onFixedImageUrlChange={handleFixedImageUrlChange}
           localImageUrl={localImageUrl}
-          onLocalImageUrlChange={handleLocalImageUrlChange}
           refInfo={referenceInfo}
+          onReferenceChange={changeReference}
+          onReferenceResetOnError={resetReferenceOnError}
           onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
           isFlipped={isFlipped}
           onToggleFlip={handleToggleFlip}
@@ -282,8 +324,10 @@ function SplitLayoutInner() {
           onCurrentStrokeChange={handleCurrentStrokeChange}
           onOverlayClear={() => { setOverlayActive(false); setOverlayStrokes(null) }}
           onLoadReference={handleLoadReference}
+          captureReferenceSnapshot={captureReferenceSnapshot}
           timer={timer}
           restoreVersion={restoreVersion}
+          historySyncVersion={historySyncVersion}
           isFlipped={isFlipped}
         />
       </Box>
