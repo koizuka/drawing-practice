@@ -117,7 +117,8 @@ function SplitLayoutInner() {
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
    * broken reference (e.g. a URL that failed to load) would just trigger the
-   * same error again.
+   * same error again. Pauses the timer like every other reference-change path
+   * so time doesn't keep ticking after the reference silently reverts.
    */
   const resetReferenceOnError = useCallback(() => {
     setSource('none')
@@ -125,8 +126,8 @@ function SplitLayoutInner() {
     setFixedImageUrl(null)
     setLocalImageUrl(null)
     setReferenceInfo(null)
-    incrementChangeVersion()
-  }, [incrementChangeVersion])
+    pauseAndIncrementVersion()
+  }, [pauseAndIncrementVersion])
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })

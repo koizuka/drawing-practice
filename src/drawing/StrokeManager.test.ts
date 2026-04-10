@@ -634,5 +634,31 @@ describe('StrokeManager', () => {
       expect(result?.kind).toBe('stroke')
       expect(restorer).not.toHaveBeenCalled()
     })
+
+    it('keeps the reference count consistent when redo receives no captureCurrentRef', () => {
+      manager.setReferenceRestorer(vi.fn())
+      manager.recordReferenceChange(snap({ source: 'none' }))
+      // Undo with a capture so the entry moves to the redo stack
+      manager.undo(() => snap({ source: 'image', fixedImageUrl: 'data:A' }))
+
+      // Redo WITHOUT a captureCurrentRef — the entry cannot be pushed back onto
+      // the undo stack, so the count must not be incremented either.
+      manager.redo()
+
+      // Recording 20 more changes must succeed without pruneReferenceHistory
+      // thinking the cap is already exceeded due to a stale count.
+      for (let i = 0; i < 20; i++) {
+        manager.recordReferenceChange(snap({ source: 'image', fixedImageUrl: `data:${i}` }))
+      }
+
+      // Exactly MAX_REFERENCE_HISTORY (20) reference entries should be in the
+      // undo stack; 21 would mean the count was off by one.
+      let refEntriesInStack = 0
+      while (manager.canUndo()) {
+        const result = manager.undo(() => snap())
+        if (result?.kind === 'reference') refEntriesInStack++
+      }
+      expect(refEntriesInStack).toBe(20)
+    })
   })
 })

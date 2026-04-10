@@ -154,10 +154,10 @@ export class StrokeManager {
       return { kind: 'stroke', stroke: removed }
     }
     // entry.type === 'reference'
-    this.undoReferenceCount++
     const current = captureCurrentRef?.()
     if (current) {
       this.undoStack.push({ type: 'reference', prev: current })
+      this.undoReferenceCount++
     }
     this.referenceRestorer?.(entry.next)
     return { kind: 'reference' }
