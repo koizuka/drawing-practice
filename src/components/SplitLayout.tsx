@@ -62,6 +62,13 @@ function SplitLayoutInner() {
     setChangeVersion(v => v + 1)
   }, [])
 
+  // Pause timer whenever the reference changes — the timer should only advance
+  // during active drawing. The next stroke will resume it via handleStrokeCountChange.
+  const pauseAndIncrementVersion = useCallback(() => {
+    timer.pause()
+    setChangeVersion(v => v + 1)
+  }, [timer])
+
   // Suppress autosave during restore or when another tab holds the lock
   const suppressAutosaveRef = useRef(true)
   useEffect(() => {
@@ -70,11 +77,12 @@ function SplitLayoutInner() {
     }
   }, [hasSessionLock])
 
-  // Tracked setters: setState + incrementChangeVersion in one call
-  const handleSourceChange = useTrackedSetter(setSource, incrementChangeVersion)
-  const handleReferenceModeChange = useTrackedSetter(setReferenceMode, incrementChangeVersion)
-  const handleFixedImageUrlChange = useTrackedSetter(setFixedImageUrl, incrementChangeVersion)
-  const handleLocalImageUrlChange = useTrackedSetter(setLocalImageUrl, incrementChangeVersion)
+  // Tracked setters: setState + incrementChangeVersion in one call.
+  // Reference-related setters also pause the timer.
+  const handleSourceChange = useTrackedSetter(setSource, pauseAndIncrementVersion)
+  const handleReferenceModeChange = useTrackedSetter(setReferenceMode, pauseAndIncrementVersion)
+  const handleFixedImageUrlChange = useTrackedSetter(setFixedImageUrl, pauseAndIncrementVersion)
+  const handleLocalImageUrlChange = useTrackedSetter(setLocalImageUrl, pauseAndIncrementVersion)
 
   const handleReferenceInfoChange = useCallback((info: ReferenceInfo | null) => {
     setReferenceInfo(info)
@@ -129,6 +137,7 @@ function SplitLayoutInner() {
 
   // Gallery "load reference" handler
   const handleLoadReference = useCallback((info: ReferenceInfo) => {
+    timer.pause()
     if (info.source === 'sketchfab' && info.sketchfabUid) {
       setSource('sketchfab')
       setReferenceMode('browse')
@@ -142,7 +151,7 @@ function SplitLayoutInner() {
       setReferenceInfo(info)
     }
     incrementChangeVersion()
-  }, [incrementChangeVersion])
+  }, [incrementChangeVersion, timer])
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
   const getAutosaveState = useCallback(() => ({
