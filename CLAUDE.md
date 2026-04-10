@@ -78,8 +78,8 @@ npm run test:watch # Run tests in watch mode
 
 ### Timer (`src/hooks/useTimer.ts`)
 
-- Auto-starts on first stroke completion
-- Pauses when app goes to background (visibilitychange API)
+- Auto-starts on first stroke completion, resumes on next stroke after any pause
+- Pauses on: app backgrounded (visibilitychange API), save, opening the gallery, and any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference"). Reference-related pausing is wired through a `pauseAndIncrementVersion` helper in `SplitLayout` that the reference tracked setters share.
 - Resets on clear
 - `restore(ms)` sets elapsed time without starting (used by autosave restore)
 

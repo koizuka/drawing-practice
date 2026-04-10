@@ -235,7 +235,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         </Tooltip>
 
         <Tooltip title={t('gallery')}>
-          <IconButton size="small" onClick={() => setShowGallery(true)}>
+          <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
             <Images size={20} />
           </IconButton>
         </Tooltip>
