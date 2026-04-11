@@ -1,9 +1,11 @@
 {
     "cSpell.words": [
+        "cooldown",
         "dexie",
         "Sketchfab",
         "trackpad",
         "undoable",
-        "viewerready"
+        "viewerready",
+        "vitest"
     ]
 }
