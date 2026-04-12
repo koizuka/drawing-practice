@@ -140,7 +140,8 @@ src/
 │   ├── useOrientation.ts
 │   ├── useTimer.ts
 │   ├── useAutosave.ts      # Debounced session autosave
-│   └── useFullscreen.ts
+│   ├── useFullscreen.ts
+│   └── useKeyboardShortcuts.ts  # Keyboard shortcuts (Undo/Redo, tool switch, save)
 └── test/
     └── setup.ts
 ```

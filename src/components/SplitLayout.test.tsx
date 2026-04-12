@@ -15,8 +15,8 @@ describe('SplitLayout', () => {
     expect(screen.getByText('Sketchfab')).toBeInTheDocument()
     expect(screen.getByText('Image File')).toBeInTheDocument()
     // DrawingPanel renders toolbar buttons
-    expect(screen.getByLabelText('Pen')).toBeInTheDocument()
-    expect(screen.getByLabelText('Eraser')).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Pen/)).toBeInTheDocument()
+    expect(screen.getByLabelText(/^Eraser/)).toBeInTheDocument()
   })
 
   describe('reference undo integration', () => {

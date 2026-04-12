@@ -1,10 +1,11 @@
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
 import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { useGuides } from '../guides/useGuides'
 import { formatTime, type TimerHandle } from '../hooks/useTimer'
+import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts'
 import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
@@ -140,6 +141,28 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     setTimeout(() => setSaved(false), 2000)
   }, [referenceInfo, timer])
 
+  const handlePenTool = useCallback(() => {
+    setMode('pen')
+    setHighlightedStrokeIndex(null)
+  }, [])
+
+  const handleEraserTool = useCallback(() => {
+    setMode('eraser')
+  }, [])
+
+  const mod = getModifierPrefix()
+
+  useKeyboardShortcuts({
+    disabled: showGallery,
+    actions: useMemo(() => ({
+      onUndo: handleUndo,
+      onRedo: handleRedo,
+      onPenTool: handlePenTool,
+      onEraserTool: handleEraserTool,
+      onSave: handleSave,
+    }), [handleUndo, handleRedo, handlePenTool, handleEraserTool, handleSave]),
+  })
+
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
@@ -156,10 +179,10 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         }}
       >
         {/* Drawing tools */}
-        <Tooltip title={t('pen')}>
+        <Tooltip title={`${t('pen')} (P)`}>
           <IconButton
             size="small"
-            onClick={() => { setMode('pen'); setHighlightedStrokeIndex(null) }}
+            onClick={handlePenTool}
             sx={{
               bgcolor: mode === 'pen' ? 'primary.main' : 'transparent',
               color: mode === 'pen' ? 'white' : 'inherit',
@@ -170,10 +193,10 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           </IconButton>
         </Tooltip>
 
-        <Tooltip title={t('eraser')}>
+        <Tooltip title={`${t('eraser')} (E)`}>
           <IconButton
             size="small"
-            onClick={() => setMode('eraser')}
+            onClick={handleEraserTool}
             sx={{
               bgcolor: mode === 'eraser' ? 'error.main' : 'transparent',
               color: mode === 'eraser' ? 'white' : 'inherit',
@@ -187,7 +210,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
         {/* Edit */}
-        <Tooltip title={t('undo')}>
+        <Tooltip title={`${t('undo')} (${mod}Z)`}>
           <span>
             <IconButton size="small" onClick={handleUndo} disabled={!canUndo}>
               <Undo2 size={20} />
@@ -195,7 +218,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           </span>
         </Tooltip>
 
-        <Tooltip title={t('redo')}>
+        <Tooltip title={`${t('redo')} (${mod}Shift+Z)`}>
           <span>
             <IconButton size="small" onClick={handleRedo} disabled={!canRedo}>
               <Redo2 size={20} />
@@ -236,7 +259,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <Tooltip title={saved ? t('saved') : t('saveDrawing')}>
+        <Tooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
           <span>
             <IconButton
               size="small"
