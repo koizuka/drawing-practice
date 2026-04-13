@@ -132,7 +132,8 @@ export function ReferencePanel({
 
   const [urlLoading, setUrlLoading] = useState(false)
 
-  const handleLoadFromUrl = useCallback((url: string) => {
+  const handleLoadFromUrl = useCallback((rawUrl: string) => {
+    const url = rawUrl.trim()
     if (!url) return
     setUrlError(null)
     setUrlLoading(true)
@@ -473,7 +474,7 @@ export function ReferencePanel({
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: (isFlipped && !isYouTube) ? 'scaleX(-1)' : undefined }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
           <Box sx={{

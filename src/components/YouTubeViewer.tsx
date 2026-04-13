@@ -11,7 +11,8 @@ const LOGICAL_HEIGHT = 1080
 
 const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)'
 const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)'
-const GUIDE_HIT_THRESHOLD = 15
+const GUIDE_HIT_THRESHOLD_PX = 15
+const GUIDE_MIN_DRAG_PX = 5
 
 interface YouTubeViewerProps {
   videoId: string
@@ -81,6 +82,15 @@ export function YouTubeViewer({
       x: (clientX - rect.left) / scale,
       y: (clientY - rect.top) / scale,
     }
+  }, [])
+
+  /** Current logical units per screen pixel; 0 if the wrapper is not laid out yet. */
+  const getLogicalScale = useCallback((): number => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return 0
+    const rect = wrapper.getBoundingClientRect()
+    if (rect.width === 0) return 0
+    return rect.width / LOGICAL_WIDTH
   }, [])
 
   const redraw = useCallback(() => {
@@ -191,7 +201,10 @@ export function YouTubeViewer({
       setDragStart(point)
       setDragEnd(point)
     } else if (guideMode === 'delete') {
-      const threshold = GUIDE_HIT_THRESHOLD
+      // Hit threshold is a fixed screen-pixel distance; convert to logical units.
+      const scale = getLogicalScale()
+      if (scale === 0) return
+      const threshold = GUIDE_HIT_THRESHOLD_PX / scale
       let best: GuideLine | null = null
       let bestDist = threshold
       for (const line of guideLines) {
@@ -203,7 +216,7 @@ export function YouTubeViewer({
       }
       onHighlightGuide?.(best?.id ?? null)
     }
-  }, [guideMode, getLogicalPoint, guideLines, onHighlightGuide])
+  }, [guideMode, getLogicalPoint, getLogicalScale, guideLines, onHighlightGuide])
 
   const updateGuideInteraction = useCallback((clientX: number, clientY: number) => {
     if (guideMode !== 'add' || !dragStart) return
@@ -215,12 +228,15 @@ export function YouTubeViewer({
     if (guideMode !== 'add' || !dragStart || !dragEnd) return
     const dx = dragEnd.x - dragStart.x
     const dy = dragEnd.y - dragStart.y
-    if (Math.sqrt(dx * dx + dy * dy) > 5) {
+    // Min drag length is a screen-pixel threshold, converted to logical units.
+    const scale = getLogicalScale()
+    const minLenLogical = scale > 0 ? GUIDE_MIN_DRAG_PX / scale : GUIDE_MIN_DRAG_PX
+    if (Math.sqrt(dx * dx + dy * dy) > minLenLogical) {
       onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y)
     }
     setDragStart(null)
     setDragEnd(null)
-  }, [guideMode, dragStart, dragEnd, onAddGuideLine])
+  }, [guideMode, dragStart, dragEnd, getLogicalScale, onAddGuideLine])
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     beginGuideInteraction(e.clientX, e.clientY)
