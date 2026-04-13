@@ -5,10 +5,11 @@ import { t } from '../i18n'
 export interface ReferenceInfo {
   title: string
   author: string
-  source: 'sketchfab' | 'image' | 'url'
+  source: 'sketchfab' | 'image' | 'url' | 'youtube'
   fileName?: string
   sketchfabUid?: string
   imageUrl?: string
+  youtubeVideoId?: string
 }
 
 interface SketchfabViewerProps {

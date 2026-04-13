@@ -61,6 +61,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     if (!drawing.reference) return false
     if (drawing.reference.source === 'sketchfab' && drawing.reference.sketchfabUid) return true
     if (drawing.reference.source === 'url' && drawing.reference.imageUrl) return true
+    if (drawing.reference.source === 'youtube' && drawing.reference.youtubeVideoId) return true
     return false
   }
 

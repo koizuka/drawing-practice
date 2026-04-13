@@ -114,5 +114,27 @@ describe('SplitLayout', () => {
       fireEvent.click(screen.getByText('Sketchfab'))
       expect(redoBtn(container)).toBeDisabled()
     })
+
+    it('detects a YouTube URL in the URL field and switches to YouTube reference', () => {
+      const { container } = render(<SplitLayout />)
+      expect(undoBtn(container)).toBeDisabled()
+
+      const urlInput = screen.getByPlaceholderText(/YouTube/i) as HTMLInputElement
+      fireEvent.change(urlInput, { target: { value: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } })
+      fireEvent.click(screen.getByText('Load'))
+
+      // YouTube iframe is rendered
+      const iframe = container.querySelector('iframe[title="YouTube reference"]') as HTMLIFrameElement
+      expect(iframe).not.toBeNull()
+      expect(iframe.src).toContain('dQw4w9WgXcQ')
+
+      // Source selection UI is gone
+      expect(screen.queryByText('Image File')).not.toBeInTheDocument()
+
+      // Undo is enabled and reverts to none
+      expect(undoBtn(container)).not.toBeDisabled()
+      fireEvent.click(undoBtn(container))
+      expect(screen.getByText('Image File')).toBeInTheDocument()
+    })
   })
 })
