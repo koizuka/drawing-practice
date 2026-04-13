@@ -194,6 +194,12 @@ function SplitLayoutInner() {
         s.setFixedImageUrl(info.imageUrl)
         s.setLocalImageUrl(null)
         s.setReferenceInfo(info)
+      } else if (info.source === 'youtube' && info.youtubeVideoId) {
+        s.setSource('youtube')
+        s.setReferenceMode('browse')
+        s.setFixedImageUrl(null)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(info)
       }
     })
   }, [changeReference])
@@ -268,6 +274,8 @@ function SplitLayoutInner() {
         } else if (draft.source === 'url' && draft.referenceInfo?.imageUrl) {
           setFixedImageUrl(draft.referenceInfo.imageUrl)
           setReferenceMode('fixed')
+        } else if (draft.source === 'youtube' && draft.referenceInfo?.youtubeVideoId) {
+          setReferenceMode('browse')
         }
       }
 

@@ -3,7 +3,9 @@ import { Box, Button, Tooltip, IconButton, Typography, TextField } from '@mui/ma
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
+import { YouTubeViewer } from './YouTubeViewer'
 import { GitHubIcon } from './GitHubIcon'
+import { parseYouTubeVideoId } from '../utils/youtube'
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -130,7 +132,8 @@ export function ReferencePanel({
 
   const [urlLoading, setUrlLoading] = useState(false)
 
-  const handleLoadFromUrl = useCallback((url: string) => {
+  const handleLoadFromUrl = useCallback((rawUrl: string) => {
+    const url = rawUrl.trim()
     if (!url) return
     setUrlError(null)
     setUrlLoading(true)
@@ -140,6 +143,27 @@ export function ReferencePanel({
       new URL(url)
     } catch {
       setUrlError(t('urlLoadFailed'))
+      setUrlLoading(false)
+      return
+    }
+
+    // YouTube URL: switch to YouTube reference mode without image preload
+    const ytId = parseYouTubeVideoId(url)
+    if (ytId) {
+      const info: ReferenceInfo = {
+        title: ytId,
+        author: '',
+        source: 'youtube',
+        youtubeVideoId: ytId,
+      }
+      onReferenceChange(s => {
+        s.setSource('youtube')
+        s.setReferenceMode('browse')
+        s.setFixedImageUrl(null)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(info)
+      })
+      setUrlInput('')
       setUrlLoading(false)
       return
     }
@@ -277,6 +301,7 @@ export function ReferencePanel({
   const isNone = source === 'none'
   // Sketchfab browse mode: either searching or viewing a model
   const isSfBrowse = source === 'sketchfab' && referenceMode === 'browse'
+  const isYouTube = source === 'youtube'
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -323,8 +348,8 @@ export function ReferencePanel({
           </Button>
         )}
 
-        {/* Guide line tools (only when fixed) */}
-        {isFixed && (
+        {/* Guide line tools (fixed images or YouTube) */}
+        {(isFixed || isYouTube) && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
@@ -385,7 +410,7 @@ export function ReferencePanel({
         <Box sx={{ flex: 1 }} />
 
         {/* View controls (always visible) */}
-        {isFixed && (
+        {(isFixed || isYouTube) && (
           <Tooltip title={t('compare')}>
             <IconButton
               size="small"
@@ -415,19 +440,21 @@ export function ReferencePanel({
           </IconButton>
         </Tooltip>
 
-        <Tooltip title={t('flipHorizontal')}>
-          <IconButton
-            size="small"
-            onClick={onToggleFlip}
-            sx={{
-              bgcolor: isFlipped ? 'info.main' : 'transparent',
-              color: isFlipped ? 'white' : 'inherit',
-              '&:hover': { bgcolor: isFlipped ? 'info.dark' : 'action.hover' },
-            }}
-          >
-            <FlipHorizontal2 size={20} />
-          </IconButton>
-        </Tooltip>
+        {!isYouTube && (
+          <Tooltip title={t('flipHorizontal')}>
+            <IconButton
+              size="small"
+              onClick={onToggleFlip}
+              sx={{
+                bgcolor: isFlipped ? 'info.main' : 'transparent',
+                color: isFlipped ? 'white' : 'inherit',
+                '&:hover': { bgcolor: isFlipped ? 'info.dark' : 'action.hover' },
+              }}
+            >
+              <FlipHorizontal2 size={20} />
+            </IconButton>
+          </Tooltip>
+        )}
 
         {isFixed && (
           <Tooltip title={t('resetZoom')}>
@@ -447,7 +474,7 @@ export function ReferencePanel({
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: (isFlipped && !isYouTube) ? 'scaleX(-1)' : undefined }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
           <Box sx={{
@@ -516,6 +543,24 @@ export function ReferencePanel({
               actionsRef={sfActionsRef}
             />
           </Box>
+        )}
+
+        {/* YouTube viewer */}
+        {isYouTube && refInfo?.youtubeVideoId && (
+          <YouTubeViewer
+            videoId={refInfo.youtubeVideoId}
+            grid={grid}
+            guideLines={lines}
+            guideVersion={guideVersion}
+            overlayStrokes={overlayStrokes ?? undefined}
+            overlayCurrentStrokeRef={overlayCurrentStrokeRef}
+            onRegisterOverlayRedraw={onRegisterOverlayRedraw}
+            onFitSize={onReferenceImageSize}
+            guideMode={guideMode}
+            onAddGuideLine={handleAddGuideLine}
+            highlightedGuideId={highlightedGuideId}
+            onHighlightGuide={setHighlightedGuideId}
+          />
         )}
 
         {/* Reference info overlay */}
