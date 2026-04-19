@@ -1,6 +1,6 @@
 import { db, type DrawingRecord } from './db'
 import type { Stroke } from '../drawing/types'
-import type { ReferenceInfo } from '../components/SketchfabViewer'
+import type { ReferenceInfo } from '../types'
 
 export async function saveDrawing(
   strokes: readonly Stroke[],

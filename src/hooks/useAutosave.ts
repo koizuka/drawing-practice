@@ -2,8 +2,7 @@ import { useEffect, useRef, useCallback } from 'react'
 import { saveDraft, clearDraft } from '../storage/sessionStore'
 import type { DraftData } from '../storage/sessionStore'
 import type { Stroke } from '../drawing/types'
-import type { ReferenceInfo } from '../components/SketchfabViewer'
-import type { ReferenceSource } from '../types'
+import type { ReferenceInfo, ReferenceSource } from '../types'
 import type { GridSettings, GuideLine } from '../guides/types'
 
 const DEBOUNCE_MS = 2000

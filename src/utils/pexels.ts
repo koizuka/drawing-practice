@@ -1,4 +1,4 @@
-import type { ReferenceInfo } from '../components/SketchfabViewer'
+import type { ReferenceInfo } from '../types'
 
 const PEXELS_API_BASE = 'https://api.pexels.com/v1'
 const API_KEY_STORAGE_KEY = 'pexelsApiKey'
@@ -179,7 +179,7 @@ export function parsePexelsPhotoUrl(rawUrl: string): { id: number } | null {
   return { id }
 }
 
-export function buildPexelsReferenceInfo(photo: PexelsPhoto): ReferenceInfo {
+export function buildPexelsReferenceInfo(photo: PexelsPhoto): Extract<ReferenceInfo, { source: 'pexels' }> {
   const title = photo.alt?.trim() || `Photo #${photo.id}`
   return {
     title,

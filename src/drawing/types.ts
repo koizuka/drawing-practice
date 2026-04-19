@@ -1,5 +1,4 @@
-import type { ReferenceInfo } from '../components/SketchfabViewer'
-import type { ReferenceSource, ReferenceMode } from '../types'
+import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types'
 
 export interface Point {
   x: number

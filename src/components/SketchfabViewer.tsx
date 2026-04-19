@@ -1,20 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
 import { t } from '../i18n'
-
-export interface ReferenceInfo {
-  title: string
-  author: string
-  source: 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels'
-  fileName?: string
-  sketchfabUid?: string
-  imageUrl?: string
-  youtubeVideoId?: string
-  pexelsPhotoId?: number
-  pexelsPhotographerUrl?: string
-  pexelsPageUrl?: string
-  pexelsImageUrl?: string
-}
+import type { ReferenceInfo } from '../types'
 
 interface SketchfabViewerProps {
   onFixAngle: (screenshotUrl: string, info: ReferenceInfo) => void
@@ -217,7 +204,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
         title: selectedModel?.name ?? '',
         author: selectedModel?.author ?? '',
         source: 'sketchfab',
-        sketchfabUid: modelUid || undefined,
+        sketchfabUid: modelUid,
       })
     })
   }, [onFixAngle, selectedModel, modelUid])
