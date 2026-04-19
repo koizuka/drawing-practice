@@ -17,6 +17,7 @@ const MAX_SCALE = 8
 
 export class ViewTransform {
   private transform: Transform
+  private listeners = new Set<() => void>()
 
   constructor(initial?: Transform) {
     this.transform = initial ? { ...initial } : { ...IDENTITY_TRANSFORM }
@@ -28,6 +29,7 @@ export class ViewTransform {
 
   reset(): void {
     this.transform = { ...IDENTITY_TRANSFORM }
+    this.notify()
   }
 
   /** Apply a pinch gesture: scale around a focal point and translate. */
@@ -39,6 +41,30 @@ export class ViewTransform {
     this.transform.offsetX = focalX - actualScaleDelta * (focalX - this.transform.offsetX) + translateX
     this.transform.offsetY = focalY - actualScaleDelta * (focalY - this.transform.offsetY) + translateY
     this.transform.scale = newScale
+    this.notify()
+  }
+
+  /** Fit a content rectangle into a container, centering and preserving aspect ratio. Atomic (single notify). */
+  fitTo(container: { width: number; height: number }, content: { width: number; height: number }): void {
+    const scale = Math.min(container.width / content.width, container.height / content.height)
+    this.transform.offsetX = (container.width - content.width * scale) / 2
+    this.transform.offsetY = (container.height - content.height * scale) / 2
+    this.transform.scale = scale
+    this.notify()
+  }
+
+  /** Subscribe to transform changes. Returns an unsubscribe function. */
+  subscribe(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) {
+      listener()
+    }
   }
 
   /** Convert screen coordinates to canvas coordinates. */

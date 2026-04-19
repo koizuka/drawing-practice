@@ -26,6 +26,10 @@ interface ImageViewerProps {
   highlightedGuideId?: string | null
   onHighlightGuide?: (id: string | null) => void
   isFlipped?: boolean
+  /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with DrawingPanel). */
+  viewTransform?: ViewTransform
+  /** When false, skip automatic fit on image load / resize. Defaults to true. */
+  isFitLeader?: boolean
 }
 
 const TRACKPAD_ZOOM_SPEED = 0.01
@@ -53,10 +57,13 @@ export function ImageViewer({
   guideMode, onAddGuideLine,
   highlightedGuideId, onHighlightGuide,
   isFlipped,
+  viewTransform,
+  isFitLeader = true,
 }: ImageViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const viewTransformRef = useRef(new ViewTransform())
+  // The shared viewTransform (if any) is created once in SplitLayout and stable for the component's lifetime.
+  const viewTransformRef = useRef<ViewTransform>(viewTransform ?? new ViewTransform())
   const imageRef = useRef<HTMLImageElement | null>(null)
   const rafIdRef = useRef<number>(0)
 
@@ -153,7 +160,14 @@ export function ImageViewer({
     })
   }, [redraw])
 
-  // Fit image to canvas on load
+  // When a shared ViewTransform is provided, redraw whenever the other panel mutates it.
+  useEffect(() => {
+    if (!viewTransform) return
+    return viewTransform.subscribe(requestRedraw)
+  }, [viewTransform, requestRedraw])
+
+  // Fit image to canvas on load. Canvas size is updated regardless of fit ownership;
+  // only the ViewTransform write is gated by isFitLeader.
   const fitImage = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -167,18 +181,15 @@ export function ImageViewer({
     canvas.style.width = `${rect.width}px`
     canvas.style.height = `${rect.height}px`
 
-    const scaleX = rect.width / img.naturalWidth
-    const scaleY = rect.height / img.naturalHeight
-    const scale = Math.min(scaleX, scaleY)
-
-    const offsetX = (rect.width - img.naturalWidth * scale) / 2
-    const offsetY = (rect.height - img.naturalHeight * scale) / 2
-
-    viewTransformRef.current.reset()
-    viewTransformRef.current.applyPinch(0, 0, scale, offsetX, offsetY)
+    if (isFitLeader) {
+      viewTransformRef.current.fitTo(
+        { width: rect.width, height: rect.height },
+        { width: img.naturalWidth, height: img.naturalHeight },
+      )
+    }
 
     redraw()
-  }, [redraw])
+  }, [redraw, isFitLeader])
 
   // Load image: try without CORS first, then upgrade to CORS if possible
   // Only depends on imageUrl to avoid re-triggering on prop changes

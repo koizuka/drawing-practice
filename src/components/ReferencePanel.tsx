@@ -3,6 +3,7 @@ import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLin
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
+import type { ViewTransform } from '../drawing/ViewTransform'
 import { YouTubeViewer } from './YouTubeViewer'
 import { PexelsSearcher } from './PexelsSearcher'
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog'
@@ -189,6 +190,10 @@ interface ReferencePanelProps {
   onRegisterLoadSketchfabModel?: (fn: (uid: string) => void) => void
   isFlipped?: boolean
   onToggleFlip?: () => void
+  /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
+  viewTransform?: ViewTransform
+  /** Which panel owns the fit calculation. */
+  fitLeader?: 'reference' | 'drawing'
 }
 
 export function ReferencePanel({
@@ -197,6 +202,7 @@ export function ReferencePanel({
   source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
   onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
+  viewTransform, fitLeader,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
@@ -777,6 +783,8 @@ export function ReferencePanel({
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
             isFlipped={isFlipped}
+            viewTransform={viewTransform}
+            isFitLeader={fitLeader === 'reference'}
           />
         )}
       </Box>

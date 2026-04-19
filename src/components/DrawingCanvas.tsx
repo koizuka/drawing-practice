@@ -28,6 +28,10 @@ interface DrawingCanvasProps {
   isFlipped?: boolean
   /** Called with the in-progress stroke during drawing, or null when stroke ends */
   onCurrentStrokeChange?: (stroke: Stroke | null) => void
+  /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with ReferencePanel). */
+  viewTransform?: ViewTransform
+  /** When false, skip automatic fit on fitSize change (another panel owns the fit in shared-VT mode). Defaults to true. */
+  isFitLeader?: boolean
 }
 
 const ERASER_THRESHOLD = 20
@@ -48,11 +52,14 @@ export function DrawingCanvas({
   fitSize,
   isFlipped,
   onCurrentStrokeChange,
+  viewTransform,
+  isFitLeader = true,
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<CanvasRenderer | null>(null)
-  const viewTransformRef = useRef(new ViewTransform())
+  // The shared viewTransform (if any) is created once in SplitLayout and stable for the component's lifetime.
+  const viewTransformRef = useRef<ViewTransform>(viewTransform ?? new ViewTransform())
   const hasStylusRef = useRef(false)
   const drawingPointCountRef = useRef(0)
   const rafIdRef = useRef<number>(0)
@@ -120,13 +127,10 @@ export function DrawingCanvas({
     const container = containerRef.current
     if (!container || !fitSize) return
     const rect = container.getBoundingClientRect()
-    const scaleX = rect.width / fitSize.width
-    const scaleY = rect.height / fitSize.height
-    const scale = Math.min(scaleX, scaleY)
-    const offsetX = (rect.width - fitSize.width * scale) / 2
-    const offsetY = (rect.height - fitSize.height * scale) / 2
-    viewTransformRef.current.reset()
-    viewTransformRef.current.applyPinch(0, 0, scale, offsetX, offsetY)
+    viewTransformRef.current.fitTo(
+      { width: rect.width, height: rect.height },
+      { width: fitSize.width, height: fitSize.height },
+    )
   }, [fitSize])
 
   // Setup canvas with DPR
@@ -147,12 +151,13 @@ export function DrawingCanvas({
 
     rendererRef.current = new CanvasRenderer(ctx)
 
-    // Re-fit to reference size on resize (matches ImageViewer behavior)
-    if (fitSize) {
+    // Re-fit to reference size on resize, only when this panel owns the fit.
+    // When the reference panel is leading (shared-VT mode), it drives the fit and we just redraw.
+    if (fitSize && isFitLeader) {
       fitToSize()
     }
     redrawAll()
-  }, [redrawAll, fitSize, fitToSize])
+  }, [redrawAll, fitSize, fitToSize, isFitLeader])
 
   // ResizeObserver
   useEffect(() => {
@@ -183,13 +188,13 @@ export function DrawingCanvas({
     }
   }, [viewResetVersion, redrawAll, fitSize, fitToSize])
 
-  // Re-fit when fitSize changes
+  // Re-fit when fitSize changes — only when this panel owns the fit.
   useEffect(() => {
-    if (fitSize) {
+    if (fitSize && isFitLeader) {
       fitToSize()
       redrawAll()
     }
-  }, [fitSize, fitToSize, redrawAll])
+  }, [fitSize, fitToSize, redrawAll, isFitLeader])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
@@ -210,6 +215,12 @@ export function DrawingCanvas({
       redrawAll()
     })
   }, [redrawAll])
+
+  // When a shared ViewTransform is provided, redraw whenever the other panel mutates it.
+  useEffect(() => {
+    if (!viewTransform) return
+    return viewTransform.subscribe(requestRedraw)
+  }, [viewTransform, requestRedraw])
 
   // Wheel event for trackpad zoom/pan
   useEffect(() => {
