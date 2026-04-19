@@ -85,6 +85,10 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
       position: 'absolute',
       bottom: 8,
       left: 8,
+      // Cap the overall overlay width so long titles / author lines can't
+      // push the collapse button off-screen on narrow viewports. The 16px
+      // budget accounts for the 8px left offset plus an 8px right gutter.
+      maxWidth: 'calc(100% - 16px)',
       zIndex: 5,
       pointerEvents: 'none',
     }}>
@@ -116,7 +120,6 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
           pr: 0.5,
           py: 0.5,
           borderRadius: 1,
-          maxWidth: '80%',
         }}>
           <Box sx={{ flex: 1, minWidth: 0 }}>
             {refInfo.title && (
