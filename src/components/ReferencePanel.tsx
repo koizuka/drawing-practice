@@ -753,6 +753,8 @@ export function ReferencePanel({
             onAddGuideLine={handleAddGuideLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
+            viewTransform={viewTransform}
+            isFitLeader={fitLeader === 'reference'}
           />
         )}
 

@@ -5,6 +5,7 @@ import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { GridSettings, GuideLine } from '../guides/types'
 import type { Stroke, Point } from '../drawing/types'
 import type { GuideInteractionMode } from './ImageViewer'
+import type { ViewTransform } from '../drawing/ViewTransform'
 
 const LOGICAL_WIDTH = 1920
 const LOGICAL_HEIGHT = 1080
@@ -27,6 +28,10 @@ interface YouTubeViewerProps {
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void
   highlightedGuideId?: string | null
   onHighlightGuide?: (id: string | null) => void
+  /** Optional shared ViewTransform to sync iframe placement with the drawing canvas. */
+  viewTransform?: ViewTransform
+  /** When true, this viewer writes the initial fit to the shared ViewTransform on mount/resize. */
+  isFitLeader?: boolean
 }
 
 function drawOverlayStrokePath(ctx: CanvasRenderingContext2D, points: readonly Point[]): void {
@@ -60,6 +65,8 @@ export function YouTubeViewer({
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
   onFitSize,
   guideMode, onAddGuideLine, highlightedGuideId, onHighlightGuide,
+  viewTransform,
+  isFitLeader = false,
 }: YouTubeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
@@ -160,31 +167,67 @@ export function YouTubeViewer({
     })
   }, [redraw])
 
-  const fitWrapper = useCallback(() => {
+  // Position the wrapper. When a shared ViewTransform is provided, its
+  // (offsetX, offsetY, scale) drives the iframe placement so YouTube zoom/pan
+  // stays in lockstep with the drawing canvas. Otherwise fall back to a
+  // self-fit that centers the 16:9 wrapper in the container.
+  const applyPlacement = useCallback(() => {
     const container = containerRef.current
     const wrapper = wrapperRef.current
     if (!container || !wrapper) return
     const rect = container.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
 
-    const fit = Math.min(rect.width / LOGICAL_WIDTH, rect.height / LOGICAL_HEIGHT)
-    const w = LOGICAL_WIDTH * fit
-    const h = LOGICAL_HEIGHT * fit
-    wrapper.style.width = `${w}px`
-    wrapper.style.height = `${h}px`
-    wrapper.style.left = `${(rect.width - w) / 2}px`
-    wrapper.style.top = `${(rect.height - h) / 2}px`
+    if (viewTransform) {
+      const vt = viewTransform.get()
+      wrapper.style.left = `${vt.offsetX}px`
+      wrapper.style.top = `${vt.offsetY}px`
+      wrapper.style.width = `${LOGICAL_WIDTH * vt.scale}px`
+      wrapper.style.height = `${LOGICAL_HEIGHT * vt.scale}px`
+    } else {
+      const fit = Math.min(rect.width / LOGICAL_WIDTH, rect.height / LOGICAL_HEIGHT)
+      const w = LOGICAL_WIDTH * fit
+      const h = LOGICAL_HEIGHT * fit
+      wrapper.style.width = `${w}px`
+      wrapper.style.height = `${h}px`
+      wrapper.style.left = `${(rect.width - w) / 2}px`
+      wrapper.style.top = `${(rect.height - h) / 2}px`
+    }
     redraw()
-  }, [redraw])
+  }, [redraw, viewTransform])
+
+  // When this viewer owns the fit, compute it from the container rect and push
+  // it into the shared ViewTransform. The placement subscriber will then react.
+  const writeFitToTransform = useCallback(() => {
+    const container = containerRef.current
+    if (!container || !viewTransform || !isFitLeader) return
+    const rect = container.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return
+    viewTransform.fitTo(
+      { width: rect.width, height: rect.height },
+      { width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT },
+    )
+  }, [viewTransform, isFitLeader])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const observer = new ResizeObserver(() => fitWrapper())
+    const observer = new ResizeObserver(() => {
+      writeFitToTransform()
+      applyPlacement()
+    })
     observer.observe(container)
-    fitWrapper()
+    writeFitToTransform()
+    applyPlacement()
     return () => observer.disconnect()
-  }, [fitWrapper])
+  }, [writeFitToTransform, applyPlacement])
+
+  // Subscribe to transform changes driven by the drawing canvas so the iframe
+  // follows along when the user zooms/pans on the other panel.
+  useEffect(() => {
+    if (!viewTransform) return
+    return viewTransform.subscribe(applyPlacement)
+  }, [viewTransform, applyPlacement])
 
   useEffect(() => {
     redraw()

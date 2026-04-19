@@ -38,10 +38,13 @@ function SplitLayoutInner() {
   const [fixedImageUrl, setFixedImageUrl] = useState<string | null>(null)
   const [localImageUrl, setLocalImageUrl] = useState<string | null>(null)
 
-  // The reference side can drive the fit only when an ImageViewer is actually rendering
-  // (i.e. reference is an image-backed fixed source). Otherwise the drawing canvas leads.
+  // The reference side can drive the fit when a fit-capable viewer is rendering
+  // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
+  // to the shared ViewTransform). Otherwise (Sketchfab browse / no reference) the
+  // drawing canvas leads.
   const fitLeader: 'reference' | 'drawing' =
-    referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab')
+    source === 'youtube' ||
+    (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab'))
       ? 'reference'
       : 'drawing'
 
