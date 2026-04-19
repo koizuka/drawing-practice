@@ -313,7 +313,7 @@ export function YouTubeViewer({
   const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default'
 
   return (
-    <Box ref={containerRef} sx={{ position: 'absolute', inset: 0, bgcolor: '#000' }}>
+    <Box ref={containerRef} sx={{ position: 'absolute', inset: 0, bgcolor: '#000', overflow: 'hidden' }}>
       <Box ref={wrapperRef} sx={{ position: 'absolute' }}>
         <iframe
           key={videoId}
