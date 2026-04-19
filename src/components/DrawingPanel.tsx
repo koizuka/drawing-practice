@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
 import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
+import type { ViewTransform } from '../drawing/ViewTransform'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { useGuides } from '../guides/useGuides'
 import { formatTime, type TimerHandle } from '../hooks/useTimer'
@@ -35,9 +36,13 @@ interface DrawingPanelProps {
    */
   historySyncVersion?: number
   isFlipped?: boolean
+  /** Optional shared ViewTransform for zoom sync with ReferencePanel. */
+  viewTransform?: ViewTransform
+  /** Which panel owns the fit calculation. */
+  fitLeader?: 'reference' | 'drawing'
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -314,6 +319,8 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           fitSize={referenceSize ?? undefined}
           isFlipped={isFlipped}
           onCurrentStrokeChange={onCurrentStrokeChange}
+          viewTransform={viewTransform}
+          isFitLeader={fitLeader === 'drawing'}
         />
       </Box>
 

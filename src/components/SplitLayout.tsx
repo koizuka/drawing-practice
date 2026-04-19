@@ -9,6 +9,7 @@ import { useGuides } from '../guides/useGuides'
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel'
 import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
+import { ViewTransform } from '../drawing/ViewTransform'
 import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
 import { t } from '../i18n'
@@ -28,11 +29,24 @@ function SplitLayoutInner() {
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null)
   const strokeManagerRef = useRef<StrokeManager | null>(null)
 
+  // Shared ViewTransform instance for zoom/pan sync between ReferencePanel and DrawingPanel.
+  const viewTransformRef = useRef(new ViewTransform())
+
   // Lifted state from ReferencePanel
   const [source, setSource] = useState<ReferenceSource>('none')
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>('browse')
   const [fixedImageUrl, setFixedImageUrl] = useState<string | null>(null)
   const [localImageUrl, setLocalImageUrl] = useState<string | null>(null)
+
+  // The reference side can drive the fit when a fit-capable viewer is rendering
+  // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
+  // to the shared ViewTransform). Otherwise (Sketchfab browse / no reference) the
+  // drawing canvas leads.
+  const fitLeader: 'reference' | 'drawing' =
+    source === 'youtube' ||
+    (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab'))
+      ? 'reference'
+      : 'drawing'
 
   // Timer (lifted from DrawingPanel for autosave access)
   const timer = useTimer()
@@ -330,6 +344,8 @@ function SplitLayoutInner() {
           onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
           isFlipped={isFlipped}
           onToggleFlip={handleToggleFlip}
+          viewTransform={viewTransformRef.current}
+          fitLeader={fitLeader}
         />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -346,6 +362,8 @@ function SplitLayoutInner() {
           restoreVersion={restoreVersion}
           historySyncVersion={historySyncVersion}
           isFlipped={isFlipped}
+          viewTransform={viewTransformRef.current}
+          fitLeader={fitLeader}
         />
       </Box>
       </Box>
