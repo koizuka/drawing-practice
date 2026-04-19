@@ -36,6 +36,15 @@ export function parseYouTubeVideoId(rawUrl: string): string | null {
   return null
 }
 
+/**
+ * Canonical watch-page URL used as the URL-history dedup key. All surface
+ * forms of the same video (`youtu.be/X`, `youtube.com/watch?v=X`, `...&t=30s`)
+ * collapse onto this single key.
+ */
+export function buildYouTubeCanonicalUrl(videoId: string): string {
+  return `https://youtu.be/${videoId}`
+}
+
 export function buildYouTubeEmbedUrl(videoId: string): string {
   const params = new URLSearchParams({
     playsinline: '1',

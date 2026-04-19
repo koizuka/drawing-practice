@@ -12,6 +12,8 @@ import { StrokeManager } from '../drawing/StrokeManager'
 import { ViewTransform } from '../drawing/ViewTransform'
 import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
+import { addUrlHistory } from '../storage/urlHistoryStore'
+import { buildYouTubeCanonicalUrl } from '../utils/youtube'
 import { t } from '../i18n'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types'
@@ -58,6 +60,9 @@ function SplitLayoutInner() {
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
   const loadSketchfabModelFnRef = useRef<((uid: string) => void) | null>(null)
+  // Ref for refreshing the URL history dropdown after parent-initiated adds
+  // (e.g. Gallery "use this reference" reload).
+  const reloadUrlHistoryFnRef = useRef<(() => void) | null>(null)
 
   // Change version counter for autosave debouncing
   const [changeVersion, setChangeVersion] = useState(0)
@@ -201,8 +206,16 @@ function SplitLayoutInner() {
     loadSketchfabModelFnRef.current = fn
   }, [])
 
+  const handleRegisterReloadUrlHistory = useCallback((fn: () => void) => {
+    reloadUrlHistoryFnRef.current = fn
+  }, [])
+
   // Gallery "load reference" handler — routed through changeReference so the
-  // user can undo back to the previously-loaded reference.
+  // user can undo back to the previously-loaded reference. URL-representable
+  // sources (url / youtube / pexels) are also recorded into the URL history
+  // dropdown so reopening from the gallery surfaces them next to URL-pasted
+  // entries. Sketchfab (UID-based) and local-file images are not URL-
+  // representable, so they're skipped.
   const handleLoadReference = useCallback((info: ReferenceInfo) => {
     changeReference(s => {
       if (info.source === 'sketchfab' && info.sketchfabUid) {
@@ -232,6 +245,18 @@ function SplitLayoutInner() {
         s.setReferenceInfo(info)
       }
     })
+
+    let historyAdd: Promise<void> | null = null
+    if (info.source === 'url' && info.imageUrl) {
+      historyAdd = addUrlHistory(info.imageUrl, 'url', info.title)
+    } else if (info.source === 'youtube' && info.youtubeVideoId) {
+      historyAdd = addUrlHistory(buildYouTubeCanonicalUrl(info.youtubeVideoId), 'youtube', info.title)
+    } else if (info.source === 'pexels' && info.pexelsPageUrl) {
+      historyAdd = addUrlHistory(info.pexelsPageUrl, 'pexels', info.title)
+    }
+    if (historyAdd) {
+      historyAdd.then(() => reloadUrlHistoryFnRef.current?.()).catch(() => { /* ignore */ })
+    }
   }, [changeReference])
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
@@ -353,6 +378,7 @@ function SplitLayoutInner() {
           onReferenceChange={changeReference}
           onReferenceResetOnError={resetReferenceOnError}
           onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
+          onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
           isFlipped={isFlipped}
           onToggleFlip={handleToggleFlip}
           viewTransform={viewTransformRef.current}
