@@ -47,3 +47,23 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
   }
   return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
 }
+
+/**
+ * Fetch the video title via YouTube's public oEmbed endpoint. Returns null
+ * when the video is private/removed/age-gated, or when the network fails.
+ * The endpoint sets `Access-Control-Allow-Origin: *`, so this works from the
+ * browser without a proxy.
+ */
+export async function fetchYouTubeTitle(videoId: string, signal?: AbortSignal): Promise<string | null> {
+  if (!isValidVideoId(videoId)) return null
+  const target = `https://www.youtube.com/watch?v=${videoId}`
+  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(target)}&format=json`
+  try {
+    const res = await fetch(oembedUrl, { signal })
+    if (!res.ok) return null
+    const data = await res.json() as { title?: unknown }
+    return typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null
+  } catch {
+    return null
+  }
+}

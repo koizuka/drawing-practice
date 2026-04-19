@@ -1,4 +1,5 @@
-import { parseYouTubeVideoId, buildYouTubeEmbedUrl } from './youtube'
+import { vi, afterEach } from 'vitest'
+import { parseYouTubeVideoId, buildYouTubeEmbedUrl, fetchYouTubeTitle } from './youtube'
 
 describe('parseYouTubeVideoId', () => {
   it('extracts id from youtube.com/watch?v=', () => {
@@ -64,5 +65,58 @@ describe('buildYouTubeEmbedUrl', () => {
     expect(url).toContain('playsinline=1')
     expect(url).toContain('rel=0')
     expect(url).toContain('modestbranding=1')
+  })
+})
+
+describe('fetchYouTubeTitle', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('returns the title from oEmbed response', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ title: 'Never Gonna Give You Up' }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const title = await fetchYouTubeTitle('dQw4w9WgXcQ')
+    expect(title).toBe('Never Gonna Give You Up')
+    const calledWith = fetchMock.mock.calls[0][0] as string
+    expect(calledWith).toContain('youtube.com/oembed')
+    expect(calledWith).toContain(encodeURIComponent('https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
+  })
+
+  it('trims the returned title', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ title: '  Spaced Title  ' }),
+    }))
+    expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBe('Spaced Title')
+  })
+
+  it('returns null on non-ok response (private/removed video)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) }))
+    expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBeNull()
+  })
+
+  it('returns null on network error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('network down')))
+    expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBeNull()
+  })
+
+  it('returns null when title is missing or empty', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ title: '   ' }),
+    }))
+    expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBeNull()
+  })
+
+  it('returns null for an invalid video id without calling fetch', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    expect(await fetchYouTubeTitle('not-11-chars')).toBeNull()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })

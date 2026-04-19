@@ -28,6 +28,15 @@ export interface SessionDraft {
   updatedAt: Date
 }
 
+export type UrlHistoryType = 'youtube' | 'pexels' | 'url'
+
+export interface UrlHistoryEntry {
+  url: string
+  type: UrlHistoryType
+  title?: string
+  lastUsedAt: Date
+}
+
 // Scope database name by deploy path so PR previews don't share data.
 // Keep the original name for the main deployment to preserve existing data.
 const DB_BASE_NAME = 'DrawingPracticeDB'
@@ -39,6 +48,7 @@ const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`
 const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>
   session: EntityTable<SessionDraft, 'id'>
+  urlHistory: EntityTable<UrlHistoryEntry, 'url'>
 }
 
 db.version(1).stores({
@@ -52,6 +62,12 @@ db.version(2).stores({
 db.version(3).stores({
   drawings: '++id, createdAt',
   session: 'id',
+})
+
+db.version(4).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
 })
 
 export { db }

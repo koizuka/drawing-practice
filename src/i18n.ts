@@ -63,6 +63,7 @@ const messages = {
     'urlPlaceholder': 'Image, YouTube, or Pexels URL...',
     'loadUrl': 'Load',
     'urlLoadFailed': 'Failed to load image from URL.',
+    'urlHistoryDelete': 'Remove from history',
     'autosaveDisabled': 'Autosave is disabled because another tab is active. Changes in this tab will not be saved automatically.',
 
     // Pexels
@@ -152,6 +153,7 @@ const messages = {
     'urlPlaceholder': '画像・YouTube・PexelsのURL...',
     'loadUrl': '読込',
     'urlLoadFailed': 'URLからの画像の読み込みに失敗しました。',
+    'urlHistoryDelete': '履歴から削除',
     'autosaveDisabled': '別のタブが開いているため、オートセーブが無効です。このタブの変更は自動保存されません。',
 
     // Pexels
