@@ -40,9 +40,14 @@ interface DrawingPanelProps {
   viewTransform?: ViewTransform
   /** Which panel owns the fit calculation. */
   fitLeader?: 'reference' | 'drawing'
+  /**
+   * Incremented by the parent to trigger an external view reset (e.g. on
+   * device orientation change). Bumps the internal viewResetVersion.
+   */
+  externalResetVersion?: number
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, externalResetVersion }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -80,6 +85,8 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
       setCanRedo(strokeManagerRef.current.canRedo())
     }
   }, [historySyncVersion])
+
+  const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
 
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())
@@ -312,7 +319,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           onStrokeCountChange={handleStrokeCountChange}
           strokeManagerRef={strokeManagerRef}
           redrawVersion={redrawVersion}
-          viewResetVersion={viewResetVersion}
+          viewResetVersion={combinedResetVersion}
           grid={grid}
           guideLines={lines}
           guideVersion={guideVersion}

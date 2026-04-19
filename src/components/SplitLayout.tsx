@@ -63,6 +63,17 @@ function SplitLayoutInner() {
   const [changeVersion, setChangeVersion] = useState(0)
   // Restore version to notify DrawingPanel after draft restore
   const [restoreVersion, setRestoreVersion] = useState(0)
+  // Explicit refit trigger on rotation — ResizeObservers don't auto-refit so
+  // user zoom survives incidental resizes, but rotation flips the layout hard
+  // enough that a refit is still wanted.
+  const [orientationResetVersion, setOrientationResetVersion] = useState(0)
+  const prevOrientationRef = useRef(orientation)
+  useEffect(() => {
+    if (prevOrientationRef.current !== orientation) {
+      prevOrientationRef.current = orientation
+      setOrientationResetVersion(v => v + 1)
+    }
+  }, [orientation])
   // History sync version: incremented when the StrokeManager's undo/redo
   // stacks change outside DrawingPanel (e.g. SplitLayout records a reference
   // change). DrawingPanel listens to this to refresh its canUndo/canRedo UI.
@@ -346,6 +357,7 @@ function SplitLayoutInner() {
           onToggleFlip={handleToggleFlip}
           viewTransform={viewTransformRef.current}
           fitLeader={fitLeader}
+          externalResetVersion={orientationResetVersion}
         />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
@@ -364,6 +376,7 @@ function SplitLayoutInner() {
           isFlipped={isFlipped}
           viewTransform={viewTransformRef.current}
           fitLeader={fitLeader}
+          externalResetVersion={orientationResetVersion}
         />
       </Box>
       </Box>

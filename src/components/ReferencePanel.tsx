@@ -223,6 +223,11 @@ interface ReferencePanelProps {
   viewTransform?: ViewTransform
   /** Which panel owns the fit calculation. */
   fitLeader?: 'reference' | 'drawing'
+  /**
+   * Incremented by the parent to trigger an external view reset (e.g. on
+   * device orientation change). Bumps the internal viewResetVersion.
+   */
+  externalResetVersion?: number
 }
 
 export function ReferencePanel({
@@ -231,7 +236,7 @@ export function ReferencePanel({
   source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
   onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
-  viewTransform, fitLeader,
+  viewTransform, fitLeader, externalResetVersion,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
@@ -249,6 +254,8 @@ export function ReferencePanel({
   useEffect(() => {
     reloadUrlHistory()
   }, [reloadUrlHistory])
+
+  const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
 
   // Sketchfab viewer state (reported by child)
   const [sfShowViewer, setSfShowViewer] = useState(false)
@@ -563,7 +570,7 @@ export function ReferencePanel({
           </Button>
         )}
 
-        {/* Guide line tools (fixed images or YouTube) */}
+        {/* Guide line tools — add/delete-mode require a viewer to interact with. */}
         {(isFixed || isYouTube) && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
@@ -605,6 +612,19 @@ export function ReferencePanel({
                   <Trash2 size={20} />
                 </IconButton>
               </span>
+            </Tooltip>
+          </>
+        )}
+
+        {/* Clear-all works on guide state alone, so stay available even with no
+            reference loaded — otherwise stale guides become undeletable. */}
+        {!(isFixed || isYouTube) && lines.length > 0 && (
+          <>
+            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+            <Tooltip title={t('clearGuideLines')}>
+              <IconButton size="small" onClick={clearLines}>
+                <Trash2 size={20} />
+              </IconButton>
             </Tooltip>
           </>
         )}
@@ -880,7 +900,7 @@ export function ReferencePanel({
         {isFixed && displayImageUrl && (
           <ImageViewer
             imageUrl={displayImageUrl}
-            viewResetVersion={viewResetVersion}
+            viewResetVersion={combinedResetVersion}
             grid={grid}
             guideLines={lines}
             guideVersion={guideVersion}
