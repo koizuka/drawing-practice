@@ -4,7 +4,7 @@ import { X, Trash2 } from 'lucide-react'
 import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
-import type { ReferenceInfo } from './SketchfabViewer'
+import type { ReferenceInfo } from '../types'
 
 interface GalleryProps {
   onClose: () => void

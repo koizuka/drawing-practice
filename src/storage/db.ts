@@ -1,8 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import type { Stroke } from '../drawing/types'
-import type { ReferenceInfo } from '../components/SketchfabViewer'
 import type { GuideLine, GridSettings } from '../guides/types'
-import type { ReferenceSource } from '../types'
+import type { ReferenceInfo, ReferenceSource } from '../types'
 
 export interface DrawingRecord {
   id?: number

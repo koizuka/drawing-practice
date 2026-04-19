@@ -18,13 +18,13 @@ import {
   searchPhotos,
   type PexelsPhoto,
 } from '../utils/pexels'
-import type { ReferenceInfo } from './SketchfabViewer'
+import type { ReferenceInfo } from '../types'
 import { t } from '../i18n'
 
 type Orientation = 'all' | 'landscape' | 'portrait' | 'square'
 
 interface PexelsSearcherProps {
-  onSelectPhoto: (info: ReferenceInfo) => void
+  onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>) => void
   onOpenApiKeySettings: () => void
   initialQuery?: string
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */

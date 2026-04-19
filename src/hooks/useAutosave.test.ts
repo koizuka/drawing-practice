@@ -24,7 +24,7 @@ describe('useAutosave', () => {
     redoStack: [],
     elapsedMs: 5000,
     source: 'sketchfab' as const,
-    referenceInfo: { title: 'Test', author: 'Author', source: 'sketchfab' as const },
+    referenceInfo: { title: 'Test', author: 'Author', source: 'sketchfab' as const, sketchfabUid: 'test-uid' },
     referenceImageData: 'data:image/png;base64,abc',
     grid: { mode: 'normal' as const },
     lines: [],

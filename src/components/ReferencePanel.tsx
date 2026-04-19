@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink } from '@mui/material'
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings } from 'lucide-react'
-import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
+import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { YouTubeViewer } from './YouTubeViewer'
 import { PexelsSearcher } from './PexelsSearcher'
@@ -19,7 +19,7 @@ import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
 import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
-import type { ReferenceSource, ReferenceMode } from '../types'
+import type { ReferenceSource, ReferenceMode, ReferenceInfo } from '../types'
 
 /**
  * Raw setters for the reference-related state living in SplitLayout. Exposed
@@ -283,12 +283,11 @@ export function ReferencePanel({
     })
   }, [onReferenceChange])
 
-  const handleSelectPexelsPhoto = useCallback((info: ReferenceInfo) => {
-    if (!info.pexelsImageUrl) return
+  const handleSelectPexelsPhoto = useCallback((info: Extract<ReferenceInfo, { source: 'pexels' }>) => {
     onReferenceChange(s => {
       s.setSource('pexels')
       s.setReferenceMode('fixed')
-      s.setFixedImageUrl(info.pexelsImageUrl ?? null)
+      s.setFixedImageUrl(info.pexelsImageUrl)
       s.setLocalImageUrl(null)
       s.setReferenceInfo(info)
     })
@@ -636,7 +635,7 @@ export function ReferencePanel({
         )}
 
         {/* YouTube viewer */}
-        {isYouTube && refInfo?.youtubeVideoId && (
+        {refInfo?.source === 'youtube' && (
           <YouTubeViewer
             videoId={refInfo.youtubeVideoId}
             grid={grid}
@@ -666,7 +665,7 @@ export function ReferencePanel({
             py: 0.5,
             borderRadius: 1,
             maxWidth: '80%',
-            pointerEvents: (refInfo.pexelsPhotographerUrl || refInfo.pexelsPageUrl) ? 'auto' : 'none',
+            pointerEvents: refInfo.source === 'pexels' && (refInfo.pexelsPhotographerUrl || refInfo.pexelsPageUrl) ? 'auto' : 'none',
           }}>
             {refInfo.title && (
               <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

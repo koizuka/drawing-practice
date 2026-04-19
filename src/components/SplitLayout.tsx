@@ -13,8 +13,7 @@ import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
 import { t } from '../i18n'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
-import type { ReferenceInfo } from './SketchfabViewer'
-import type { ReferenceSource, ReferenceMode } from '../types'
+import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types'
 
 function SplitLayoutInner() {
   const hasSessionLock = useSessionLock()
@@ -271,19 +270,20 @@ function SplitLayoutInner() {
         setSource(draft.source)
         setReferenceInfo(draft.referenceInfo)
 
+        const info = draft.referenceInfo
         if (draft.source === 'image' && draft.referenceImageData) {
           setLocalImageUrl(draft.referenceImageData)
           setReferenceMode('fixed')
         } else if (draft.source === 'sketchfab' && draft.referenceImageData) {
           setFixedImageUrl(draft.referenceImageData)
           setReferenceMode('fixed')
-        } else if (draft.source === 'url' && draft.referenceInfo?.imageUrl) {
-          setFixedImageUrl(draft.referenceInfo.imageUrl)
+        } else if (info?.source === 'url') {
+          setFixedImageUrl(info.imageUrl)
           setReferenceMode('fixed')
-        } else if (draft.source === 'youtube' && draft.referenceInfo?.youtubeVideoId) {
+        } else if (info?.source === 'youtube') {
           setReferenceMode('browse')
-        } else if (draft.source === 'pexels' && draft.referenceInfo?.pexelsImageUrl) {
-          setFixedImageUrl(draft.referenceInfo.pexelsImageUrl)
+        } else if (info?.source === 'pexels') {
+          setFixedImageUrl(info.pexelsImageUrl)
           setReferenceMode('fixed')
         }
       }

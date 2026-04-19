@@ -10,7 +10,7 @@ import { saveDrawing } from '../storage'
 import { generateThumbnail } from '../storage/generateThumbnail'
 import { Gallery } from './Gallery'
 import { t } from '../i18n'
-import type { ReferenceInfo } from '../components/SketchfabViewer'
+import type { ReferenceInfo } from '../types'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
 
 interface DrawingPanelProps {
