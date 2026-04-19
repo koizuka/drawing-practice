@@ -217,6 +217,11 @@ interface ReferencePanelProps {
   /** Non-undoable reset used when an image fails to load. */
   onReferenceResetOnError: () => void
   onRegisterLoadSketchfabModel?: (fn: (uid: string) => void) => void
+  /**
+   * Allows the parent to trigger a refresh of the URL history dropdown after
+   * it adds an entry itself (e.g. Gallery "use this reference" reload).
+   */
+  onRegisterReloadUrlHistory?: (fn: () => void) => void
   isFlipped?: boolean
   onToggleFlip?: () => void
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -235,7 +240,8 @@ export function ReferencePanel({
   onReferenceImageSize, overlayActive, onToggleOverlay,
   source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
   onReferenceChange, onReferenceResetOnError,
-  onRegisterLoadSketchfabModel, isFlipped, onToggleFlip,
+  onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
+  isFlipped, onToggleFlip,
   viewTransform, fitLeader, externalResetVersion,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
@@ -251,9 +257,17 @@ export function ReferencePanel({
     getUrlHistory().then(setUrlHistory).catch(() => { /* ignore storage errors */ })
   }, [])
 
+  const addAndReloadHistory = useCallback((url: string, type: UrlHistoryType, title?: string) => {
+    return addUrlHistory(url, type, title).then(reloadUrlHistory).catch(() => { /* ignore */ })
+  }, [reloadUrlHistory])
+
   useEffect(() => {
     reloadUrlHistory()
   }, [reloadUrlHistory])
+
+  useEffect(() => {
+    onRegisterReloadUrlHistory?.(reloadUrlHistory)
+  }, [onRegisterReloadUrlHistory, reloadUrlHistory])
 
   const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
 
@@ -328,8 +342,7 @@ export function ReferencePanel({
       setUrlLoading(false)
       fetchYouTubeTitle(ytId)
         .catch(() => null)
-        .then(title => addUrlHistory(url, 'youtube', title ?? undefined))
-        .then(reloadUrlHistory)
+        .then(title => addAndReloadHistory(url, 'youtube', title ?? undefined))
         .catch(() => { /* ignore */ })
       return
     }
@@ -348,7 +361,7 @@ export function ReferencePanel({
             s.setReferenceInfo(info)
           })
           setUrlInput('')
-          addUrlHistory(url, 'pexels', info.title).then(reloadUrlHistory).catch(() => { /* ignore */ })
+          void addAndReloadHistory(url, 'pexels', info.title)
         })
         .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
         .finally(() => setUrlLoading(false))
@@ -372,7 +385,7 @@ export function ReferencePanel({
         s.setReferenceMode('fixed')
       })
       setUrlInput('')
-      addUrlHistory(url, 'url').then(reloadUrlHistory).catch(() => { /* ignore */ })
+      void addAndReloadHistory(url, 'url')
     }
 
     // Preload image: try CORS first, then without, check naturalWidth
@@ -390,7 +403,7 @@ export function ReferencePanel({
       retry.src = url
     }
     img.src = url
-  }, [onReferenceChange, reloadUrlHistory])
+  }, [onReferenceChange, addAndReloadHistory])
 
   const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
     onReferenceChange(s => {
@@ -447,7 +460,10 @@ export function ReferencePanel({
       s.setLocalImageUrl(null)
       s.setReferenceInfo(info)
     })
-  }, [onReferenceChange])
+    if (info.pexelsPageUrl) {
+      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', info.title)
+    }
+  }, [onReferenceChange, addAndReloadHistory])
 
   const handleBackToPexelsSearch = useCallback(() => {
     onReferenceChange(s => {

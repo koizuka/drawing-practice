@@ -106,6 +106,44 @@ describe('urlHistoryStore', () => {
       expect(arg.title).toBeUndefined()
     })
 
+    it('canonicalizes YouTube URLs to https://youtu.be/<id> before storing', async () => {
+      await addUrlHistory('https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=30s', 'youtube')
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.url).toBe('https://youtu.be/dQw4w9WgXcQ')
+    })
+
+    it('looks up existing YouTube entries by canonical key so titles survive across surface variants', async () => {
+      mockGet().mockResolvedValueOnce({
+        url: 'https://youtu.be/dQw4w9WgXcQ',
+        type: 'youtube',
+        title: 'Cached Title',
+        lastUsedAt: new Date(1000),
+      })
+      // Different surface form, same video — should hit the cached entry.
+      await addUrlHistory('https://www.youtube.com/watch?v=dQw4w9WgXcQ', 'youtube')
+      expect(mockGet()).toHaveBeenCalledWith('https://youtu.be/dQw4w9WgXcQ')
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.url).toBe('https://youtu.be/dQw4w9WgXcQ')
+      expect(arg.title).toBe('Cached Title')
+    })
+
+    it('does not canonicalize non-YouTube URLs', async () => {
+      await addUrlHistory('https://www.pexels.com/photo/whatever-12345/', 'pexels', 'shot')
+      await addUrlHistory('https://example.com/a.jpg?v=2', 'url')
+      const pexelsArg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      const urlArg = mockPut().mock.calls[1][0] as UrlHistoryEntry
+      expect(pexelsArg.url).toBe('https://www.pexels.com/photo/whatever-12345/')
+      expect(urlArg.url).toBe('https://example.com/a.jpg?v=2')
+    })
+
+    it('leaves a YouTube URL untouched when the video ID cannot be parsed', async () => {
+      // Not a valid YouTube watch URL — falls back to using the input as-is so
+      // the user still sees their entry rather than silently losing it.
+      await addUrlHistory('https://www.youtube.com/results?search_query=foo', 'youtube')
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.url).toBe('https://www.youtube.com/results?search_query=foo')
+    })
+
     it('deletes the oldest entries when count exceeds the limit', async () => {
       const overLimit = URL_HISTORY_LIMIT + 3
       const entries: UrlHistoryEntry[] = Array.from({ length: overLimit }, (_, i) => ({
