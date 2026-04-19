@@ -17,8 +17,8 @@
     "@mui/material": "^7.3.9",
     "dexie": "^4.4.2",
     "lucide-react": "^1.8.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
