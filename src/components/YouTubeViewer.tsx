@@ -209,18 +209,22 @@ export function YouTubeViewer({
     )
   }, [viewTransform, isFitLeader])
 
+  // Initial fit only — resize is handled by the placement-only observer below
+  // so the ViewTransform survives incidental resizes.
+  useEffect(() => {
+    writeFitToTransform()
+  }, [writeFitToTransform])
+
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     const observer = new ResizeObserver(() => {
-      writeFitToTransform()
       applyPlacement()
     })
     observer.observe(container)
-    writeFitToTransform()
     applyPlacement()
     return () => observer.disconnect()
-  }, [writeFitToTransform, applyPlacement])
+  }, [applyPlacement])
 
   // Subscribe to transform changes driven by the drawing canvas so the iframe
   // follows along when the user zooms/pans on the other panel.

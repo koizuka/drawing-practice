@@ -166,8 +166,23 @@ export function ImageViewer({
     return viewTransform.subscribe(requestRedraw)
   }, [viewTransform, requestRedraw])
 
-  // Fit image to canvas on load. Canvas size is updated regardless of fit ownership;
-  // only the ViewTransform write is gated by isFitLeader.
+  // Buffer-only resize — leaves the ViewTransform alone so resize events don't
+  // clobber the user's manual zoom/pan.
+  const resizeCanvas = useCallback(() => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    const dpr = window.devicePixelRatio || 1
+    const rect = container.getBoundingClientRect()
+    canvas.width = rect.width * dpr
+    canvas.height = rect.height * dpr
+    canvas.style.width = `${rect.width}px`
+    canvas.style.height = `${rect.height}px`
+
+    redraw()
+  }, [redraw])
+
   const fitImage = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -222,14 +237,13 @@ export function ImageViewer({
   // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when URL changes
   }, [imageUrl])
 
-  // ResizeObserver
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    const observer = new ResizeObserver(() => fitImage())
+    const observer = new ResizeObserver(() => resizeCanvas())
     observer.observe(container)
     return () => observer.disconnect()
-  }, [fitImage])
+  }, [resizeCanvas])
 
   // Reset view
   useEffect(() => {

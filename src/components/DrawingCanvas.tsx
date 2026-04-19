@@ -151,13 +151,10 @@ export function DrawingCanvas({
 
     rendererRef.current = new CanvasRenderer(ctx)
 
-    // Re-fit to reference size on resize, only when this panel owns the fit.
-    // When the reference panel is leading (shared-VT mode), it drives the fit and we just redraw.
-    if (fitSize && isFitLeader) {
-      fitToSize()
-    }
+    // Resize does not refit — that would clobber the user's manual zoom/pan.
+    // Fit happens only on fitSize change or viewResetVersion bump.
     redrawAll()
-  }, [redrawAll, fitSize, fitToSize, isFitLeader])
+  }, [redrawAll])
 
   // ResizeObserver
   useEffect(() => {
@@ -188,13 +185,16 @@ export function DrawingCanvas({
     }
   }, [viewResetVersion, redrawAll, fitSize, fitToSize])
 
-  // Re-fit when fitSize changes — only when this panel owns the fit.
+  // fitToSize/redrawAll omitted from deps on purpose: their identities churn
+  // on unrelated state (e.g. highlightedStrokeIndex), which would refit and
+  // clobber the user's manual zoom.
   useEffect(() => {
     if (fitSize && isFitLeader) {
       fitToSize()
       redrawAll()
     }
-  }, [fitSize, fitToSize, redrawAll, isFitLeader])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitSize, isFitLeader])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
