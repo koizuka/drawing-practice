@@ -200,6 +200,12 @@ function SplitLayoutInner() {
         s.setFixedImageUrl(null)
         s.setLocalImageUrl(null)
         s.setReferenceInfo(info)
+      } else if (info.source === 'pexels' && info.pexelsImageUrl) {
+        s.setSource('pexels')
+        s.setReferenceMode('fixed')
+        s.setFixedImageUrl(info.pexelsImageUrl)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo(info)
       }
     })
   }, [changeReference])
@@ -276,6 +282,9 @@ function SplitLayoutInner() {
           setReferenceMode('fixed')
         } else if (draft.source === 'youtube' && draft.referenceInfo?.youtubeVideoId) {
           setReferenceMode('browse')
+        } else if (draft.source === 'pexels' && draft.referenceInfo?.pexelsImageUrl) {
+          setFixedImageUrl(draft.referenceInfo.pexelsImageUrl)
+          setReferenceMode('fixed')
         }
       }
 
