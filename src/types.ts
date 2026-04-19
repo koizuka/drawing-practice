@@ -38,3 +38,20 @@ export type ReferenceInfo =
       pexelsPhotographerUrl?: string
       pexelsPageUrl?: string
     })
+
+/**
+ * Stable identity key for a reference. Used as a React `key` so that
+ * reference-scoped UI state remounts when the user switches to a different
+ * reference. Keyed on the per-variant unique identifier rather than on
+ * title/author, so two different items that happen to share metadata do not
+ * collide.
+ */
+export function referenceKey(info: ReferenceInfo): string {
+  switch (info.source) {
+    case 'sketchfab': return `sketchfab:${info.sketchfabUid}`
+    case 'image': return `image:${info.fileName}`
+    case 'url': return `url:${info.imageUrl}`
+    case 'youtube': return `youtube:${info.youtubeVideoId}`
+    case 'pexels': return `pexels:${info.pexelsPhotoId}`
+  }
+}

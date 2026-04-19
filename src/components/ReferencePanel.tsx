@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink } from '@mui/material'
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings } from 'lucide-react'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { YouTubeViewer } from './YouTubeViewer'
@@ -19,7 +19,7 @@ import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
 import { t } from '../i18n'
 import type { Stroke } from '../drawing/types'
-import type { ReferenceSource, ReferenceMode, ReferenceInfo } from '../types'
+import { referenceKey, type ReferenceSource, type ReferenceMode, type ReferenceInfo } from '../types'
 
 /**
  * Raw setters for the reference-related state living in SplitLayout. Exposed
@@ -68,6 +68,101 @@ function GridIcon({ mode }: { mode: GridMode }) {
       <line x1="10" y1="1" x2="10" y2="19" strokeWidth="2" />
       <line x1="1" y1="10" x2="19" y2="10" strokeWidth="2" />
     </svg>
+  )
+}
+
+/**
+ * Reference-source attribution pill shown over the bottom-left of the
+ * reference image. Collapses to a small info icon on user tap so it doesn't
+ * cover the lower portion of the reference while drawing. Parent keys this
+ * component by reference identity, so a new reference remounts it in the
+ * expanded state.
+ */
+function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
+  const [collapsed, setCollapsed] = useState(false)
+  return (
+    <Box sx={{
+      position: 'absolute',
+      bottom: 8,
+      left: 8,
+      zIndex: 5,
+      pointerEvents: 'none',
+    }}>
+      {collapsed ? (
+        <Tooltip title={t('expandReferenceInfo')}>
+          <IconButton
+            size="small"
+            onClick={() => setCollapsed(false)}
+            aria-label={t('expandReferenceInfo')}
+            sx={{
+              pointerEvents: 'auto',
+              bgcolor: 'rgba(0,0,0,0.5)',
+              color: 'white',
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
+            }}
+          >
+            <Info size={18} />
+          </IconButton>
+        </Tooltip>
+      ) : (
+        <Box sx={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 0.5,
+          pointerEvents: 'auto',
+          bgcolor: 'rgba(0,0,0,0.5)',
+          color: 'white',
+          pl: 1,
+          pr: 0.5,
+          py: 0.5,
+          borderRadius: 1,
+          maxWidth: '80%',
+        }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {refInfo.title && (
+              <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refInfo.title}
+              </Typography>
+            )}
+            {refInfo.author && (
+              <Typography variant="caption" sx={{ display: 'block', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
+                  <>
+                    {t('pexelsPhotoBy')}{' '}
+                    <MuiLink href={refInfo.pexelsPhotographerUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                      {refInfo.author}
+                    </MuiLink>
+                    {refInfo.pexelsPageUrl && (
+                      <>
+                        {' · '}
+                        <MuiLink href={refInfo.pexelsPageUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                          {t('pexelsViaPexels')}
+                        </MuiLink>
+                      </>
+                    )}
+                  </>
+                ) : refInfo.author}
+              </Typography>
+            )}
+          </Box>
+          <Tooltip title={t('collapseReferenceInfo')}>
+            <IconButton
+              size="small"
+              onClick={() => setCollapsed(true)}
+              aria-label={t('collapseReferenceInfo')}
+              sx={{
+                flexShrink: 0,
+                color: 'white',
+                p: 0.25,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+              }}
+            >
+              <X size={14} />
+            </IconButton>
+          </Tooltip>
+        </Box>
+      )}
+    </Box>
   )
 }
 
@@ -654,45 +749,10 @@ export function ReferencePanel({
 
         {/* Reference info overlay */}
         {isFixed && refInfo && (refInfo.title || refInfo.author) && (
-          <Box sx={{
-            position: 'absolute',
-            bottom: 8,
-            left: 8,
-            zIndex: 5,
-            bgcolor: 'rgba(0,0,0,0.5)',
-            color: 'white',
-            px: 1,
-            py: 0.5,
-            borderRadius: 1,
-            maxWidth: '80%',
-            pointerEvents: refInfo.source === 'pexels' && (refInfo.pexelsPhotographerUrl || refInfo.pexelsPageUrl) ? 'auto' : 'none',
-          }}>
-            {refInfo.title && (
-              <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {refInfo.title}
-              </Typography>
-            )}
-            {refInfo.author && (
-              <Typography variant="caption" sx={{ display: 'block', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
-                  <>
-                    {t('pexelsPhotoBy')}{' '}
-                    <MuiLink href={refInfo.pexelsPhotographerUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
-                      {refInfo.author}
-                    </MuiLink>
-                    {refInfo.pexelsPageUrl && (
-                      <>
-                        {' · '}
-                        <MuiLink href={refInfo.pexelsPageUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
-                          {t('pexelsViaPexels')}
-                        </MuiLink>
-                      </>
-                    )}
-                  </>
-                ) : refInfo.author}
-              </Typography>
-            )}
-          </Box>
+          <ReferenceInfoOverlay
+            key={referenceKey(refInfo)}
+            refInfo={refInfo}
+          />
         )}
 
         {/* Fixed image */}
