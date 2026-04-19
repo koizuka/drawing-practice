@@ -763,7 +763,7 @@ export function ReferencePanel({
                 options={urlHistory}
                 filterOptions={x => x}
                 getOptionLabel={option => typeof option === 'string' ? option : option.url}
-                isOptionEqualToValue={(a, b) => a.url === b.url}
+                isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.url === b.url}
                 inputValue={urlInput}
                 onInputChange={(_, value, reason) => {
                   if (reason === 'input' || reason === 'clear') {
