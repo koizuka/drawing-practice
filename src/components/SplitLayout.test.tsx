@@ -17,6 +17,29 @@ vi.mock('../utils/pexels', async () => {
   }
 })
 
+function pexelsPhoto(id: number, photographer: string) {
+  return {
+    id,
+    width: 1920,
+    height: 1280,
+    url: `https://www.pexels.com/photo/sample-${id}/`,
+    photographer,
+    photographer_url: `https://www.pexels.com/@${photographer.toLowerCase().replace(/\s+/g, '-')}`,
+    photographer_id: 1,
+    alt: 'A sample pose',
+    src: {
+      original: `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg`,
+      large2x: `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?w=1880`,
+      large: '',
+      medium: '',
+      small: '',
+      portrait: '',
+      landscape: '',
+      tiny: '',
+    },
+  }
+}
+
 describe('SplitLayout', () => {
   it('renders both panels', () => {
     render(<SplitLayout />)
@@ -165,26 +188,7 @@ describe('SplitLayout', () => {
     })
 
     it('detects a Pexels URL in the URL field and switches to Pexels reference', async () => {
-      getPhotoMock.mockResolvedValueOnce({
-        id: 12345,
-        width: 1920,
-        height: 1280,
-        url: 'https://www.pexels.com/photo/sample-12345/',
-        photographer: 'Alice Photographer',
-        photographer_url: 'https://www.pexels.com/@alice',
-        photographer_id: 1,
-        alt: 'A sample pose',
-        src: {
-          original: 'https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg',
-          large2x: 'https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg?w=1880',
-          large: '',
-          medium: '',
-          small: '',
-          portrait: '',
-          landscape: '',
-          tiny: '',
-        },
-      })
+      getPhotoMock.mockResolvedValueOnce(pexelsPhoto(12345, 'Alice Photographer'))
 
       const { container } = render(<SplitLayout />)
       expect(undoBtn(container)).toBeDisabled()
@@ -201,6 +205,70 @@ describe('SplitLayout', () => {
 
       fireEvent.click(undoBtn(container))
       expect(screen.getByText('Image File')).toBeInTheDocument()
+    })
+  })
+
+  describe('reference info overlay collapse', () => {
+    async function loadPexels(id: number, photographer: string) {
+      getPhotoMock.mockResolvedValueOnce(pexelsPhoto(id, photographer))
+      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement
+      fireEvent.change(urlInput, { target: { value: `https://www.pexels.com/photo/sample-${id}/` } })
+      fireEvent.click(screen.getByText('Load'))
+      await waitFor(() => expect(screen.getByText(photographer)).toBeInTheDocument())
+    }
+
+    it('collapses the overlay when the collapse button is clicked', async () => {
+      render(<SplitLayout />)
+      await loadPexels(12345, 'Alice Photographer')
+
+      fireEvent.click(screen.getByLabelText('Collapse info'))
+
+      expect(screen.queryByText('Alice Photographer')).not.toBeInTheDocument()
+      expect(screen.getByLabelText('Show info')).toBeInTheDocument()
+    })
+
+    it('re-expands the overlay when the info icon is clicked', async () => {
+      render(<SplitLayout />)
+      await loadPexels(12345, 'Alice Photographer')
+
+      fireEvent.click(screen.getByLabelText('Collapse info'))
+      expect(screen.queryByText('Alice Photographer')).not.toBeInTheDocument()
+
+      fireEvent.click(screen.getByLabelText('Show info'))
+      expect(screen.getByText('Alice Photographer')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse info')).toBeInTheDocument()
+    })
+
+    it('keeps the photographer link clickable while expanded', async () => {
+      render(<SplitLayout />)
+      await loadPexels(12345, 'Alice Photographer')
+
+      const link = screen.getByText('Alice Photographer').closest('a') as HTMLAnchorElement
+      expect(link).not.toBeNull()
+      expect(link.href).toBe('https://www.pexels.com/@alice-photographer')
+      expect(link.target).toBe('_blank')
+    })
+
+    it('re-expands automatically when a new reference is loaded', async () => {
+      const { container } = render(<SplitLayout />)
+      await loadPexels(12345, 'Alice Photographer')
+
+      fireEvent.click(screen.getByLabelText('Collapse info'))
+      expect(screen.getByLabelText('Show info')).toBeInTheDocument()
+
+      // Close the reference (toolbar X is the first lucide-x in DOM order —
+      // the collapsed overlay shows Info, not X, so no ambiguity).
+      const closeIcon = container.querySelector('svg.lucide-x')
+      if (!closeIcon) throw new Error('toolbar close icon not found')
+      fireEvent.click(closeIcon.closest('button')!)
+      await waitFor(() => expect(screen.getByText('Image File')).toBeInTheDocument())
+
+      // Load a different Pexels photo — overlay should mount fresh (expanded).
+      await loadPexels(67890, 'Bob Photographer')
+
+      expect(screen.getByText('Bob Photographer')).toBeInTheDocument()
+      expect(screen.getByLabelText('Collapse info')).toBeInTheDocument()
+      expect(screen.queryByLabelText('Show info')).not.toBeInTheDocument()
     })
   })
 })

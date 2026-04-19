@@ -85,6 +85,8 @@ const messages = {
     'pexelsPhotoBy': 'Photo by',
     'pexelsViaPexels': 'via Pexels',
     'pexelsBackToSearch': 'Back to search',
+    'collapseReferenceInfo': 'Collapse info',
+    'expandReferenceInfo': 'Show info',
   },
   ja: {
     // DrawingPanel
@@ -172,6 +174,8 @@ const messages = {
     'pexelsPhotoBy': '撮影:',
     'pexelsViaPexels': 'via Pexels',
     'pexelsBackToSearch': '検索に戻る',
+    'collapseReferenceInfo': '情報を畳む',
+    'expandReferenceInfo': '情報を表示',
   },
 } as const
 
