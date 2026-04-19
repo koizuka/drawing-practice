@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { SplitLayout } from './SplitLayout'
 
@@ -7,6 +7,15 @@ vi.mock('../storage/sessionStore', () => ({
   loadDraft: vi.fn().mockResolvedValue(undefined),
   clearDraft: vi.fn().mockResolvedValue(undefined),
 }))
+
+const getPhotoMock = vi.fn()
+vi.mock('../utils/pexels', async () => {
+  const actual = await vi.importActual<typeof import('../utils/pexels')>('../utils/pexels')
+  return {
+    ...actual,
+    getPhoto: (id: number) => getPhotoMock(id),
+  }
+})
 
 describe('SplitLayout', () => {
   it('renders both panels', () => {
@@ -133,6 +142,63 @@ describe('SplitLayout', () => {
 
       // Undo is enabled and reverts to none
       expect(undoBtn(container)).not.toBeDisabled()
+      fireEvent.click(undoBtn(container))
+      expect(screen.getByText('Image File')).toBeInTheDocument()
+    })
+
+    it('enables undo after opening Pexels and reverts to none on undo', () => {
+      const { container } = render(<SplitLayout />)
+
+      expect(screen.getByText('Pexels')).toBeInTheDocument()
+      expect(undoBtn(container)).toBeDisabled()
+
+      fireEvent.click(screen.getByText('Pexels'))
+
+      // Source selection UI is replaced with Pexels searcher
+      expect(screen.queryByText('Image File')).not.toBeInTheDocument()
+      // Search input (from PexelsSearcher placeholder) is visible
+      expect(screen.getByPlaceholderText(/Search photos/i)).toBeInTheDocument()
+      expect(undoBtn(container)).not.toBeDisabled()
+
+      fireEvent.click(undoBtn(container))
+      expect(screen.getByText('Image File')).toBeInTheDocument()
+    })
+
+    it('detects a Pexels URL in the URL field and switches to Pexels reference', async () => {
+      getPhotoMock.mockResolvedValueOnce({
+        id: 12345,
+        width: 1920,
+        height: 1280,
+        url: 'https://www.pexels.com/photo/sample-12345/',
+        photographer: 'Alice Photographer',
+        photographer_url: 'https://www.pexels.com/@alice',
+        photographer_id: 1,
+        alt: 'A sample pose',
+        src: {
+          original: 'https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg',
+          large2x: 'https://images.pexels.com/photos/12345/pexels-photo-12345.jpeg?w=1880',
+          large: '',
+          medium: '',
+          small: '',
+          portrait: '',
+          landscape: '',
+          tiny: '',
+        },
+      })
+
+      const { container } = render(<SplitLayout />)
+      expect(undoBtn(container)).toBeDisabled()
+
+      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement
+      fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-12345/' } })
+      fireEvent.click(screen.getByText('Load'))
+
+      await waitFor(() => expect(screen.queryByText('Image File')).not.toBeInTheDocument())
+      await waitFor(() => expect(screen.getByText('Alice Photographer')).toBeInTheDocument())
+
+      expect(getPhotoMock).toHaveBeenCalledWith(12345)
+      expect(undoBtn(container)).not.toBeDisabled()
+
       fireEvent.click(undoBtn(container))
       expect(screen.getByText('Image File')).toBeInTheDocument()
     })

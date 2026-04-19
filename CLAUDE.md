@@ -50,7 +50,9 @@ npm run test:watch # Run tests in watch mode
 
 **YouTubeViewer** - iframe embed of a YouTube video with a transparent canvas overlay for grid, guide lines, and compare strokes. Uses a fixed 16:9 logical coordinate space (1920x1080) reported via `onFitSize` so the drawing panel's grid aligns. The overlay canvas uses `pointer-events: none` by default so iframe controls (play/pause/seek) stay functional; pointer events switch to `auto` only while a guide-line mode (add/delete) is active. No video-frame capture is done (YouTube iframe content is CORS-protected); the Fix/still-frame use case is intentionally unsupported.
 
-**Gallery** - Modal gallery showing saved drawings with thumbnails, reference title/author, timestamps, delete, and "Use this reference" to reload the same reference (Sketchfab model, image URL, or YouTube video).
+**PexelsSearcher** - Pexels photo search UI (search input, orientation filter, preset query chips, result grid, pagination). On photo selection, the image loads in `fixed` mode via the existing ImageViewer using the Pexels CDN `src.large2x` URL. Also used indirectly when a `https://www.pexels.com/photo/...-12345/` URL is pasted into the URL field — `parsePexelsPhotoUrl` detects it and `getPhoto(id)` resolves it. API calls go to `api.pexels.com/v1` with an `Authorization` header; the key is stored per-user in `localStorage['pexelsApiKey']` (set via `PexelsApiKeyDialog`). `buildPexelsReferenceInfo` preserves photographer name + pexelsPageUrl so the reference-info overlay can render a "Photo by ... · via Pexels" attribution.
+
+**Gallery** - Modal gallery showing saved drawings with thumbnails, reference title/author, timestamps, delete, and "Use this reference" to reload the same reference (Sketchfab model, image URL, YouTube video, or Pexels photo).
 
 ### Drawing System (`src/drawing/`)
 
@@ -77,6 +79,7 @@ npm run test:watch # Run tests in watch mode
 - **sessionStore** - Draft CRUD: `saveDraft`, `loadDraft`, `clearDraft`
 - Gallery shows reference title/author, and "Use this reference" button to reload the same Sketchfab model
 - Designed for 1000+ records
+- **Pexels API key** is stored separately in `localStorage['pexelsApiKey']` (not in IndexedDB). Each user supplies their own free key (registered at pexels.com/api) — no dev key is bundled into the build.
 
 ### Timer (`src/hooks/useTimer.ts`)
 
@@ -119,6 +122,8 @@ src/
 │   ├── SketchfabViewer.tsx
 │   ├── ImageViewer.tsx
 │   ├── YouTubeViewer.tsx
+│   ├── PexelsSearcher.tsx
+│   ├── PexelsApiKeyDialog.tsx
 │   └── Gallery.tsx
 ├── drawing/
 │   ├── types.ts
@@ -146,7 +151,8 @@ src/
 │   ├── useFullscreen.ts
 │   └── useKeyboardShortcuts.ts  # Keyboard shortcuts (Undo/Redo, tool switch, save)
 ├── utils/
-│   └── youtube.ts          # YouTube URL parsing and embed URL helpers
+│   ├── youtube.ts          # YouTube URL parsing and embed URL helpers
+│   └── pexels.ts           # Pexels API client, URL parsing, API key management
 └── test/
     └── setup.ts
 ```

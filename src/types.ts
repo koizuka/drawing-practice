@@ -1,2 +1,2 @@
-export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube'
+export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels'
 export type ReferenceMode = 'browse' | 'fixed'

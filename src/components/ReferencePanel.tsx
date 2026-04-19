@@ -1,11 +1,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, Tooltip, IconButton, Typography, TextField } from '@mui/material'
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize } from 'lucide-react'
+import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink } from '@mui/material'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions, type ReferenceInfo } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import { YouTubeViewer } from './YouTubeViewer'
+import { PexelsSearcher } from './PexelsSearcher'
+import { PexelsApiKeyDialog } from './PexelsApiKeyDialog'
 import { GitHubIcon } from './GitHubIcon'
 import { parseYouTubeVideoId } from '../utils/youtube'
+import {
+  buildPexelsReferenceInfo,
+  getPhoto,
+  mapPexelsErrorKey,
+  parsePexelsPhotoUrl,
+} from '../utils/pexels'
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -105,6 +113,10 @@ export function ReferencePanel({
   const [sfIsReady, setSfIsReady] = useState(false)
   const sfActionsRef = useRef<SketchfabActions | null>(null)
 
+  // Pexels API key dialog state
+  const [pexelsKeyDialogOpen, setPexelsKeyDialogOpen] = useState(false)
+  const [pexelsKeyVersion, setPexelsKeyVersion] = useState(0)
+
   const handleLoadLocalImage = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -165,6 +177,26 @@ export function ReferencePanel({
       })
       setUrlInput('')
       setUrlLoading(false)
+      return
+    }
+
+    // Pexels photo URL: resolve via API to fetch the CDN URL + photographer
+    const pexelsMatch = parsePexelsPhotoUrl(url)
+    if (pexelsMatch) {
+      getPhoto(pexelsMatch.id)
+        .then(photo => {
+          const info = buildPexelsReferenceInfo(photo)
+          onReferenceChange(s => {
+            s.setSource('pexels')
+            s.setReferenceMode('fixed')
+            s.setFixedImageUrl(photo.src.large2x)
+            s.setLocalImageUrl(null)
+            s.setReferenceInfo(info)
+          })
+          setUrlInput('')
+        })
+        .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
+        .finally(() => setUrlLoading(false))
       return
     }
 
@@ -241,6 +273,34 @@ export function ReferencePanel({
     })
   }, [onReferenceChange])
 
+  const handleOpenPexels = useCallback(() => {
+    onReferenceChange(s => {
+      s.setSource('pexels')
+      s.setReferenceMode('browse')
+      s.setFixedImageUrl(null)
+      s.setLocalImageUrl(null)
+      s.setReferenceInfo(null)
+    })
+  }, [onReferenceChange])
+
+  const handleSelectPexelsPhoto = useCallback((info: ReferenceInfo) => {
+    if (!info.pexelsImageUrl) return
+    onReferenceChange(s => {
+      s.setSource('pexels')
+      s.setReferenceMode('fixed')
+      s.setFixedImageUrl(info.pexelsImageUrl ?? null)
+      s.setLocalImageUrl(null)
+      s.setReferenceInfo(info)
+    })
+  }, [onReferenceChange])
+
+  const handleBackToPexelsSearch = useCallback(() => {
+    onReferenceChange(s => {
+      s.setReferenceMode('browse')
+      s.setFixedImageUrl(null)
+    })
+  }, [onReferenceChange])
+
   const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
     setSfShowViewer(state.showViewer)
     setSfIsReady(state.isReady)
@@ -296,7 +356,7 @@ export function ReferencePanel({
     })
   }, [lines])
 
-  const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl  // 'sketchfab' and 'url' use fixedImageUrl
+  const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl  // 'sketchfab', 'url', 'pexels' use fixedImageUrl
   const isFixed = referenceMode === 'fixed' && !!displayImageUrl
   const isNone = source === 'none'
   // Sketchfab browse mode: either searching or viewing a model
@@ -345,6 +405,13 @@ export function ReferencePanel({
         {isFixed && source === 'sketchfab' && (
           <Button size="small" variant="outlined" onClick={handleChangeAngle}>
             {t('changeAngle')}
+          </Button>
+        )}
+
+        {/* Fixed mode: Back to Pexels search */}
+        {isFixed && source === 'pexels' && (
+          <Button size="small" variant="outlined" onClick={handleBackToPexelsSearch}>
+            {t('pexelsBackToSearch')}
           </Button>
         )}
 
@@ -485,13 +552,23 @@ export function ReferencePanel({
             height: '100%',
             gap: 2,
           }}>
-            <Box sx={{ display: 'flex', gap: 2 }}>
+            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
               <Button variant="outlined" size="large" onClick={handleOpenSketchfab}>
                 {t('sketchfab')}
               </Button>
               <Button variant="outlined" size="large" onClick={handleLoadLocalImage}>
                 {t('image')}
               </Button>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <Button variant="outlined" size="large" onClick={handleOpenPexels}>
+                  {t('pexels')}
+                </Button>
+                <Tooltip title={t('pexelsApiKeySettings')}>
+                  <IconButton size="small" onClick={() => setPexelsKeyDialogOpen(true)} sx={{ ml: 0.5 }}>
+                    <Settings size={18} />
+                  </IconButton>
+                </Tooltip>
+              </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, width: '80%', maxWidth: 400 }}>
               <TextField
@@ -545,6 +622,19 @@ export function ReferencePanel({
           </Box>
         )}
 
+        {/* Pexels searcher — kept mounted while source is 'pexels' so the
+            search state (query, results, pagination, scroll) persists across
+            browse ↔ fixed transitions. Hidden when a photo is being viewed. */}
+        {source === 'pexels' && (
+          <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
+            <PexelsSearcher
+              onSelectPhoto={handleSelectPexelsPhoto}
+              onOpenApiKeySettings={() => setPexelsKeyDialogOpen(true)}
+              apiKeyVersion={pexelsKeyVersion}
+            />
+          </Box>
+        )}
+
         {/* YouTube viewer */}
         {isYouTube && refInfo?.youtubeVideoId && (
           <YouTubeViewer
@@ -576,7 +666,7 @@ export function ReferencePanel({
             py: 0.5,
             borderRadius: 1,
             maxWidth: '80%',
-            pointerEvents: 'none',
+            pointerEvents: (refInfo.pexelsPhotographerUrl || refInfo.pexelsPageUrl) ? 'auto' : 'none',
           }}>
             {refInfo.title && (
               <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -584,8 +674,23 @@ export function ReferencePanel({
               </Typography>
             )}
             {refInfo.author && (
-              <Typography variant="caption" sx={{ display: 'block', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {refInfo.author}
+              <Typography variant="caption" sx={{ display: 'block', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
+                  <>
+                    {t('pexelsPhotoBy')}{' '}
+                    <MuiLink href={refInfo.pexelsPhotographerUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                      {refInfo.author}
+                    </MuiLink>
+                    {refInfo.pexelsPageUrl && (
+                      <>
+                        {' · '}
+                        <MuiLink href={refInfo.pexelsPageUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                          {t('pexelsViaPexels')}
+                        </MuiLink>
+                      </>
+                    )}
+                  </>
+                ) : refInfo.author}
               </Typography>
             )}
           </Box>
@@ -613,6 +718,12 @@ export function ReferencePanel({
           />
         )}
       </Box>
+
+      <PexelsApiKeyDialog
+        open={pexelsKeyDialogOpen}
+        onClose={() => setPexelsKeyDialogOpen(false)}
+        onKeyChanged={() => setPexelsKeyVersion(v => v + 1)}
+      />
     </Box>
   )
 }
