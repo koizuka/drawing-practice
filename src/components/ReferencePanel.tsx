@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink } from '@mui/material'
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info } from 'lucide-react'
+import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info, Film, Camera, Image as ImageIcon } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import type { ViewTransform } from '../drawing/ViewTransform'
@@ -8,13 +8,42 @@ import { YouTubeViewer } from './YouTubeViewer'
 import { PexelsSearcher } from './PexelsSearcher'
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog'
 import { GitHubIcon } from './GitHubIcon'
-import { parseYouTubeVideoId } from '../utils/youtube'
+import { parseYouTubeVideoId, fetchYouTubeTitle } from '../utils/youtube'
 import {
   buildPexelsReferenceInfo,
   getPhoto,
   mapPexelsErrorKey,
   parsePexelsPhotoUrl,
 } from '../utils/pexels'
+import { addUrlHistory, getUrlHistory, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType } from '../storage'
+
+function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
+  if (entry.title) return { primary: entry.title, secondary: entry.url }
+  if (entry.type === 'youtube') {
+    const id = parseYouTubeVideoId(entry.url)
+    return { primary: id ? `YouTube · ${id}` : entry.url, secondary: entry.url }
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(entry.url)
+  } catch {
+    return { primary: entry.url, secondary: '' }
+  }
+  const segments = parsed.pathname.split('/').filter(Boolean)
+  if (entry.type === 'pexels') {
+    const photoIndex = segments.indexOf('photo')
+    const slug = photoIndex >= 0 ? segments[photoIndex + 1] : undefined
+    return { primary: slug ? `Pexels · ${slug}` : entry.url, secondary: entry.url }
+  }
+  const filename = segments.pop()
+  return { primary: filename || parsed.hostname, secondary: parsed.hostname }
+}
+
+function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
+  if (type === 'youtube') return <Film size={14} />
+  if (type === 'pexels') return <Camera size={14} />
+  return <ImageIcon size={14} />
+}
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -211,6 +240,15 @@ export function ReferencePanel({
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [urlHistory, setUrlHistory] = useState<UrlHistoryEntry[]>([])
+
+  const reloadUrlHistory = useCallback(() => {
+    getUrlHistory().then(setUrlHistory).catch(() => { /* ignore storage errors */ })
+  }, [])
+
+  useEffect(() => {
+    reloadUrlHistory()
+  }, [reloadUrlHistory])
 
   // Sketchfab viewer state (reported by child)
   const [sfShowViewer, setSfShowViewer] = useState(false)
@@ -281,6 +319,11 @@ export function ReferencePanel({
       })
       setUrlInput('')
       setUrlLoading(false)
+      fetchYouTubeTitle(ytId)
+        .catch(() => null)
+        .then(title => addUrlHistory(url, 'youtube', title ?? undefined))
+        .then(reloadUrlHistory)
+        .catch(() => { /* ignore */ })
       return
     }
 
@@ -298,6 +341,7 @@ export function ReferencePanel({
             s.setReferenceInfo(info)
           })
           setUrlInput('')
+          addUrlHistory(url, 'pexels', info.title).then(reloadUrlHistory).catch(() => { /* ignore */ })
         })
         .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
         .finally(() => setUrlLoading(false))
@@ -321,6 +365,7 @@ export function ReferencePanel({
         s.setReferenceMode('fixed')
       })
       setUrlInput('')
+      addUrlHistory(url, 'url').then(reloadUrlHistory).catch(() => { /* ignore */ })
     }
 
     // Preload image: try CORS first, then without, check naturalWidth
@@ -338,7 +383,7 @@ export function ReferencePanel({
       retry.src = url
     }
     img.src = url
-  }, [onReferenceChange])
+  }, [onReferenceChange, reloadUrlHistory])
 
   const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
     onReferenceChange(s => {
@@ -674,14 +719,79 @@ export function ReferencePanel({
               </Box>
             </Box>
             <Box sx={{ display: 'flex', gap: 1, width: '80%', maxWidth: 400 }}>
-              <TextField
+              <Autocomplete<UrlHistoryEntry, false, false, true>
+                freeSolo
                 size="small"
-                placeholder={t('urlPlaceholder')}
-                value={urlInput}
-                onChange={e => { setUrlInput(e.target.value); setUrlError(null) }}
-                onKeyDown={e => { if (e.key === 'Enter' && urlInput) handleLoadFromUrl(urlInput) }}
                 sx={{ flex: 1 }}
                 fullWidth
+                options={urlHistory}
+                filterOptions={x => x}
+                getOptionLabel={option => typeof option === 'string' ? option : option.url}
+                isOptionEqualToValue={(a, b) => a.url === b.url}
+                inputValue={urlInput}
+                onInputChange={(_, value, reason) => {
+                  if (reason === 'input' || reason === 'clear') {
+                    setUrlInput(value)
+                    setUrlError(null)
+                  }
+                }}
+                onChange={(_, value, reason) => {
+                  if (reason === 'selectOption' && value && typeof value !== 'string') {
+                    setUrlInput(value.url)
+                    setUrlError(null)
+                    handleLoadFromUrl(value.url)
+                  }
+                }}
+                renderOption={(props, option) => {
+                  const { key, ...rest } = props as typeof props & { key: string }
+                  const { primary, secondary } = describeHistoryUrl(option)
+                  return (
+                    <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Box component="span" sx={{ color: 'text.secondary', display: 'inline-flex' }}>
+                        <HistoryTypeIcon type={option.type} />
+                      </Box>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {primary}
+                        </Typography>
+                        {secondary && (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {secondary}
+                          </Typography>
+                        )}
+                      </Box>
+                      <Tooltip title={t('urlHistoryDelete')}>
+                        <IconButton
+                          size="small"
+                          aria-label={t('urlHistoryDelete')}
+                          // Touch devices commit option selection on pointerdown
+                          // (before click), so we have to stop propagation there
+                          // too — not just on click.
+                          onPointerDown={e => { e.stopPropagation(); e.preventDefault() }}
+                          onClick={e => {
+                            e.stopPropagation()
+                            deleteUrlHistory(option.url).then(reloadUrlHistory).catch(() => { /* ignore */ })
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </IconButton>
+                      </Tooltip>
+                    </li>
+                  )
+                }}
+                renderInput={params => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    placeholder={t('urlPlaceholder')}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && urlInput) {
+                        e.preventDefault()
+                        handleLoadFromUrl(urlInput)
+                      }
+                    }}
+                  />
+                )}
               />
               <Button
                 size="small"
