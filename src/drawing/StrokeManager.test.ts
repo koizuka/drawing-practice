@@ -635,6 +635,31 @@ describe('StrokeManager', () => {
       expect(restorer).not.toHaveBeenCalled()
     })
 
+    it('preserves stroke entries while pruning the oldest reference entry past the cap', () => {
+      // Interleave: stroke, then 21 reference changes. The first reference
+      // should be pruned, but the stroke must survive intact.
+      manager.setReferenceRestorer(vi.fn())
+      manager.startStroke({ x: 1, y: 1 })
+      manager.appendStroke({ x: 2, y: 2 })
+      manager.endStroke()
+
+      for (let i = 0; i < 21; i++) {
+        manager.recordReferenceChange(snap({ source: 'image', fixedImageUrl: `data:${i}` }))
+      }
+
+      // Undo everything and count kinds
+      let strokeKinds = 0
+      let refKinds = 0
+      while (manager.canUndo()) {
+        const r = manager.undo(() => snap({ source: 'image' }))
+        if (r?.kind === 'stroke') strokeKinds++
+        if (r?.kind === 'reference') refKinds++
+      }
+
+      expect(strokeKinds).toBe(1) // the stroke is kept
+      expect(refKinds).toBe(20) // cap enforced, 1 ref pruned
+    })
+
     it('keeps the reference count consistent when redo receives no captureCurrentRef', () => {
       manager.setReferenceRestorer(vi.fn())
       manager.recordReferenceChange(snap({ source: 'none' }))

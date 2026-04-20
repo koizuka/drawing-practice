@@ -1,6 +1,8 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { SplitLayout } from './SplitLayout'
+import { loadDraft } from '../storage/sessionStore'
+import type { SessionDraft } from '../storage/db'
 
 vi.mock('../storage/sessionStore', () => ({
   saveDraft: vi.fn().mockResolvedValue(undefined),
@@ -271,4 +273,70 @@ describe('SplitLayout', () => {
       expect(screen.queryByLabelText('Show info')).not.toBeInTheDocument()
     })
   })
+
+  describe('draft restore', () => {
+    const loadDraftMock = vi.mocked(loadDraft)
+
+    afterEach(() => {
+      loadDraftMock.mockResolvedValue(undefined)
+    })
+
+    it('restores strokes, elapsed time, and URL reference from a saved draft', async () => {
+      const draft: SessionDraft = {
+        id: 1,
+        strokes: [
+          { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 },
+          { points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 },
+        ],
+        redoStack: [],
+        elapsedMs: 90_000, // 1:30
+        source: 'url',
+        referenceInfo: {
+          source: 'url',
+          title: 'My saved reference',
+          author: '',
+          imageUrl: 'https://example.com/pic.jpg',
+        },
+        referenceImageData: null,
+        guideState: {
+          grid: { mode: 'normal' },
+          lines: [],
+        },
+        updatedAt: new Date(),
+      }
+      loadDraftMock.mockResolvedValueOnce(draft)
+
+      const { container } = render(<SplitLayout />)
+
+      // The timer shows the restored elapsed time.
+      await waitFor(() => {
+        expect(screen.getByText('1:30')).toBeInTheDocument()
+      })
+
+      // The undo button becomes enabled because the restored strokes populate
+      // the undo stack (via StrokeManager.loadState, which seeds `add` entries).
+      const undoIcon = container.querySelector('svg.lucide-undo-2')
+      const undoBtn = undoIcon!.closest('button') as HTMLButtonElement
+      expect(undoBtn).not.toBeDisabled()
+
+      // The source-selection UI should be gone since source is 'url', not 'none'.
+      expect(screen.queryByText('Image File')).not.toBeInTheDocument()
+    })
+
+    it('does nothing when no draft is stored', async () => {
+      loadDraftMock.mockResolvedValueOnce(undefined)
+
+      const { container } = render(<SplitLayout />)
+
+      // Source-selection UI is still visible, timer reads 0:00, undo disabled.
+      await waitFor(() => {
+        expect(screen.getByText('Image File')).toBeInTheDocument()
+      })
+      expect(screen.getByText('0:00')).toBeInTheDocument()
+      const undoIcon = container.querySelector('svg.lucide-undo-2')
+      const undoBtn = undoIcon!.closest('button') as HTMLButtonElement
+      expect(undoBtn).toBeDisabled()
+    })
+  })
+
 })
