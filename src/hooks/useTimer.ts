@@ -7,6 +7,9 @@ export function useTimer() {
   const accumulatedRef = useRef(0)
   const rafIdRef = useRef<number>(0)
   const tickRef = useRef<() => void>(() => {})
+  // Tracks the "should be running" intent so visible-resume can restart even
+  // though we flip isRunning off on hidden to keep the UI in sync.
+  const shouldRunRef = useRef(false)
 
   // Update tick function
   useEffect(() => {
@@ -20,6 +23,7 @@ export function useTimer() {
 
   const start = useCallback(() => {
     if (startTimeRef.current !== null) return
+    shouldRunRef.current = true
     startTimeRef.current = Date.now()
     setIsRunning(true)
     rafIdRef.current = requestAnimationFrame(tickRef.current)
@@ -27,6 +31,7 @@ export function useTimer() {
 
   const pause = useCallback(() => {
     if (startTimeRef.current === null) return
+    shouldRunRef.current = false
     accumulatedRef.current += Date.now() - startTimeRef.current
     startTimeRef.current = null
     setIsRunning(false)
@@ -35,6 +40,7 @@ export function useTimer() {
   }, [])
 
   const reset = useCallback(() => {
+    shouldRunRef.current = false
     cancelAnimationFrame(rafIdRef.current)
     startTimeRef.current = null
     accumulatedRef.current = 0
@@ -50,17 +56,19 @@ export function useTimer() {
           accumulatedRef.current += Date.now() - startTimeRef.current
           startTimeRef.current = null
           cancelAnimationFrame(rafIdRef.current)
+          setIsRunning(false)
         }
       } else {
-        if (isRunning && startTimeRef.current === null) {
+        if (shouldRunRef.current && startTimeRef.current === null) {
           startTimeRef.current = Date.now()
+          setIsRunning(true)
           rafIdRef.current = requestAnimationFrame(tickRef.current)
         }
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [isRunning])
+  }, [])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -68,6 +76,7 @@ export function useTimer() {
   }, [])
 
   const restore = useCallback((ms: number) => {
+    shouldRunRef.current = false
     cancelAnimationFrame(rafIdRef.current)
     startTimeRef.current = null
     accumulatedRef.current = ms
