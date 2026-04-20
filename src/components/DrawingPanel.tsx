@@ -104,13 +104,19 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     strokeManagerRef.current.undo(captureReferenceSnapshot)
     setHighlightedStrokeIndex(null)
     triggerRedraw()
-  }, [triggerRedraw, captureReferenceSnapshot])
+    if (!strokeManagerRef.current.canUndo()) {
+      timer.reset()
+    }
+  }, [triggerRedraw, captureReferenceSnapshot, timer])
 
   const handleRedo = useCallback(() => {
     strokeManagerRef.current.redo(captureReferenceSnapshot)
     setHighlightedStrokeIndex(null)
     triggerRedraw()
-  }, [triggerRedraw, captureReferenceSnapshot])
+    if (!timer.isRunning && strokeManagerRef.current.getStrokes().length > 0) {
+      timer.start()
+    }
+  }, [triggerRedraw, captureReferenceSnapshot, timer])
 
   const handleClear = useCallback(() => {
     strokeManagerRef.current.clear()

@@ -83,9 +83,9 @@ npm run test:watch # Run tests in watch mode
 
 ### Timer (`src/hooks/useTimer.ts`)
 
-- Auto-starts on first stroke completion, resumes on next stroke after any pause
+- Auto-starts on first stroke completion, resumes on next stroke after any pause. Also auto-starts on redo when strokes are restored while the timer is stopped (e.g. after undo emptied the history).
 - Pauses on: app backgrounded (visibilitychange API), save, opening the gallery, and any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference"). Reference-related pausing is wired through a `pauseAndIncrementVersion` helper in `SplitLayout` that `changeReference` calls after recording the undo entry and applying the mutation.
-- Resets on clear
+- Resets on clear, or when undo drains the history stack (`!canUndo()`). Treating a fully-undone session as "pre-drawing" keeps the reset path reachable even though the trash button is disabled while strokeCount is 0. Erase and redo do not touch the timer.
 - `restore(ms)` sets elapsed time without starting (used by autosave restore)
 
 ### Autosave (`src/hooks/useAutosave.ts`)
