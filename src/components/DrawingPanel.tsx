@@ -269,7 +269,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           sx={{
             fontFamily: 'monospace',
             fontSize: '0.9rem',
-            color: timer.isRunning ? 'text.primary' : 'text.secondary',
+            color: timer.isRunning ? 'primary.main' : 'text.disabled',
             minWidth: 48,
             textAlign: 'right',
           }}
