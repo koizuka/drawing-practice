@@ -159,18 +159,40 @@ describe('useTimer', () => {
       })
       expect(result.current.isRunning).toBe(true)
 
-      // Hide the tab — the hook should stop the rAF loop. isRunning is left unchanged
-      // (the hook keeps the flag so it knows to auto-resume on visible).
+      // Hide the tab — the hook stops the rAF loop AND flips isRunning off so
+      // the UI reflects the paused state (color change, etc).
       act(() => {
         setHidden(true)
       })
-      expect(result.current.isRunning).toBe(true)
+      expect(result.current.isRunning).toBe(false)
 
-      // Show the tab again — rAF loop restarts, no state corruption.
+      // Show the tab again — rAF loop restarts and isRunning goes back to true.
       act(() => {
         setHidden(false)
       })
       expect(result.current.isRunning).toBe(true)
+    })
+
+    it('does not auto-resume on visible if the timer was paused before hiding', () => {
+      const { result } = renderHook(() => useTimer())
+
+      act(() => {
+        result.current.start()
+      })
+      act(() => {
+        result.current.pause()
+      })
+      expect(result.current.isRunning).toBe(false)
+
+      act(() => {
+        setHidden(true)
+      })
+      expect(result.current.isRunning).toBe(false)
+
+      act(() => {
+        setHidden(false)
+      })
+      expect(result.current.isRunning).toBe(false)
     })
   })
 
