@@ -71,7 +71,6 @@ export function ImageViewer({
   const [dragStart, setDragStart] = useState<Point | null>(null)
   const [dragEnd, setDragEnd] = useState<Point | null>(null)
 
-  // Pinch state for 2-finger touch zoom/pan
   const pinchRef = useRef<{
     id1: number
     id2: number
@@ -80,6 +79,9 @@ export function ImageViewer({
     lastMidY: number
   } | null>(null)
   const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  // Cached canvas rect captured at pinch start; reused each touchmove to avoid
+  // forcing a synchronous layout at 60fps.
+  const pinchRectRef = useRef<DOMRect | null>(null)
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
@@ -340,7 +342,6 @@ export function ImageViewer({
     setDragEnd(null)
   }, [guideMode, dragStart, dragEnd, onAddGuideLine])
 
-  // Touch handlers: 2-finger pinch zoom/pan takes precedence over guide interaction
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i]
@@ -365,6 +366,7 @@ export function ImageViewer({
         lastMidX: (t1.x + t2.x) / 2,
         lastMidY: (t1.y + t2.y) / 2,
       }
+      pinchRectRef.current = canvasRef.current!.getBoundingClientRect()
       return
     }
 
@@ -409,8 +411,7 @@ export function ImageViewer({
       const midX = (t1.x + t2.x) / 2
       const midY = (t1.y + t2.y) / 2
 
-      const canvas = canvasRef.current!
-      const rect = canvas.getBoundingClientRect()
+      const rect = pinchRectRef.current!
       let focalX = midX - rect.left
       const focalY = midY - rect.top
       if (isFlipped) {
@@ -448,6 +449,7 @@ export function ImageViewer({
       if (!activeTouchesRef.current.has(pinchRef.current.id1) ||
           !activeTouchesRef.current.has(pinchRef.current.id2)) {
         pinchRef.current = null
+        pinchRectRef.current = null
       }
       e.preventDefault()
       return

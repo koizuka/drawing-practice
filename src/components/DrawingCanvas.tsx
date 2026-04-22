@@ -67,6 +67,9 @@ export function DrawingCanvas({
   // Pinch state
   const pinchRef = useRef<{ id1: number; id2: number; lastDist: number; lastMidX: number; lastMidY: number } | null>(null)
   const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  // Cached canvas rect captured at pinch start; reused each touchmove to avoid
+  // forcing a synchronous layout at 60fps.
+  const pinchRectRef = useRef<DOMRect | null>(null)
 
   const notifyStrokeCount = useCallback(() => {
     onStrokeCountChange()
@@ -286,6 +289,7 @@ export function DrawingCanvas({
         lastMidX: (t1.x + t2.x) / 2,
         lastMidY: (t1.y + t2.y) / 2,
       }
+      pinchRectRef.current = canvasRef.current!.getBoundingClientRect()
       return
     }
 
@@ -329,8 +333,7 @@ export function DrawingCanvas({
       const midX = (t1.x + t2.x) / 2
       const midY = (t1.y + t2.y) / 2
 
-      const canvas = canvasRef.current!
-      const rect = canvas.getBoundingClientRect()
+      const rect = pinchRectRef.current!
       let focalX = midX - rect.left
       const focalY = midY - rect.top
       if (isFlipped) {
@@ -376,6 +379,7 @@ export function DrawingCanvas({
       if (!activeTouchesRef.current.has(pinchRef.current.id1) ||
           !activeTouchesRef.current.has(pinchRef.current.id2)) {
         pinchRef.current = null
+        pinchRectRef.current = null
       }
     }
 
