@@ -71,6 +71,16 @@ export function ImageViewer({
   const [dragStart, setDragStart] = useState<Point | null>(null)
   const [dragEnd, setDragEnd] = useState<Point | null>(null)
 
+  // Pinch state for 2-finger touch zoom/pan
+  const pinchRef = useRef<{
+    id1: number
+    id2: number
+    lastDist: number
+    lastMidX: number
+    lastMidY: number
+  } | null>(null)
+  const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
     const rect = canvas.getBoundingClientRect()
@@ -330,8 +340,34 @@ export function ImageViewer({
     setDragEnd(null)
   }, [guideMode, dragStart, dragEnd, onAddGuideLine])
 
-  // Touch handlers for guide line interaction
+  // Touch handlers: 2-finger pinch zoom/pan takes precedence over guide interaction
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i]
+      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY })
+    }
+
+    if (activeTouchesRef.current.size >= 2) {
+      e.preventDefault()
+      if (dragStart || dragEnd) {
+        setDragStart(null)
+        setDragEnd(null)
+      }
+      const ids = Array.from(activeTouchesRef.current.keys())
+      const t1 = activeTouchesRef.current.get(ids[0])!
+      const t2 = activeTouchesRef.current.get(ids[1])!
+      const dx = t2.x - t1.x
+      const dy = t2.y - t1.y
+      pinchRef.current = {
+        id1: ids[0],
+        id2: ids[1],
+        lastDist: Math.sqrt(dx * dx + dy * dy),
+        lastMidX: (t1.x + t2.x) / 2,
+        lastMidY: (t1.y + t2.y) / 2,
+      }
+      return
+    }
+
     if (guideMode === 'none') return
     e.preventDefault()
     const touch = e.changedTouches[0]
@@ -353,17 +389,70 @@ export function ImageViewer({
       }
       onHighlightGuide?.(best?.id ?? null)
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide])
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, dragStart, dragEnd])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i]
+      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY })
+    }
+
+    if (pinchRef.current) {
+      const t1 = activeTouchesRef.current.get(pinchRef.current.id1)
+      const t2 = activeTouchesRef.current.get(pinchRef.current.id2)
+      if (!t1 || !t2) return
+      e.preventDefault()
+
+      const dx = t2.x - t1.x
+      const dy = t2.y - t1.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const midX = (t1.x + t2.x) / 2
+      const midY = (t1.y + t2.y) / 2
+
+      const canvas = canvasRef.current!
+      const rect = canvas.getBoundingClientRect()
+      let focalX = midX - rect.left
+      const focalY = midY - rect.top
+      if (isFlipped) {
+        focalX = rect.width - focalX
+      }
+
+      const scaleDelta = dist / pinchRef.current.lastDist
+      const rawTranslateX = midX - pinchRef.current.lastMidX
+      const translateX = isFlipped ? -rawTranslateX : rawTranslateX
+      const translateY = midY - pinchRef.current.lastMidY
+
+      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
+
+      pinchRef.current.lastDist = dist
+      pinchRef.current.lastMidX = midX
+      pinchRef.current.lastMidY = midY
+
+      requestRedraw()
+      return
+    }
+
     if (guideMode !== 'add' || !dragStart) return
     e.preventDefault()
     const touch = e.changedTouches[0]
     setDragEnd(getCanvasPoint(touch.clientX, touch.clientY))
     requestRedraw()
-  }, [guideMode, dragStart, getCanvasPoint, requestRedraw])
+  }, [guideMode, dragStart, getCanvasPoint, requestRedraw, isFlipped])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      activeTouchesRef.current.delete(e.changedTouches[i].identifier)
+    }
+
+    if (pinchRef.current) {
+      if (!activeTouchesRef.current.has(pinchRef.current.id1) ||
+          !activeTouchesRef.current.has(pinchRef.current.id2)) {
+        pinchRef.current = null
+      }
+      e.preventDefault()
+      return
+    }
+
     if (guideMode !== 'add' || !dragStart || !dragEnd) return
     e.preventDefault()
     const dx = dragEnd.x - dragStart.x
@@ -393,7 +482,7 @@ export function ImageViewer({
           display: 'block',
           width: '100%',
           height: '100%',
-          touchAction: guideMode !== 'none' ? 'none' : 'auto',
+          touchAction: 'none',
           cursor,
         }}
       />
