@@ -162,7 +162,9 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     }
   }, [getViewTransformState])
 
-  /** Current logical units per screen pixel; 0 if the container is not laid out yet. */
+  /** Current screen pixels per logical unit; 0 if the container is not laid out yet.
+   *  Callers divide screen-pixel thresholds (e.g. GUIDE_HIT_THRESHOLD_PX) by this
+   *  to convert them into logical units. */
   const getLogicalScale = useCallback((): number => {
     const container = containerRef.current
     if (!container) return 0
@@ -335,10 +337,17 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     return () => canvas.removeEventListener('wheel', handleWheel)
   }, [videoInteractMode, guideMode, viewTransform])
 
-  // IFrame API handshake: registers us as a listener once the player loads.
+  // Per-transition dedup of the player's frequent infoDelivery ticks. Reset
+  // to null on video change (below) so the first state the new player reports
+  // always emits — otherwise a match with the previous video's final state
+  // would be suppressed and the toolbar icon would lag.
+  const lastPlayingRef = useRef<boolean | null>(null)
+
+  // IFrame API handshake: register as a listener once the player loads.
   useEffect(() => {
     const iframe = iframeRef.current
     if (!iframe) return
+    lastPlayingRef.current = null
     const handleLoad = () => {
       iframe.contentWindow?.postMessage(
         JSON.stringify({ event: YT_EVENT_LISTENING, id: videoId, channel: 'widget' }),
@@ -348,11 +357,6 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     iframe.addEventListener('load', handleLoad)
     return () => iframe.removeEventListener('load', handleLoad)
   }, [videoId])
-
-  // The player emits infoDelivery many times per second (playhead ticks,
-  // buffering, etc). Only forward on actual playing↔paused transitions so the
-  // toolbar doesn't thrash setState.
-  const lastPlayingRef = useRef<boolean | null>(null)
   useEffect(() => {
     if (!onPlayerStateChange) return
     const emit = (next: boolean) => {

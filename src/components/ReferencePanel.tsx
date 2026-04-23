@@ -287,15 +287,18 @@ export function ReferencePanel({
   const [youtubePlaying, setYoutubePlaying] = useState(false)
   const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null)
 
-  // Swapping videos must drop a stale "video interact" so the new player
-  // opens in zoom mode. Done during render (not an effect) to avoid a
-  // cascading render pass flagged by react-hooks/set-state-in-effect.
+  // Swapping videos must drop stale interaction/playback UI state so the new
+  // player opens in zoom mode and the toolbar icon doesn't briefly reflect the
+  // previous video. React recommends resetting state on prop change during
+  // render (see https://react.dev/reference/react/useState#storing-information-from-previous-renders);
+  // moving this into an effect would trip react-hooks/set-state-in-effect.
   const youtubeVideoId = refInfo?.source === 'youtube' ? refInfo.youtubeVideoId : null
   const [prevYoutubeKey, setPrevYoutubeKey] = useState<string | null>(null)
   const nextYoutubeKey = source === 'youtube' && youtubeVideoId ? youtubeVideoId : null
   if (prevYoutubeKey !== nextYoutubeKey) {
     setPrevYoutubeKey(nextYoutubeKey)
     setYoutubeVideoInteractMode(false)
+    setYoutubePlaying(false)
   }
 
   const handleLoadLocalImage = useCallback(() => {
