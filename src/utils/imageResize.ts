@@ -62,7 +62,10 @@ export async function resizeImageForHistory(file: File): Promise<Blob> {
     const img = await loadImage(objectUrl)
     const longest = Math.max(img.naturalWidth, img.naturalHeight)
     if (longest <= HISTORY_IMAGE_MAX_EDGE && file.size <= HISTORY_IMAGE_PASSTHROUGH_SIZE) {
-      return new Blob([await file.arrayBuffer()], { type: file.type || 'application/octet-stream' })
+      // `File` is already a `Blob` — slice yields a new Blob view without
+      // copying the bytes, and lets us guarantee a type even when the source
+      // File has an empty MIME.
+      return file.slice(0, file.size, file.type || 'application/octet-stream')
     }
     const { width, height } = computeFitDimensions(img.naturalWidth, img.naturalHeight, HISTORY_IMAGE_MAX_EDGE)
     const canvas = document.createElement('canvas')

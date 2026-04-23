@@ -350,9 +350,11 @@ export function ReferencePanel({
           const key = `local:${hash}`
           const existing = await getUrlHistoryEntry(key)
           if (existing?.imageBlob) {
-            // Same content already stored — skip the expensive resize and
-            // just bump lastUsedAt (plus update fileName in case of rename).
-            await addAndReloadHistory(key, 'image', { fileName: file.name })
+            // Same content already stored — skip the expensive resize. Pass
+            // the Blob through so the upsert is self-contained: no redundant
+            // read inside addUrlHistory, and if the row was evicted between
+            // our get and the put we still end up with a complete entry.
+            await addAndReloadHistory(key, 'image', { fileName: file.name, imageBlob: existing.imageBlob })
             return
           }
           const blob = await resizeImageForHistory(file)
@@ -900,8 +902,11 @@ export function ReferencePanel({
                           s.setReferenceMode('fixed')
                         })
                         setUrlInput('')
-                        // Bump lastUsedAt; Blob is preserved via upsert.
-                        void addAndReloadHistory(historyKey, 'image', { fileName })
+                        // Bump lastUsedAt with the Blob in hand so the upsert
+                        // is self-contained (no redundant db read, and an
+                        // evicted row between reads can't recreate a blobless
+                        // entry).
+                        void addAndReloadHistory(historyKey, 'image', { fileName, imageBlob: blob })
                       }
                       reader.readAsDataURL(blob)
                       return

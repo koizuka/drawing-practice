@@ -248,7 +248,13 @@ function SplitLayoutInner() {
           s.setLocalImageUrl(dataUrl)
           s.setReferenceInfo(info)
         })
-        await addUrlHistory(historyKey, 'image', { fileName: entry.fileName ?? info.fileName })
+        // Upsert with the Blob we already loaded so the call is self-
+        // contained: no redundant DB read, and an evicted row between reads
+        // can't recreate a blobless entry.
+        await addUrlHistory(historyKey, 'image', {
+          fileName: entry.fileName ?? info.fileName,
+          imageBlob: entry.imageBlob,
+        })
         reloadUrlHistoryFnRef.current?.()
       })()
       return
