@@ -15,9 +15,13 @@ import {
   mapPexelsErrorKey,
   parsePexelsPhotoUrl,
 } from '../utils/pexels'
-import { addUrlHistory, getUrlHistory, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType } from '../storage'
+import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
+import { resizeImageForHistory, sha256Hex } from '../utils/imageResize'
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
+  if (entry.type === 'image') {
+    return { primary: entry.fileName ?? entry.title ?? t('localImage'), secondary: t('localImage') }
+  }
   if (entry.title) return { primary: entry.title, secondary: entry.url }
   if (entry.type === 'youtube') {
     const id = parseYouTubeVideoId(entry.url)
@@ -42,6 +46,7 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
 function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
   if (type === 'youtube') return <Film size={14} />
   if (type === 'pexels') return <Camera size={14} />
+  // 'image' and 'url' both render with the generic image glyph.
   return <ImageIcon size={14} />
 }
 import { useGuides } from '../guides/useGuides'
@@ -257,8 +262,12 @@ export function ReferencePanel({
     getUrlHistory().then(setUrlHistory).catch(() => { /* ignore storage errors */ })
   }, [])
 
-  const addAndReloadHistory = useCallback((url: string, type: UrlHistoryType, title?: string) => {
-    return addUrlHistory(url, type, title).then(reloadUrlHistory).catch(() => { /* ignore */ })
+  const addAndReloadHistory = useCallback((
+    url: string,
+    type: UrlHistoryType,
+    titleOrOptions?: string | AddUrlHistoryOptions,
+  ) => {
+    return addUrlHistory(url, type, titleOrOptions).then(reloadUrlHistory).catch(() => { /* ignore */ })
   }, [reloadUrlHistory])
 
   useEffect(() => {
@@ -308,11 +317,19 @@ export function ReferencePanel({
     input.onchange = () => {
       const file = input.files?.[0]
       if (!file) return
+
+      // Compute the content hash in parallel with FileReader. The result feeds
+      // ReferenceInfo.url (so saved drawings can be reloaded from the gallery)
+      // and the URL-history key (so repeat opens dedupe to one entry).
+      const hashPromise = sha256Hex(file).catch(() => null)
+
       // Read as data URL so it survives page reload (for autosave)
       const reader = new FileReader()
-      reader.onload = () => {
+      reader.onload = async () => {
         const dataUrl = reader.result as string
-        const info: ReferenceInfo = { title: file.name, author: '', source: 'image', fileName: file.name }
+        const hash = await hashPromise
+        const url = hash ? `local:${hash}` : undefined
+        const info: ReferenceInfo = { title: file.name, author: '', source: 'image', fileName: file.name, url }
         onReferenceChange(s => {
           s.setLocalImageUrl(dataUrl)
           s.setFixedImageUrl(null)
@@ -322,9 +339,33 @@ export function ReferencePanel({
         })
       }
       reader.readAsDataURL(file)
+
+      // Fire-and-forget history upsert. Hashed by content so repeat opens of
+      // the same image (even from a different path or with a different mtime)
+      // dedupe to a single entry and reuse the already-stored Blob.
+      void (async () => {
+        try {
+          const hash = await hashPromise
+          if (!hash) return
+          const key = `local:${hash}`
+          const existing = await getUrlHistoryEntry(key)
+          if (existing?.imageBlob) {
+            // Same content already stored — skip the expensive resize. Pass
+            // the Blob through so the upsert is self-contained: no redundant
+            // read inside addUrlHistory, and if the row was evicted between
+            // our get and the put we still end up with a complete entry.
+            await addAndReloadHistory(key, 'image', { fileName: file.name, imageBlob: existing.imageBlob })
+            return
+          }
+          const blob = await resizeImageForHistory(file)
+          await addAndReloadHistory(key, 'image', { fileName: file.name, imageBlob: blob })
+        } catch {
+          // Image is already displayed; history add is best-effort.
+        }
+      })()
     }
     input.click()
-  }, [onReferenceChange])
+  }, [onReferenceChange, addAndReloadHistory])
 
   const [urlLoading, setUrlLoading] = useState(false)
 
@@ -821,7 +862,13 @@ export function ReferencePanel({
                 fullWidth
                 options={urlHistory}
                 filterOptions={x => x}
-                getOptionLabel={option => typeof option === 'string' ? option : option.url}
+                getOptionLabel={option => {
+                  if (typeof option === 'string') return option
+                  // Synthetic `local:<hash>` keys are not meaningful to the
+                  // user; show the file name instead.
+                  if (option.type === 'image') return option.fileName ?? ''
+                  return option.url
+                }}
                 isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.url === b.url}
                 inputValue={urlInput}
                 onInputChange={(_, value, reason) => {
@@ -832,8 +879,39 @@ export function ReferencePanel({
                 }}
                 onChange={(_, value, reason) => {
                   if (reason === 'selectOption' && value && typeof value !== 'string') {
-                    setUrlInput(value.url)
                     setUrlError(null)
+                    if (value.type === 'image' && value.imageBlob) {
+                      const reader = new FileReader()
+                      const blob = value.imageBlob
+                      const fileName = value.fileName ?? 'image'
+                      const historyKey = value.url
+                      reader.onload = () => {
+                        const dataUrl = reader.result as string
+                        const info: ReferenceInfo = {
+                          title: fileName,
+                          author: '',
+                          source: 'image',
+                          fileName,
+                          url: historyKey,
+                        }
+                        onReferenceChange(s => {
+                          s.setLocalImageUrl(dataUrl)
+                          s.setFixedImageUrl(null)
+                          s.setReferenceInfo(info)
+                          s.setSource('image')
+                          s.setReferenceMode('fixed')
+                        })
+                        setUrlInput('')
+                        // Bump lastUsedAt with the Blob in hand so the upsert
+                        // is self-contained (no redundant db read, and an
+                        // evicted row between reads can't recreate a blobless
+                        // entry).
+                        void addAndReloadHistory(historyKey, 'image', { fileName, imageBlob: blob })
+                      }
+                      reader.readAsDataURL(blob)
+                      return
+                    }
+                    setUrlInput(value.url)
                     handleLoadFromUrl(value.url)
                   }
                 }}

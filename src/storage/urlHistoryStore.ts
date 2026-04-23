@@ -2,6 +2,16 @@ import { db, type UrlHistoryEntry, type UrlHistoryType } from './db'
 import { buildYouTubeCanonicalUrl, parseYouTubeVideoId } from '../utils/youtube'
 
 export const URL_HISTORY_LIMIT = 50
+// Images are stored with their Blob, so each entry can be 200KB–1.5MB.
+// A separate, smaller cap keeps the worst-case storage bounded (~15MB) and
+// prevents a burst of image opens from evicting YouTube/URL history.
+export const URL_HISTORY_IMAGE_LIMIT = 10
+
+export interface AddUrlHistoryOptions {
+  title?: string
+  fileName?: string
+  imageBlob?: Blob
+}
 
 /**
  * Collapse surface variants of the same logical reference onto a single key so
@@ -17,31 +27,68 @@ function canonicalizeUrl(url: string, type: UrlHistoryType): string {
   return url
 }
 
+function normalizeOptions(titleOrOptions?: string | AddUrlHistoryOptions): AddUrlHistoryOptions {
+  if (typeof titleOrOptions === 'string') return { title: titleOrOptions }
+  return titleOrOptions ?? {}
+}
+
 /**
- * Upsert a history entry. If `title` is omitted but an existing entry has one,
- * the old title is preserved so a late or failed title fetch doesn't clobber
- * what we already knew.
+ * Upsert a history entry. Fields that are omitted but present on an existing
+ * entry (title, fileName, imageBlob) are preserved so a partial re-touch (e.g.
+ * bumping `lastUsedAt` on selection without re-resizing the image) doesn't
+ * clobber what we already have.
  */
-export async function addUrlHistory(url: string, type: UrlHistoryType, title?: string): Promise<void> {
+export async function addUrlHistory(
+  url: string,
+  type: UrlHistoryType,
+  titleOrOptions?: string | AddUrlHistoryOptions,
+): Promise<void> {
+  const opts = normalizeOptions(titleOrOptions)
   const key = canonicalizeUrl(url, type)
-  let finalTitle = title?.trim() || undefined
-  if (!finalTitle) {
+
+  let finalTitle = opts.title?.trim() || undefined
+  let finalFileName = opts.fileName
+  let finalBlob = opts.imageBlob
+  if (!finalTitle || (type === 'image' && (!finalFileName || !finalBlob))) {
     const existing = await db.urlHistory.get(key)
-    finalTitle = existing?.title
+    if (!finalTitle) finalTitle = existing?.title
+    if (!finalFileName) finalFileName = existing?.fileName
+    if (!finalBlob) finalBlob = existing?.imageBlob
   }
+
   const entry: UrlHistoryEntry = { url: key, type, lastUsedAt: new Date() }
   if (finalTitle) entry.title = finalTitle
+  if (finalFileName) entry.fileName = finalFileName
+  if (finalBlob) entry.imageBlob = finalBlob
   await db.urlHistory.put(entry)
+
   const all = await db.urlHistory.toArray()
-  if (all.length > URL_HISTORY_LIMIT) {
-    const sorted = [...all].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
-    const excess = sorted.slice(0, all.length - URL_HISTORY_LIMIT)
-    await db.urlHistory.bulkDelete(excess.map(e => e.url))
+  const images: UrlHistoryEntry[] = []
+  const others: UrlHistoryEntry[] = []
+  for (const e of all) {
+    if (e.type === 'image') images.push(e)
+    else others.push(e)
+  }
+  const toDelete: string[] = []
+  if (images.length > URL_HISTORY_IMAGE_LIMIT) {
+    const sorted = [...images].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
+    for (const e of sorted.slice(0, images.length - URL_HISTORY_IMAGE_LIMIT)) toDelete.push(e.url)
+  }
+  if (others.length > URL_HISTORY_LIMIT) {
+    const sorted = [...others].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
+    for (const e of sorted.slice(0, others.length - URL_HISTORY_LIMIT)) toDelete.push(e.url)
+  }
+  if (toDelete.length > 0) {
+    await db.urlHistory.bulkDelete(toDelete)
   }
 }
 
 export async function getUrlHistory(): Promise<UrlHistoryEntry[]> {
   return db.urlHistory.orderBy('lastUsedAt').reverse().toArray()
+}
+
+export async function getUrlHistoryEntry(url: string): Promise<UrlHistoryEntry | undefined> {
+  return db.urlHistory.get(url)
 }
 
 export async function deleteUrlHistory(url: string): Promise<void> {

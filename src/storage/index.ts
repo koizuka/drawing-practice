@@ -1,5 +1,6 @@
 export { saveDrawing, getAllDrawings, getDrawing, deleteDrawing, getDrawingCount } from './drawingStore'
 export { saveDraft, loadDraft, clearDraft } from './sessionStore'
-export { addUrlHistory, getUrlHistory, deleteUrlHistory, URL_HISTORY_LIMIT } from './urlHistoryStore'
+export { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, URL_HISTORY_LIMIT, URL_HISTORY_IMAGE_LIMIT } from './urlHistoryStore'
+export type { AddUrlHistoryOptions } from './urlHistoryStore'
 export type { DrawingRecord, SessionDraft, UrlHistoryEntry, UrlHistoryType } from './db'
 export type { DraftData } from './sessionStore'

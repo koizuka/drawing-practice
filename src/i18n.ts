@@ -18,6 +18,8 @@ const messages = {
     // ReferencePanel
     'sketchfab': 'Sketchfab',
     'image': 'Image File',
+    'localImage': 'Local image',
+    'imageReferenceEvicted': 'This image is no longer in history. Please open the file again to use it.',
     'changeAngle': 'Change Angle',
     'addGuideLine': 'Add guide line',
     'deleteGuideLine': 'Delete guide line',
@@ -113,6 +115,8 @@ const messages = {
     // ReferencePanel
     'sketchfab': 'Sketchfab',
     'image': '画像ファイル',
+    'localImage': 'ローカル画像',
+    'imageReferenceEvicted': 'この画像は履歴から削除されています。ファイルを開き直してください。',
     'changeAngle': '角度変更',
     'addGuideLine': '補助線を追加',
     'deleteGuideLine': '補助線を削除',
