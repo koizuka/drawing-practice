@@ -28,13 +28,17 @@ export interface SessionDraft {
   updatedAt: Date
 }
 
-export type UrlHistoryType = 'youtube' | 'pexels' | 'url'
+export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image'
 
 export interface UrlHistoryEntry {
   url: string
   type: UrlHistoryType
   title?: string
   lastUsedAt: Date
+  /** Display name for 'image' entries (original file name). */
+  fileName?: string
+  /** Resized reference bytes for 'image' entries; see resizeImageForHistory. */
+  imageBlob?: Blob
 }
 
 // Scope database name by deploy path so PR previews don't share data.
@@ -65,6 +69,14 @@ db.version(3).stores({
 })
 
 db.version(4).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+})
+
+// v5: no index change — anchors the additive fileName/imageBlob fields on
+// UrlHistoryEntry so future schema diffs are easy to track.
+db.version(5).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',

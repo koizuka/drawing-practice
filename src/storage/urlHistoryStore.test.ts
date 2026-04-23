@@ -18,7 +18,7 @@ vi.mock('./db', () => ({
   },
 }))
 
-import { addUrlHistory, getUrlHistory, deleteUrlHistory, URL_HISTORY_LIMIT } from './urlHistoryStore'
+import { addUrlHistory, getUrlHistory, deleteUrlHistory, URL_HISTORY_LIMIT, URL_HISTORY_IMAGE_LIMIT } from './urlHistoryStore'
 import { db } from './db'
 
 const mockToArray = () => db.urlHistory.toArray as Mock
@@ -163,6 +163,79 @@ describe('urlHistoryStore', () => {
         'https://example.com/1',
         'https://example.com/2',
       ])
+    })
+
+    it('stores an image entry with fileName and imageBlob', async () => {
+      const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/jpeg' })
+      await addUrlHistory('local:abc123', 'image', { fileName: 'cat.jpg', imageBlob: blob })
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.url).toBe('local:abc123')
+      expect(arg.type).toBe('image')
+      expect(arg.fileName).toBe('cat.jpg')
+      expect(arg.imageBlob).toBe(blob)
+    })
+
+    it('preserves existing imageBlob and fileName when re-upserted without them (bump lastUsedAt only)', async () => {
+      const existingBlob = new Blob(['old'])
+      mockGet().mockResolvedValueOnce({
+        url: 'local:abc123',
+        type: 'image',
+        fileName: 'cat.jpg',
+        imageBlob: existingBlob,
+        lastUsedAt: new Date(1000),
+      })
+      await addUrlHistory('local:abc123', 'image', { fileName: 'cat-renamed.jpg' })
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      // new fileName wins; Blob is preserved from existing
+      expect(arg.fileName).toBe('cat-renamed.jpg')
+      expect(arg.imageBlob).toBe(existingBlob)
+    })
+
+    it('still accepts the legacy string title form (backward compat)', async () => {
+      await addUrlHistory('https://example.com/a.jpg', 'url', 'Old-style title')
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.title).toBe('Old-style title')
+      expect(arg.fileName).toBeUndefined()
+      expect(arg.imageBlob).toBeUndefined()
+    })
+
+    it('applies the image cap independently from the URL/YouTube cap', async () => {
+      // URLs at their limit, images one over → only the oldest image is evicted;
+      // URL entries are untouched.
+      const urls: UrlHistoryEntry[] = Array.from({ length: URL_HISTORY_LIMIT }, (_, i) => ({
+        url: `https://example.com/${i}`,
+        type: 'url',
+        lastUsedAt: new Date(10_000 + i),
+      }))
+      const images: UrlHistoryEntry[] = Array.from({ length: URL_HISTORY_IMAGE_LIMIT + 1 }, (_, i) => ({
+        url: `local:${i}`,
+        type: 'image',
+        fileName: `img${i}.jpg`,
+        imageBlob: new Blob(['x']),
+        lastUsedAt: new Date(1000 + i),  // i=0 is oldest image
+      }))
+      mockToArray().mockResolvedValue([...urls, ...images])
+
+      await addUrlHistory('local:new', 'image', { fileName: 'new.jpg', imageBlob: new Blob(['new']) })
+
+      expect(mockBulkDelete()).toHaveBeenCalledTimes(1)
+      const deletedUrls = mockBulkDelete().mock.calls[0][0] as string[]
+      expect(deletedUrls).toEqual(['local:0'])
+    })
+
+    it('image history does not evict URL/YouTube entries when only the URL side is at its limit', async () => {
+      // URLs at exactly their limit, no images at all yet — adding a new image
+      // must not prune any URL entry.
+      const urls: UrlHistoryEntry[] = Array.from({ length: URL_HISTORY_LIMIT }, (_, i) => ({
+        url: `https://example.com/${i}`,
+        type: 'url',
+        lastUsedAt: new Date(1000 + i),
+      }))
+      mockToArray().mockResolvedValue(urls)
+
+      await addUrlHistory('local:only', 'image', { fileName: 'x.jpg', imageBlob: new Blob(['x']) })
+
+      expect(mockBulkDelete()).not.toHaveBeenCalled()
     })
   })
 

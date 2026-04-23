@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Alert } from '@mui/material'
+import { Box, Alert, Snackbar } from '@mui/material'
 import { useOrientation } from '../hooks/useOrientation'
 import { useTimer } from '../hooks/useTimer'
 import { useAutosave } from '../hooks/useAutosave'
@@ -12,7 +12,7 @@ import { StrokeManager } from '../drawing/StrokeManager'
 import { ViewTransform } from '../drawing/ViewTransform'
 import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
-import { addUrlHistory } from '../storage/urlHistoryStore'
+import { addUrlHistory, getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { buildYouTubeCanonicalUrl } from '../utils/youtube'
 import { t } from '../i18n'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
@@ -29,6 +29,7 @@ function SplitLayoutInner() {
   const [isFlipped, setIsFlipped] = useState(false)
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null)
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
   const strokeManagerRef = useRef<StrokeManager | null>(null)
 
   // Shared ViewTransform instance for zoom/pan sync between ReferencePanel and DrawingPanel.
@@ -214,9 +215,45 @@ function SplitLayoutInner() {
   // user can undo back to the previously-loaded reference. URL-representable
   // sources (url / youtube / pexels) are also recorded into the URL history
   // dropdown so reopening from the gallery surfaces them next to URL-pasted
-  // entries. Sketchfab (UID-based) and local-file images are not URL-
-  // representable, so they're skipped.
+  // entries. Sketchfab is UID-based so it's added directly. Local-file images
+  // resolve their Blob from URL history (keyed by content hash) and apply it
+  // as a data URL so autosave/restore continues to work.
   const handleLoadReference = useCallback((info: ReferenceInfo) => {
+    if (info.source === 'image' && info.url) {
+      // Async lookup — the button was only enabled because info.url exists at
+      // gallery render time, but the URL-history entry may have been evicted
+      // since then. Surface a toast so the user understands why nothing loaded.
+      void (async () => {
+        const historyKey = info.url
+        if (!historyKey) return
+        const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined)
+        if (!entry?.imageBlob) {
+          setToast(t('imageReferenceEvicted'))
+          return
+        }
+        const dataUrl = await new Promise<string | null>(resolve => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = () => resolve(null)
+          reader.readAsDataURL(entry.imageBlob as Blob)
+        })
+        if (!dataUrl) {
+          setToast(t('imageReferenceEvicted'))
+          return
+        }
+        changeReference(s => {
+          s.setSource('image')
+          s.setReferenceMode('fixed')
+          s.setFixedImageUrl(null)
+          s.setLocalImageUrl(dataUrl)
+          s.setReferenceInfo(info)
+        })
+        await addUrlHistory(historyKey, 'image', { fileName: entry.fileName ?? info.fileName })
+        reloadUrlHistoryFnRef.current?.()
+      })()
+      return
+    }
+
     changeReference(s => {
       if (info.source === 'sketchfab' && info.sketchfabUid) {
         s.setSource('sketchfab')
@@ -406,6 +443,16 @@ function SplitLayoutInner() {
         />
       </Box>
       </Box>
+      <Snackbar
+        open={toast !== null}
+        autoHideDuration={5000}
+        onClose={() => setToast(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="warning" onClose={() => setToast(null)} sx={{ width: '100%' }}>
+          {toast}
+        </Alert>
+      </Snackbar>
     </Box>
   )
 }

@@ -75,13 +75,15 @@ Play/pause is exposed via the YouTube IFrame Player API (`enablejsapi=1` + postM
 
 ### Storage (`src/storage/`)
 
-- **Dexie.js** wrapping IndexedDB for persistent storage (schema v3)
+- **Dexie.js** wrapping IndexedDB for persistent storage (schema v5)
 - Database name is scoped by `BASE_URL` to isolate PR preview deployments. Main deployment uses `DrawingPracticeDB`; PR previews use `DrawingPracticeDB_{basePath}`.
 - On main deployment startup, stale PR preview databases are automatically cleaned up via `indexedDB.databases()`.
 - `drawings` table: each record has strokes, thumbnail PNG, structured `ReferenceInfo` (title, author, source, sketchfabUid), timestamp, elapsed time
 - `session` table: singleton draft record for autosave (strokes, redo stack, reference state, guide state, timer elapsed)
+- `urlHistory` table: dropdown history for URL-input references. Entries are `{url, type, title?, lastUsedAt, fileName?, imageBlob?}` keyed by `url`. Types are `youtube | pexels | url | image`. Non-image entries are capped at 50; image entries are capped separately at 10 so a burst of image opens cannot evict URL/YouTube/Pexels history. Image entries store a resized JPEG Blob (max 2048px, quality 0.85) under the synthetic key `local:<sha256>` so byte-identical files dedupe across paths/renames and a repeat open skips the resize.
 - **sessionStore** - Draft CRUD: `saveDraft`, `loadDraft`, `clearDraft`
-- Gallery shows reference title/author, and "Use this reference" button to reload the same Sketchfab model
+- **urlHistoryStore** - `addUrlHistory(url, type, string | AddUrlHistoryOptions)` upserts with field-preservation semantics (omitted title/fileName/imageBlob fall back to the existing row); `getUrlHistory()`, `getUrlHistoryEntry(url)`, `deleteUrlHistory(url)`.
+- Gallery shows reference title/author, and "Use this reference" button to reload the same reference. For `'image'` source this resolves the Blob from `urlHistory` via `ReferenceInfo.url` (the `local:<sha256>` key); if the entry has been evicted, `SplitLayout` surfaces a Snackbar warning instead.
 - Designed for 1000+ records
 - **Pexels API key** is stored separately in `localStorage['pexelsApiKey']` (not in IndexedDB). Each user supplies their own free key (registered at pexels.com/api) — no dev key is bundled into the build.
 
@@ -146,6 +148,7 @@ src/
 │   ├── db.ts
 │   ├── drawingStore.ts
 │   ├── sessionStore.ts     # Autosave draft CRUD
+│   ├── urlHistoryStore.ts  # URL-input dropdown history (incl. local image Blobs)
 │   ├── generateThumbnail.ts
 │   └── index.ts
 ├── hooks/
@@ -156,7 +159,8 @@ src/
 │   └── useKeyboardShortcuts.ts  # Keyboard shortcuts (Undo/Redo, tool switch, save)
 ├── utils/
 │   ├── youtube.ts          # YouTube URL parsing and embed URL helpers
-│   └── pexels.ts           # Pexels API client, URL parsing, API key management
+│   ├── pexels.ts           # Pexels API client, URL parsing, API key management
+│   └── imageResize.ts      # Canvas-based image resize + SHA-256 hash for URL history
 └── test/
     └── setup.ts
 ```

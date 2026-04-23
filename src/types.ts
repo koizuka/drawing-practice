@@ -22,6 +22,12 @@ export type ReferenceInfo =
   | (ReferenceInfoBase & {
       source: 'image'
       fileName: string
+      /**
+       * URL-history key (`local:<sha256>`) for this image. Present for entries
+       * loaded after content-hash tracking was added; older drawings persist
+       * without this field, in which case the gallery cannot reload them.
+       */
+      url?: string
     })
   | (ReferenceInfoBase & {
       source: 'url'
@@ -49,7 +55,7 @@ export type ReferenceInfo =
 export function referenceKey(info: ReferenceInfo): string {
   switch (info.source) {
     case 'sketchfab': return `sketchfab:${info.sketchfabUid}`
-    case 'image': return `image:${info.fileName}`
+    case 'image': return `image:${info.url ?? info.fileName}`
     case 'url': return `url:${info.imageUrl}`
     case 'youtube': return `youtube:${info.youtubeVideoId}`
     case 'pexels': return `pexels:${info.pexelsPhotoId}`
