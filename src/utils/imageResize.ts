@@ -83,10 +83,13 @@ export async function resizeImageForHistory(file: File): Promise<Blob> {
  * renames, and re-downloads with different mtimes.
  */
 export async function sha256Hex(blob: Blob): Promise<string> {
-  const buf = await blob.arrayBuffer()
-  const digest = await crypto.subtle.digest('SHA-256', buf)
-  const bytes = new Uint8Array(digest)
+  // Wrap in Uint8Array so SubtleCrypto receives a TypedArray even when the
+  // polyfilled Blob.arrayBuffer() returns a non-ArrayBuffer (some jsdom/Node
+  // environments surface a NodeBuffer-like result that the API rejects).
+  const bytes = new Uint8Array(await blob.arrayBuffer())
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  const digestBytes = new Uint8Array(digest)
   let hex = ''
-  for (const b of bytes) hex += b.toString(16).padStart(2, '0')
+  for (const b of digestBytes) hex += b.toString(16).padStart(2, '0')
   return hex
 }
