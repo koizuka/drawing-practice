@@ -17,7 +17,7 @@ jobs:
 
     steps:
       - name: Cleanup PR Preview
-        uses: koizuka/pr-preview-action@v1
+        uses: koizuka/pr-preview-action@942966838e8175992f5fa468d7f6a640479c3c85 # v1
         with:
           action: cleanup
           base-url: https://koizuka.github.io/drawing-practice
