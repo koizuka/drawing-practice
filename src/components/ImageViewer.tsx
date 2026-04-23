@@ -218,16 +218,28 @@ export function ImageViewer({
     redraw()
   }, [redraw, isFitLeader])
 
-  // Load image: try without CORS first, then upgrade to CORS if possible
-  // Only depends on imageUrl to avoid re-triggering on prop changes
+  // Latest-ref bridge so effects below can read fresh callbacks without
+  // depending on them — fitImage churns whenever grid/guideLines change, and
+  // refiring it would clobber the user's manual zoom.
+  const fitImageRef = useRef(fitImage)
+  const onImageLoadedRef = useRef(onImageLoaded)
+  const onImageErrorRef = useRef(onImageError)
+  useEffect(() => {
+    fitImageRef.current = fitImage
+    onImageLoadedRef.current = onImageLoaded
+    onImageErrorRef.current = onImageError
+  })
+
+  // Load image: try without CORS first, then upgrade to CORS if possible.
+  // Re-runs only when the URL changes.
   useEffect(() => {
     let cancelled = false
 
     const applyImage = (loadedImg: HTMLImageElement) => {
       if (cancelled) return
       imageRef.current = loadedImg
-      onImageLoaded?.(loadedImg.naturalWidth, loadedImg.naturalHeight)
-      fitImage()
+      onImageLoadedRef.current?.(loadedImg.naturalWidth, loadedImg.naturalHeight)
+      fitImageRef.current()
     }
 
     const img = new Image()
@@ -241,12 +253,11 @@ export function ImageViewer({
       corsImg.src = imageUrl
     }
     img.onerror = () => {
-      if (!cancelled) onImageError?.()
+      if (!cancelled) onImageErrorRef.current?.()
     }
     img.src = imageUrl
 
     return () => { cancelled = true }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only reload when URL changes
   }, [imageUrl])
 
   useEffect(() => {
@@ -259,8 +270,8 @@ export function ImageViewer({
 
   // Reset view
   useEffect(() => {
-    if (viewResetVersion > 0) fitImage()
-  }, [viewResetVersion, fitImage])
+    if (viewResetVersion > 0) fitImageRef.current()
+  }, [viewResetVersion])
 
   // Redraw when guides or overlay change
   useEffect(() => {

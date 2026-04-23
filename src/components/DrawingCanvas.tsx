@@ -176,27 +176,36 @@ export function DrawingCanvas({
     redrawAll()
   }, [highlightedStrokeIndex, redrawVersion, guideVersion, redrawAll])
 
+  // Latest-ref bridge so the effects below can read fresh fit/redraw without
+  // taking a dep on them — their identities churn on unrelated state (e.g.
+  // grid, highlightedStrokeIndex) and refiring fit would clobber the user's
+  // manual zoom.
+  const fitSizeRef = useRef(fitSize)
+  const fitToSizeRef = useRef(fitToSize)
+  const redrawAllRef = useRef(redrawAll)
+  useEffect(() => {
+    fitSizeRef.current = fitSize
+    fitToSizeRef.current = fitToSize
+    redrawAllRef.current = redrawAll
+  })
+
   // Reset view when viewResetVersion changes
   useEffect(() => {
     if (viewResetVersion > 0) {
-      if (fitSize) {
-        fitToSize()
+      if (fitSizeRef.current) {
+        fitToSizeRef.current()
       } else {
         viewTransformRef.current.reset()
       }
-      redrawAll()
+      redrawAllRef.current()
     }
-  }, [viewResetVersion, redrawAll, fitSize, fitToSize])
+  }, [viewResetVersion])
 
-  // fitToSize/redrawAll omitted from deps on purpose: their identities churn
-  // on unrelated state (e.g. highlightedStrokeIndex), which would refit and
-  // clobber the user's manual zoom.
   useEffect(() => {
     if (fitSize && isFitLeader) {
-      fitToSize()
-      redrawAll()
+      fitToSizeRef.current()
+      redrawAllRef.current()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitSize, isFitLeader])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
