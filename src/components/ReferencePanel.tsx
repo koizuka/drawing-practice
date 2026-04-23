@@ -1,10 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info, Film, Camera, Image as ImageIcon } from 'lucide-react'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import type { ViewTransform } from '../drawing/ViewTransform'
-import { YouTubeViewer } from './YouTubeViewer'
+import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer'
 import { PexelsSearcher } from './PexelsSearcher'
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog'
 import { GitHubIcon } from './GitHubIcon'
@@ -280,6 +280,27 @@ export function ReferencePanel({
   const [pexelsKeyDialogOpen, setPexelsKeyDialogOpen] = useState(false)
   const [pexelsKeyVersion, setPexelsKeyVersion] = useState(0)
 
+  // videoInteractMode: overlay steps aside so the iframe receives clicks.
+  // Entered automatically on single-tap, exited via the toolbar button.
+  // playing: mirrors the iframe's own player state for the toolbar icon.
+  const [youtubeVideoInteractMode, setYoutubeVideoInteractMode] = useState(false)
+  const [youtubePlaying, setYoutubePlaying] = useState(false)
+  const youtubePlayerRef = useRef<YouTubePlayerHandle | null>(null)
+
+  // Swapping videos must drop stale interaction/playback UI state so the new
+  // player opens in zoom mode and the toolbar icon doesn't briefly reflect the
+  // previous video. React recommends resetting state on prop change during
+  // render (see https://react.dev/reference/react/useState#storing-information-from-previous-renders);
+  // moving this into an effect would trip react-hooks/set-state-in-effect.
+  const youtubeVideoId = refInfo?.source === 'youtube' ? refInfo.youtubeVideoId : null
+  const [prevYoutubeKey, setPrevYoutubeKey] = useState<string | null>(null)
+  const nextYoutubeKey = source === 'youtube' && youtubeVideoId ? youtubeVideoId : null
+  if (prevYoutubeKey !== nextYoutubeKey) {
+    setPrevYoutubeKey(nextYoutubeKey)
+    setYoutubeVideoInteractMode(false)
+    setYoutubePlaying(false)
+  }
+
   const handleLoadLocalImage = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -533,6 +554,9 @@ export function ReferencePanel({
   // Sketchfab browse mode: either searching or viewing a model
   const isSfBrowse = source === 'sketchfab' && referenceMode === 'browse'
   const isYouTube = source === 'youtube'
+  // Canvas-bound tools are hidden while the overlay is transparent — they
+  // have nothing to act on in that mode.
+  const inYouTubeVideoMode = isYouTube && youtubeVideoInteractMode
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -586,8 +610,43 @@ export function ReferencePanel({
           </Button>
         )}
 
+        {/* Works in both modes — pausing shouldn't require giving up zoom. */}
+        {isYouTube && (
+          <Tooltip title={youtubePlaying ? t('youtubePause') : t('youtubePlay')}>
+            <IconButton
+              size="small"
+              onClick={() => {
+                if (youtubePlaying) {
+                  youtubePlayerRef.current?.pause()
+                } else {
+                  youtubePlayerRef.current?.play()
+                }
+              }}
+            >
+              {youtubePlaying ? <Pause size={20} /> : <Play size={20} />}
+            </IconButton>
+          </Tooltip>
+        )}
+
+        {isYouTube && youtubeVideoInteractMode && (
+          <Tooltip title={t('youtubeReturnToZoom')}>
+            <IconButton
+              size="small"
+              aria-label={t('youtubeReturnToZoom')}
+              onClick={() => setYoutubeVideoInteractMode(false)}
+              sx={{
+                bgcolor: 'primary.main',
+                color: 'white',
+                '&:hover': { bgcolor: 'primary.dark' },
+              }}
+            >
+              <ZoomIn size={20} />
+            </IconButton>
+          </Tooltip>
+        )}
+
         {/* Guide line tools — add/delete-mode require a viewer to interact with. */}
-        {(isFixed || isYouTube) && (
+        {(isFixed || isYouTube) && !inYouTubeVideoMode && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
@@ -646,7 +705,7 @@ export function ReferencePanel({
         )}
 
         {/* Delete confirmation */}
-        {highlightedGuideId && (
+        {highlightedGuideId && !inYouTubeVideoMode && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
             <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
@@ -661,7 +720,7 @@ export function ReferencePanel({
         <Box sx={{ flex: 1 }} />
 
         {/* View controls (always visible) */}
-        {(isFixed || isYouTube) && (
+        {(isFixed || isYouTube) && !inYouTubeVideoMode && (
           <Tooltip title={t('compare')}>
             <IconButton
               size="small"
@@ -887,6 +946,7 @@ export function ReferencePanel({
         {/* YouTube viewer */}
         {refInfo?.source === 'youtube' && (
           <YouTubeViewer
+            ref={youtubePlayerRef}
             videoId={refInfo.youtubeVideoId}
             grid={grid}
             guideLines={lines}
@@ -901,6 +961,9 @@ export function ReferencePanel({
             onHighlightGuide={setHighlightedGuideId}
             viewTransform={viewTransform}
             isFitLeader={fitLeader === 'reference'}
+            videoInteractMode={youtubeVideoInteractMode}
+            onRequestVideoInteract={() => setYoutubeVideoInteractMode(true)}
+            onPlayerStateChange={setYoutubePlaying}
           />
         )}
 

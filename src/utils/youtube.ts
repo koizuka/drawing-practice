@@ -1,3 +1,5 @@
+export const YOUTUBE_ORIGIN = 'https://www.youtube.com'
+
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/
 
 function isValidVideoId(id: string | null | undefined): id is string {
@@ -50,11 +52,14 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
     playsinline: '1',
     rel: '0',
     modestbranding: '1',
+    // Required for the IFrame Player API to accept postMessage commands
+    // (playVideo / pauseVideo) and to emit state-change events back.
+    enablejsapi: '1',
   })
   if (typeof window !== 'undefined' && window.location?.origin) {
     params.set('origin', window.location.origin)
   }
-  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`
+  return `${YOUTUBE_ORIGIN}/embed/${videoId}?${params.toString()}`
 }
 
 /**
@@ -65,8 +70,8 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
  */
 export async function fetchYouTubeTitle(videoId: string, signal?: AbortSignal): Promise<string | null> {
   if (!isValidVideoId(videoId)) return null
-  const target = `https://www.youtube.com/watch?v=${videoId}`
-  const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(target)}&format=json`
+  const target = `${YOUTUBE_ORIGIN}/watch?v=${videoId}`
+  const oembedUrl = `${YOUTUBE_ORIGIN}/oembed?url=${encodeURIComponent(target)}&format=json`
   try {
     const res = await fetch(oembedUrl, { signal })
     if (!res.ok) return null
