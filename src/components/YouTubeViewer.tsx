@@ -1,6 +1,6 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react'
 import { Box } from '@mui/material'
-import { buildYouTubeEmbedUrl } from '../utils/youtube'
+import { buildYouTubeEmbedUrl, YOUTUBE_ORIGIN } from '../utils/youtube'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { GridSettings, GuideLine } from '../guides/types'
 import type { Stroke, Point } from '../drawing/types'
@@ -10,10 +10,32 @@ import type { ViewTransform } from '../drawing/ViewTransform'
 const LOGICAL_WIDTH = 1920
 const LOGICAL_HEIGHT = 1080
 
+const TRACKPAD_ZOOM_SPEED = 0.01
+
+// Tap threshold: release within this radius and duration counts as a tap and
+// switches to video-interact mode.
+const TAP_MAX_MOVE_PX = 10
+const TAP_MAX_DURATION_MS = 400
+
 const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)'
 const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)'
 const GUIDE_HIT_THRESHOLD_PX = 15
 const GUIDE_MIN_DRAG_PX = 5
+
+// YouTube IFrame Player API postMessage protocol.
+// See https://developers.google.com/youtube/iframe_api_reference
+const YT_EVENT_LISTENING = 'listening'
+const YT_EVENT_COMMAND = 'command'
+const YT_EVENT_INFO_DELIVERY = 'infoDelivery'
+const YT_EVENT_STATE_CHANGE = 'onStateChange'
+const YT_CMD_PLAY = 'playVideo'
+const YT_CMD_PAUSE = 'pauseVideo'
+const YT_PLAYER_STATE_PLAYING = 1
+
+export interface YouTubePlayerHandle {
+  play(): void
+  pause(): void
+}
 
 interface YouTubeViewerProps {
   videoId: string
@@ -32,6 +54,20 @@ interface YouTubeViewerProps {
   viewTransform?: ViewTransform
   /** When true, this viewer writes the initial fit to the shared ViewTransform on mount/resize. */
   isFitLeader?: boolean
+  /**
+   * When true, the overlay is made transparent to input so the iframe itself
+   * receives pointer events (seek bar, subtitles, settings). Zoom/pan on the
+   * canvas and tap-detection are disabled in this mode.
+   */
+  videoInteractMode?: boolean
+  /**
+   * Called when a single tap is detected on the overlay in zoom mode. The
+   * parent should switch to video-interact mode so the next tap reaches the
+   * iframe.
+   */
+  onRequestVideoInteract?: () => void
+  /** Emits true when the player starts playing, false when it pauses/ends. */
+  onPlayerStateChange?: (isPlaying: boolean) => void
 }
 
 function drawOverlayStrokePath(ctx: CanvasRenderingContext2D, points: readonly Point[]): void {
@@ -60,52 +96,87 @@ function pointToSegmentDist(p: Point, line: GuideLine): number {
   return Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2)
 }
 
-export function YouTubeViewer({
+export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>(function YouTubeViewer({
   videoId, grid, guideLines, guideVersion,
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
   onFitSize,
   guideMode, onAddGuideLine, highlightedGuideId, onHighlightGuide,
   viewTransform,
   isFitLeader = false,
-}: YouTubeViewerProps) {
+  videoInteractMode = false,
+  onRequestVideoInteract,
+  onPlayerStateChange,
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const iframeRef = useRef<HTMLIFrameElement>(null)
   const rafRef = useRef(0)
 
   const [dragStart, setDragStart] = useState<Point | null>(null)
   const [dragEnd, setDragEnd] = useState<Point | null>(null)
 
+  const pinchRef = useRef<{
+    id1: number
+    id2: number
+    lastDist: number
+    lastMidX: number
+    lastMidY: number
+  } | null>(null)
+  const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map())
+  // Cached at pinch start; reused each touchmove to avoid forcing a synchronous
+  // layout at ~60fps.
+  const pinchRectRef = useRef<DOMRect | null>(null)
+  // Tracks a single-pointer session that might still qualify as a tap.
+  const tapCandidateRef = useRef<{ time: number; x: number; y: number } | null>(null)
+
   useEffect(() => {
     onFitSize?.(LOGICAL_WIDTH, LOGICAL_HEIGHT)
   }, [onFitSize])
 
-  const getLogicalPoint = useCallback((clientX: number, clientY: number): Point => {
-    const wrapper = wrapperRef.current
-    if (!wrapper) return { x: 0, y: 0 }
-    const rect = wrapper.getBoundingClientRect()
-    const scale = rect.width / LOGICAL_WIDTH
-    return {
-      x: (clientX - rect.left) / scale,
-      y: (clientY - rect.top) / scale,
+  // Resolves logical→container transform, falling back to a center-fit when
+  // no shared ViewTransform is provided (kept in sync with applyPlacement's
+  // fallback branch).
+  const getViewTransformState = useCallback((containerRect: DOMRect): { scale: number; offsetX: number; offsetY: number } => {
+    if (viewTransform) {
+      const vt = viewTransform.get()
+      return { scale: vt.scale, offsetX: vt.offsetX, offsetY: vt.offsetY }
     }
-  }, [])
+    const scale = Math.min(containerRect.width / LOGICAL_WIDTH, containerRect.height / LOGICAL_HEIGHT)
+    return {
+      scale,
+      offsetX: (containerRect.width - LOGICAL_WIDTH * scale) / 2,
+      offsetY: (containerRect.height - LOGICAL_HEIGHT * scale) / 2,
+    }
+  }, [viewTransform])
 
-  /** Current logical units per screen pixel; 0 if the wrapper is not laid out yet. */
+  const getLogicalPoint = useCallback((clientX: number, clientY: number): Point => {
+    const container = containerRef.current
+    if (!container) return { x: 0, y: 0 }
+    const rect = container.getBoundingClientRect()
+    const { scale, offsetX, offsetY } = getViewTransformState(rect)
+    if (scale === 0) return { x: 0, y: 0 }
+    return {
+      x: (clientX - rect.left - offsetX) / scale,
+      y: (clientY - rect.top - offsetY) / scale,
+    }
+  }, [getViewTransformState])
+
+  /** Current logical units per screen pixel; 0 if the container is not laid out yet. */
   const getLogicalScale = useCallback((): number => {
-    const wrapper = wrapperRef.current
-    if (!wrapper) return 0
-    const rect = wrapper.getBoundingClientRect()
-    if (rect.width === 0) return 0
-    return rect.width / LOGICAL_WIDTH
-  }, [])
+    const container = containerRef.current
+    if (!container) return 0
+    const rect = container.getBoundingClientRect()
+    if (rect.width === 0 || rect.height === 0) return 0
+    return getViewTransformState(rect).scale
+  }, [getViewTransformState])
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
-    const wrapper = wrapperRef.current
-    if (!canvas || !wrapper) return
+    const container = containerRef.current
+    if (!canvas || !container) return
 
-    const rect = wrapper.getBoundingClientRect()
+    const rect = container.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
 
     const dpr = window.devicePixelRatio || 1
@@ -114,12 +185,13 @@ export function YouTubeViewer({
     if (canvas.width !== targetW) canvas.width = targetW
     if (canvas.height !== targetH) canvas.height = targetH
 
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const scale = rect.width / LOGICAL_WIDTH
-    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0)
+    const { scale, offsetX, offsetY } = getViewTransformState(rect)
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY)
 
     const topLeft: Point = { x: 0, y: 0 }
     const bottomRight: Point = { x: LOGICAL_WIDTH, y: LOGICAL_HEIGHT }
@@ -157,7 +229,7 @@ export function YouTubeViewer({
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd])
+  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd, getViewTransformState])
 
   const requestRedraw = useCallback(() => {
     if (rafRef.current) return
@@ -167,10 +239,9 @@ export function YouTubeViewer({
     })
   }, [redraw])
 
-  // Position the wrapper. When a shared ViewTransform is provided, its
-  // (offsetX, offsetY, scale) drives the iframe placement so YouTube zoom/pan
-  // stays in lockstep with the drawing canvas. Otherwise fall back to a
-  // self-fit that centers the 16:9 wrapper in the container.
+  // Position the wrapper to match the shared ViewTransform (or a self-fit
+  // center when not provided). Repaint the overlay canvas via rAF so bursts
+  // of notify()s during pinch coalesce to one redraw per frame.
   const applyPlacement = useCallback(() => {
     const container = containerRef.current
     const wrapper = wrapperRef.current
@@ -193,11 +264,12 @@ export function YouTubeViewer({
       wrapper.style.left = `${(rect.width - w) / 2}px`
       wrapper.style.top = `${(rect.height - h) / 2}px`
     }
-    redraw()
-  }, [redraw, viewTransform])
+    requestRedraw()
+  }, [requestRedraw, viewTransform])
 
-  // When this viewer owns the fit, compute it from the container rect and push
-  // it into the shared ViewTransform. The placement subscriber will then react.
+  // When this viewer owns the initial fit, push it into the shared transform
+  // so the other panel lines up. Subsequent resizes are intentionally not
+  // re-fit — that would clobber a user-driven zoom.
   const writeFitToTransform = useCallback(() => {
     const container = containerRef.current
     if (!container || !viewTransform || !isFitLeader) return
@@ -209,8 +281,6 @@ export function YouTubeViewer({
     )
   }, [viewTransform, isFitLeader])
 
-  // Initial fit only — resize is handled by the placement-only observer below
-  // so the ViewTransform survives incidental resizes.
   useEffect(() => {
     writeFitToTransform()
   }, [writeFitToTransform])
@@ -226,8 +296,6 @@ export function YouTubeViewer({
     return () => observer.disconnect()
   }, [applyPlacement])
 
-  // Subscribe to transform changes driven by the drawing canvas so the iframe
-  // follows along when the user zooms/pans on the other panel.
   useEffect(() => {
     if (!viewTransform) return
     return viewTransform.subscribe(applyPlacement)
@@ -240,6 +308,95 @@ export function YouTubeViewer({
   useEffect(() => {
     onRegisterOverlayRedraw?.(requestRedraw)
   }, [onRegisterOverlayRedraw, requestRedraw])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const handleWheel = (e: WheelEvent) => {
+      if (videoInteractMode) return
+      if (guideMode !== 'none') return
+      // Suppress browser page-zoom even when there's no ViewTransform to
+      // update — otherwise ctrl+wheel / trackpad pinch would fall through.
+      e.preventDefault()
+      if (!viewTransform) return
+      const rect = canvas.getBoundingClientRect()
+      const focalX = e.clientX - rect.left
+      const focalY = e.clientY - rect.top
+      if (e.ctrlKey) {
+        const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
+        viewTransform.applyPinch(focalX, focalY, scaleDelta, 0, 0)
+      } else {
+        viewTransform.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY)
+      }
+    }
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    return () => canvas.removeEventListener('wheel', handleWheel)
+  }, [videoInteractMode, guideMode, viewTransform])
+
+  // IFrame API handshake: registers us as a listener once the player loads.
+  useEffect(() => {
+    const iframe = iframeRef.current
+    if (!iframe) return
+    const handleLoad = () => {
+      iframe.contentWindow?.postMessage(
+        JSON.stringify({ event: YT_EVENT_LISTENING, id: videoId, channel: 'widget' }),
+        YOUTUBE_ORIGIN,
+      )
+    }
+    iframe.addEventListener('load', handleLoad)
+    return () => iframe.removeEventListener('load', handleLoad)
+  }, [videoId])
+
+  // The player emits infoDelivery many times per second (playhead ticks,
+  // buffering, etc). Only forward on actual playing↔paused transitions so the
+  // toolbar doesn't thrash setState.
+  const lastPlayingRef = useRef<boolean | null>(null)
+  useEffect(() => {
+    if (!onPlayerStateChange) return
+    const emit = (next: boolean) => {
+      if (lastPlayingRef.current === next) return
+      lastPlayingRef.current = next
+      onPlayerStateChange(next)
+    }
+    const handleMessage = (e: MessageEvent) => {
+      if (e.origin !== YOUTUBE_ORIGIN) return
+      if (e.source !== iframeRef.current?.contentWindow) return
+      if (typeof e.data !== 'string') return
+      let payload: unknown
+      try {
+        payload = JSON.parse(e.data)
+      } catch {
+        return
+      }
+      if (!payload || typeof payload !== 'object') return
+      const data = payload as Record<string, unknown>
+      if (data.event === YT_EVENT_INFO_DELIVERY && data.info && typeof data.info === 'object') {
+        const state = (data.info as Record<string, unknown>).playerState
+        if (typeof state === 'number') emit(state === YT_PLAYER_STATE_PLAYING)
+      } else if (data.event === YT_EVENT_STATE_CHANGE && typeof data.info === 'number') {
+        emit(data.info === YT_PLAYER_STATE_PLAYING)
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [onPlayerStateChange])
+
+  useImperativeHandle(ref, () => ({
+    play() {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PLAY, args: [] }),
+        YOUTUBE_ORIGIN,
+      )
+    },
+    pause() {
+      iframeRef.current?.contentWindow?.postMessage(
+        JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PAUSE, args: [] }),
+        YOUTUBE_ORIGIN,
+      )
+    },
+  }), [])
 
   const beginGuideInteraction = useCallback((clientX: number, clientY: number) => {
     if (guideMode === 'none') return
@@ -285,41 +442,181 @@ export function YouTubeViewer({
     setDragEnd(null)
   }, [guideMode, dragStart, dragEnd, getLogicalScale, onAddGuideLine])
 
+  const commitTapIfValid = useCallback(() => {
+    const tap = tapCandidateRef.current
+    tapCandidateRef.current = null
+    if (!tap) return
+    if (videoInteractMode) return
+    if (guideMode !== 'none') return
+    if (Date.now() - tap.time > TAP_MAX_DURATION_MS) return
+    onRequestVideoInteract?.()
+  }, [videoInteractMode, guideMode, onRequestVideoInteract])
+
+  const maybeInvalidateTap = useCallback((clientX: number, clientY: number) => {
+    const tap = tapCandidateRef.current
+    if (!tap) return
+    const dx = clientX - tap.x
+    const dy = clientY - tap.y
+    if (Math.sqrt(dx * dx + dy * dy) > TAP_MAX_MOVE_PX) {
+      tapCandidateRef.current = null
+    }
+  }, [])
+
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if (!videoInteractMode && guideMode === 'none') {
+      tapCandidateRef.current = { time: Date.now(), x: e.clientX, y: e.clientY }
+    }
     beginGuideInteraction(e.clientX, e.clientY)
-  }, [beginGuideInteraction])
+  }, [videoInteractMode, guideMode, beginGuideInteraction])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    maybeInvalidateTap(e.clientX, e.clientY)
     updateGuideInteraction(e.clientX, e.clientY)
-  }, [updateGuideInteraction])
+  }, [maybeInvalidateTap, updateGuideInteraction])
+
+  const handleMouseUp = useCallback(() => {
+    commitTapIfValid()
+    endGuideInteraction()
+  }, [commitTapIfValid, endGuideInteraction])
+
+  const handleMouseLeave = useCallback(() => {
+    tapCandidateRef.current = null
+    endGuideInteraction()
+  }, [endGuideInteraction])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i]
+      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY })
+    }
+
+    if (activeTouchesRef.current.size >= 2) {
+      e.preventDefault()
+      tapCandidateRef.current = null
+      if (dragStart || dragEnd) {
+        setDragStart(null)
+        setDragEnd(null)
+      }
+      const ids = Array.from(activeTouchesRef.current.keys())
+      const t1 = activeTouchesRef.current.get(ids[0])!
+      const t2 = activeTouchesRef.current.get(ids[1])!
+      const dx = t2.x - t1.x
+      const dy = t2.y - t1.y
+      pinchRef.current = {
+        id1: ids[0],
+        id2: ids[1],
+        lastDist: Math.sqrt(dx * dx + dy * dy),
+        lastMidX: (t1.x + t2.x) / 2,
+        lastMidY: (t1.y + t2.y) / 2,
+      }
+      pinchRectRef.current = canvasRef.current!.getBoundingClientRect()
+      return
+    }
+
+    const touch = e.changedTouches[0]
+    if (!videoInteractMode && guideMode === 'none') {
+      tapCandidateRef.current = { time: Date.now(), x: touch.clientX, y: touch.clientY }
+    }
+
     if (guideMode === 'none') return
     e.preventDefault()
-    const touch = e.changedTouches[0]
     beginGuideInteraction(touch.clientX, touch.clientY)
-  }, [guideMode, beginGuideInteraction])
+  }, [videoInteractMode, guideMode, beginGuideInteraction, dragStart, dragEnd])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i]
+      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY })
+    }
+
+    if (pinchRef.current) {
+      const t1 = activeTouchesRef.current.get(pinchRef.current.id1)
+      const t2 = activeTouchesRef.current.get(pinchRef.current.id2)
+      if (!t1 || !t2) return
+      e.preventDefault()
+
+      if (viewTransform) {
+        const dx = t2.x - t1.x
+        const dy = t2.y - t1.y
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        const midX = (t1.x + t2.x) / 2
+        const midY = (t1.y + t2.y) / 2
+
+        const rect = pinchRectRef.current!
+        const focalX = midX - rect.left
+        const focalY = midY - rect.top
+
+        const scaleDelta = dist / pinchRef.current.lastDist
+        const translateX = midX - pinchRef.current.lastMidX
+        const translateY = midY - pinchRef.current.lastMidY
+
+        viewTransform.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
+
+        pinchRef.current.lastDist = dist
+        pinchRef.current.lastMidX = midX
+        pinchRef.current.lastMidY = midY
+      }
+      return
+    }
+
+    const touch = e.changedTouches[0]
+    maybeInvalidateTap(touch.clientX, touch.clientY)
+
     if (guideMode !== 'add' || !dragStart) return
     e.preventDefault()
-    const touch = e.changedTouches[0]
     updateGuideInteraction(touch.clientX, touch.clientY)
-  }, [guideMode, dragStart, updateGuideInteraction])
+  }, [viewTransform, guideMode, dragStart, maybeInvalidateTap, updateGuideInteraction])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      activeTouchesRef.current.delete(e.changedTouches[i].identifier)
+    }
+
+    if (pinchRef.current) {
+      if (!activeTouchesRef.current.has(pinchRef.current.id1) ||
+          !activeTouchesRef.current.has(pinchRef.current.id2)) {
+        pinchRef.current = null
+        pinchRectRef.current = null
+      }
+      tapCandidateRef.current = null
+      e.preventDefault()
+      return
+    }
+
+    commitTapIfValid()
+
     if (guideMode !== 'add') return
     e.preventDefault()
     endGuideInteraction()
-  }, [guideMode, endGuideInteraction])
+  }, [commitTapIfValid, guideMode, endGuideInteraction])
 
-  const interactive = guideMode !== 'none'
-  const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default'
+  const handleTouchCancel = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      activeTouchesRef.current.delete(e.changedTouches[i].identifier)
+    }
+    tapCandidateRef.current = null
+    if (pinchRef.current) {
+      pinchRef.current = null
+      pinchRectRef.current = null
+    }
+    if (guideMode === 'add' && (dragStart || dragEnd)) {
+      setDragStart(null)
+      setDragEnd(null)
+    }
+  }, [guideMode, dragStart, dragEnd])
+
+  const overlayActive = !videoInteractMode
+  const cursor =
+    guideMode === 'add' ? 'crosshair' :
+    guideMode === 'delete' ? 'pointer' :
+    overlayActive ? 'zoom-in' :
+    'default'
 
   return (
     <Box ref={containerRef} sx={{ position: 'absolute', inset: 0, bgcolor: '#000', overflow: 'hidden' }}>
       <Box ref={wrapperRef} sx={{ position: 'absolute' }}>
         <iframe
+          ref={iframeRef}
           key={videoId}
           src={buildYouTubeEmbedUrl(videoId)}
           title="YouTube reference"
@@ -327,27 +624,29 @@ export function YouTubeViewer({
           allowFullScreen
           style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: 'block' }}
         />
-        <canvas
-          ref={canvasRef}
-          onMouseDown={interactive ? handleMouseDown : undefined}
-          onMouseMove={interactive ? handleMouseMove : undefined}
-          onMouseUp={interactive ? endGuideInteraction : undefined}
-          onMouseLeave={interactive ? endGuideInteraction : undefined}
-          onTouchStart={interactive ? handleTouchStart : undefined}
-          onTouchMove={interactive ? handleTouchMove : undefined}
-          onTouchEnd={interactive ? handleTouchEnd : undefined}
-          onTouchCancel={interactive ? handleTouchEnd : undefined}
-          style={{
-            position: 'absolute',
-            inset: 0,
-            width: '100%',
-            height: '100%',
-            pointerEvents: interactive ? 'auto' : 'none',
-            touchAction: interactive ? 'none' : 'auto',
-            cursor,
-          }}
-        />
       </Box>
+      {/* Spans the whole container — not just the 16:9 player — so pinch/
+          wheel over the letterbox doesn't fall through to browser page zoom. */}
+      <canvas
+        ref={canvasRef}
+        onMouseDown={overlayActive ? handleMouseDown : undefined}
+        onMouseMove={overlayActive ? handleMouseMove : undefined}
+        onMouseUp={overlayActive ? handleMouseUp : undefined}
+        onMouseLeave={overlayActive ? handleMouseLeave : undefined}
+        onTouchStart={overlayActive ? handleTouchStart : undefined}
+        onTouchMove={overlayActive ? handleTouchMove : undefined}
+        onTouchEnd={overlayActive ? handleTouchEnd : undefined}
+        onTouchCancel={overlayActive ? handleTouchCancel : undefined}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          pointerEvents: overlayActive ? 'auto' : 'none',
+          touchAction: overlayActive ? 'none' : 'auto',
+          cursor,
+        }}
+      />
     </Box>
   )
-}
+})

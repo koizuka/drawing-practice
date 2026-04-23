@@ -88,6 +88,11 @@ const messages = {
     'pexelsBackToSearch': 'Back to search',
     'collapseReferenceInfo': 'Collapse info',
     'expandReferenceInfo': 'Show info',
+
+    // YouTube
+    'youtubePlay': 'Play',
+    'youtubePause': 'Pause',
+    'youtubeReturnToZoom': 'Return to canvas zoom',
   },
   ja: {
     // DrawingPanel
@@ -178,6 +183,11 @@ const messages = {
     'pexelsBackToSearch': '検索に戻る',
     'collapseReferenceInfo': '情報を畳む',
     'expandReferenceInfo': '情報を表示',
+
+    // YouTube
+    'youtubePlay': '再生',
+    'youtubePause': '一時停止',
+    'youtubeReturnToZoom': 'キャンバスズームに戻る',
   },
 } as const
 

@@ -66,6 +66,11 @@ describe('buildYouTubeEmbedUrl', () => {
     expect(url).toContain('rel=0')
     expect(url).toContain('modestbranding=1')
   })
+
+  it('includes enablejsapi so postMessage commands work', () => {
+    const url = buildYouTubeEmbedUrl('dQw4w9WgXcQ')
+    expect(url).toContain('enablejsapi=1')
+  })
 })
 
 describe('fetchYouTubeTitle', () => {
