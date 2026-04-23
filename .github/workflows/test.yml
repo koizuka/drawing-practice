@@ -69,13 +69,28 @@ jobs:
     steps:
       - name: Check CI Results
         run: |
+          echo "Code changes: ${{ needs.changes.outputs.code }}"
+          echo "Build result: ${{ needs.build.result }}"
+
           if [[ "${{ needs.changes.outputs.code }}" == "true" ]]; then
-            if [[ "${{ needs.build.result }}" != "success" ]]; then
-              echo "CI failed"
+            echo "Tests were executed. Checking results..."
+
+            if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+              echo "CI failed: one or more jobs failed"
               exit 1
             fi
+
+            if [[ "${{ contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+              echo "CI cancelled: one or more jobs were cancelled"
+              exit 1
+            fi
+
+            echo "All checks passed!"
+          else
+            echo "No code changes detected - skipping tests"
           fi
-          echo "CI passed"
+
+          echo "CI completed successfully!"
 
   pr-preview:
     name: PR Preview
