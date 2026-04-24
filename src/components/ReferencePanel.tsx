@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Settings, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn } from 'lucide-react'
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import type { ViewTransform } from '../drawing/ViewTransform'
@@ -828,33 +828,74 @@ export function ReferencePanel({
       <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: (isFlipped && !isYouTube) ? 'scaleX(-1)' : undefined }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
+          <Box sx={{ height: '100%', overflowY: 'auto' }}>
           <Box sx={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '100%',
-            gap: 2,
+            minHeight: '100%',
+            gap: 1.5,
+            px: 2,
+            py: 2,
           }}>
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'center' }}>
-              <Button variant="outlined" size="large" onClick={handleOpenSketchfab}>
-                {t('sketchfab')}
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%', maxWidth: 360 }}>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={handleOpenSketchfab}
+                startIcon={<Boxes size={20} />}
+                sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+              >
+                <Box sx={{ textAlign: 'left' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('sketchfab')}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    {t('sketchfabDescription')}
+                  </Typography>
+                </Box>
               </Button>
-              <Button variant="outlined" size="large" onClick={handleLoadLocalImage}>
-                {t('image')}
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={handleLoadLocalImage}
+                startIcon={<FolderOpen size={20} />}
+                sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+              >
+                <Box sx={{ textAlign: 'left' }}>
+                  <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('image')}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    {t('imageDescription')}
+                  </Typography>
+                </Box>
               </Button>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                <Button variant="outlined" size="large" onClick={handleOpenPexels}>
-                  {t('pexels')}
+              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'stretch' }}>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  onClick={handleOpenPexels}
+                  startIcon={<Camera size={20} />}
+                  sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+                >
+                  <Box sx={{ textAlign: 'left' }}>
+                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('pexels')}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      {t('pexelsDescription')}
+                    </Typography>
+                  </Box>
                 </Button>
                 <Tooltip title={t('pexelsApiKeySettings')}>
-                  <IconButton size="small" onClick={() => setPexelsKeyDialogOpen(true)} sx={{ ml: 0.5 }}>
-                    <Settings size={18} />
+                  <IconButton
+                    onClick={() => setPexelsKeyDialogOpen(true)}
+                    sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
+                  >
+                    <KeyRound size={18} />
                   </IconButton>
                 </Tooltip>
               </Box>
             </Box>
-            <Box sx={{ display: 'flex', gap: 1, width: '80%', maxWidth: 400 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 360 }}>
+              <Typography variant="caption" color="text.secondary">{t('urlSectionLabel')}</Typography>
+              <Box sx={{ display: 'flex', gap: 1 }}>
               <Autocomplete<UrlHistoryEntry, false, false, true>
                 freeSolo
                 size="small"
@@ -975,6 +1016,7 @@ export function ReferencePanel({
                 {t('loadUrl')}
               </Button>
             </Box>
+            </Box>
             {urlLoading && (
               <Typography variant="caption" color="text.secondary">{t('loading')}</Typography>
             )}
@@ -994,6 +1036,7 @@ export function ReferencePanel({
                 <GitHubIcon />
               </a>
             </Box>
+          </Box>
           </Box>
         )}
 
