@@ -28,6 +28,10 @@ const messages = {
     'fullscreen': 'Fullscreen',
     'exitFullscreen': 'Exit fullscreen',
     'selectReference': 'Select a reference source above',
+    'sketchfabDescription': '3D model search',
+    'imageDescription': 'Open local file',
+    'pexelsDescription': 'Free photo search',
+    'urlSectionLabel': 'URL (Image / YouTube / Pexels)',
 
     // SketchfabViewer
     'searchModels': 'Search models...',
@@ -125,6 +129,10 @@ const messages = {
     'fullscreen': '全画面',
     'exitFullscreen': '全画面を終了',
     'selectReference': 'お手本を選んでください',
+    'sketchfabDescription': '3Dモデルを検索',
+    'imageDescription': 'ローカルファイルを開く',
+    'pexelsDescription': 'フリー写真を検索',
+    'urlSectionLabel': 'URL（画像・YouTube・Pexels）',
 
     // SketchfabViewer
     'searchModels': 'モデルを検索...',
