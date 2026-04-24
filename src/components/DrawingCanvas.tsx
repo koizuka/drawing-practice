@@ -63,6 +63,7 @@ export function DrawingCanvas({
   const hasStylusRef = useRef(false)
   const drawingPointCountRef = useRef(0)
   const rafIdRef = useRef<number>(0)
+  const noRefGridCenterRef = useRef<Point>({ x: 0, y: 0 })
 
   // Pinch state
   const pinchRef = useRef<{ id1: number; id2: number; lastDist: number; lastMidX: number; lastMidY: number } | null>(null)
@@ -118,7 +119,7 @@ export function DrawingCanvas({
     const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
     const gridCenter = fitSize
       ? { x: fitSize.width / 2, y: fitSize.height / 2 }
-      : viewTransformRef.current.screenToCanvas(cssWidth / 2, cssHeight / 2)
+      : noRefGridCenterRef.current
     drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, gridCenter)
     drawGuideLines(ctx, guideLines, vt.scale)
 
@@ -153,6 +154,8 @@ export function DrawingCanvas({
     ctx.scale(dpr, dpr)
 
     rendererRef.current = new CanvasRenderer(ctx)
+
+    noRefGridCenterRef.current = { x: rect.width / 2, y: rect.height / 2 }
 
     // Resize does not refit — that would clobber the user's manual zoom/pan.
     // Fit happens only on fitSize change or viewResetVersion bump.
