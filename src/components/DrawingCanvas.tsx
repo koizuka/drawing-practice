@@ -155,7 +155,10 @@ export function DrawingCanvas({
 
     rendererRef.current = new CanvasRenderer(ctx)
 
-    noRefGridCenterRef.current = { x: rect.width / 2, y: rect.height / 2 }
+    noRefGridCenterRef.current = viewTransformRef.current.screenToCanvas(
+      rect.width / 2,
+      rect.height / 2,
+    )
 
     // Resize does not refit — that would clobber the user's manual zoom/pan.
     // Fit happens only on fitSize change or viewResetVersion bump.
