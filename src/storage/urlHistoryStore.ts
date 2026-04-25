@@ -11,6 +11,7 @@ export interface AddUrlHistoryOptions {
   title?: string
   fileName?: string
   imageBlob?: Blob
+  thumbnailUrl?: string
 }
 
 /**
@@ -49,17 +50,28 @@ export async function addUrlHistory(
   let finalTitle = opts.title?.trim() || undefined
   let finalFileName = opts.fileName
   let finalBlob = opts.imageBlob
-  if (!finalTitle || (type === 'image' && (!finalFileName || !finalBlob))) {
+  let finalThumbnailUrl = opts.thumbnailUrl
+  // Only fall back to the stored thumbnailUrl for types that actually persist
+  // it (currently just 'pexels'); for url/youtube the dropdown derives the
+  // thumbnail at render time, so a lookup here would just cost a DB read.
+  const needsThumbnailLookup = type === 'pexels' && !finalThumbnailUrl
+  if (
+    !finalTitle ||
+    needsThumbnailLookup ||
+    (type === 'image' && (!finalFileName || !finalBlob))
+  ) {
     const existing = await db.urlHistory.get(key)
     if (!finalTitle) finalTitle = existing?.title
     if (!finalFileName) finalFileName = existing?.fileName
     if (!finalBlob) finalBlob = existing?.imageBlob
+    if (!finalThumbnailUrl) finalThumbnailUrl = existing?.thumbnailUrl
   }
 
   const entry: UrlHistoryEntry = { url: key, type, lastUsedAt: new Date() }
   if (finalTitle) entry.title = finalTitle
   if (finalFileName) entry.fileName = finalFileName
   if (finalBlob) entry.imageBlob = finalBlob
+  if (finalThumbnailUrl) entry.thumbnailUrl = finalThumbnailUrl
   await db.urlHistory.put(entry)
 
   const all = await db.urlHistory.toArray()

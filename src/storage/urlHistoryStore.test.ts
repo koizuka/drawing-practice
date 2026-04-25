@@ -199,6 +199,46 @@ describe('urlHistoryStore', () => {
       expect(arg.imageBlob).toBeUndefined()
     })
 
+    it('stores a pexels entry with thumbnailUrl', async () => {
+      await addUrlHistory('https://www.pexels.com/photo/whatever-123/', 'pexels', {
+        title: 'A photo',
+        thumbnailUrl: 'https://images.pexels.com/photos/123/x?auto=compress&cs=tinysrgb&h=130',
+      })
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.type).toBe('pexels')
+      expect(arg.thumbnailUrl).toBe('https://images.pexels.com/photos/123/x?auto=compress&cs=tinysrgb&h=130')
+      expect(arg.title).toBe('A photo')
+    })
+
+    it('preserves an existing thumbnailUrl when re-upserted without one (pexels)', async () => {
+      mockGet().mockResolvedValueOnce({
+        url: 'https://www.pexels.com/photo/whatever-123/',
+        type: 'pexels',
+        title: 'Old title',
+        thumbnailUrl: 'https://images.pexels.com/photos/123/cached-tiny.jpg',
+        lastUsedAt: new Date(1000),
+      })
+      // Title is provided so the title-fallback path isn't what triggers the
+      // lookup — this verifies the thumbnailUrl-specific lookup branch.
+      await addUrlHistory('https://www.pexels.com/photo/whatever-123/', 'pexels', {
+        title: 'New title',
+      })
+      expect(mockGet()).toHaveBeenCalledTimes(1)
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.title).toBe('New title')
+      expect(arg.thumbnailUrl).toBe('https://images.pexels.com/photos/123/cached-tiny.jpg')
+    })
+
+    it('skips the existing-entry lookup for non-pexels types when title is supplied', async () => {
+      // Title is the only field worth preserving for url/youtube entries — the
+      // dropdown derives their thumbnails at render time, so we must not pay a
+      // DB read just to refresh lastUsedAt.
+      await addUrlHistory('https://example.com/a.jpg', 'url', { title: 'Hello' })
+      expect(mockGet()).not.toHaveBeenCalled()
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.thumbnailUrl).toBeUndefined()
+    })
+
     it('applies the image cap independently from the URL/YouTube cap', async () => {
       // URLs at their limit, images one over → only the oldest image is evicted;
       // URL entries are untouched.

@@ -39,6 +39,12 @@ export interface UrlHistoryEntry {
   fileName?: string
   /** Resized reference bytes for 'image' entries; see resizeImageForHistory. */
   imageBlob?: Blob
+  /**
+   * Small remote thumbnail URL for the dropdown preview. Used by 'pexels'
+   * (photo.src.tiny). 'youtube' derives its thumbnail from the video id at
+   * render time, 'url' uses the entry url itself, and 'image' uses imageBlob.
+   */
+  thumbnailUrl?: string
 }
 
 // Scope database name by deploy path so PR previews don't share data.
@@ -77,6 +83,14 @@ db.version(4).stores({
 // v5: no index change — anchors the additive fileName/imageBlob fields on
 // UrlHistoryEntry so future schema diffs are easy to track.
 db.version(5).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+})
+
+// v6: no index change — anchors the additive thumbnailUrl field on
+// UrlHistoryEntry (used for the dropdown preview thumbnail).
+db.version(6).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
