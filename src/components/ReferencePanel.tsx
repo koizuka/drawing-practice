@@ -50,23 +50,7 @@ function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
   return <ImageIcon size={14} />
 }
 
-/**
- * Resolve the dropdown thumbnail src for a history entry, or null when no
- * preview source is available (caller falls back to the type icon).
- */
-function resolveHistoryThumbnailSrc(
-  entry: UrlHistoryEntry,
-  imageObjectUrls: Map<string, string>,
-): string | null {
-  if (entry.type === 'image') return imageObjectUrls.get(entry.url) ?? null
-  if (entry.type === 'youtube') {
-    const id = parseYouTubeVideoId(entry.url)
-    return id ? `https://i.ytimg.com/vi/${id}/default.jpg` : null
-  }
-  if (entry.type === 'pexels') return entry.thumbnailUrl ?? null
-  // 'url' entries point directly at an image URL — use the entry url itself.
-  return entry.url
-}
+import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
