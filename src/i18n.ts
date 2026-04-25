@@ -79,6 +79,13 @@ const messages = {
     'urlLoadFailed': 'Failed to load image from URL.',
     'urlHistoryDelete': 'Remove from history',
     'autosaveDisabled': 'Autosave is disabled because another tab is active. Changes in this tab will not be saved automatically.',
+    'storageUsageTitle': 'Storage',
+    'storageUsageDrawings': 'Drawings',
+    'storageUsageStrokes': 'strokes',
+    'storageUsageThumbnails': 'thumbnails',
+    'storageUsageSketchfabImages': 'Sketchfab references',
+    'storageUsageImageHistory': 'Image history',
+    'storageUsageTotal': 'Browser total',
 
     // Pexels
     'pexels': 'Pexels',
@@ -188,6 +195,13 @@ const messages = {
     'urlLoadFailed': 'URLからの画像の読み込みに失敗しました。',
     'urlHistoryDelete': '履歴から削除',
     'autosaveDisabled': '別のタブが開いているため、オートセーブが無効です。このタブの変更は自動保存されません。',
+    'storageUsageTitle': 'ストレージ使用量',
+    'storageUsageDrawings': '作品',
+    'storageUsageStrokes': 'ストローク',
+    'storageUsageThumbnails': 'サムネイル',
+    'storageUsageSketchfabImages': 'Sketchfab手本画像',
+    'storageUsageImageHistory': '画像履歴',
+    'storageUsageTotal': 'ブラウザ全体',
 
     // Pexels
     'pexels': 'Pexels',

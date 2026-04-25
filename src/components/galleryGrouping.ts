@@ -1,6 +1,6 @@
 import type { DrawingRecord } from '../storage'
 import { referenceKey, type ReferenceInfo } from '../types'
-import { buildYouTubeThumbnailUrl } from '../utils/youtube'
+import { buildYouTubeGalleryThumbnailUrl } from '../utils/youtube'
 
 export type GroupMode = 'date' | 'ref-first' | 'ref-recent'
 
@@ -55,7 +55,7 @@ export function syncThumbUrl(ref: ReferenceInfo): string | null {
   switch (ref.source) {
     case 'sketchfab': return ref.imageUrl ?? null
     case 'url': return ref.imageUrl
-    case 'youtube': return buildYouTubeThumbnailUrl(ref.youtubeVideoId)
+    case 'youtube': return buildYouTubeGalleryThumbnailUrl(ref.youtubeVideoId)
     case 'pexels': return ref.pexelsImageUrl
     case 'image': return null
   }

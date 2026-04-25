@@ -11,6 +11,14 @@ const getUrlHistoryEntryMock = vi.fn<(url: string) => Promise<UrlHistoryEntry | 
 vi.mock('../storage', () => ({
   getAllDrawings: () => getAllDrawingsMock(),
   deleteDrawing: (id: number) => deleteDrawingMock(id),
+  computeStorageUsage: () => Promise.resolve({
+    drawings: { strokes: 0, thumbnails: 0, sketchfabImages: 0 },
+    urlHistoryImageBytes: 0,
+    sessionBytes: 0,
+    estimateUsage: null,
+    estimateQuota: null,
+  }),
+  formatBytes: (n: number) => `${n} B`,
 }))
 vi.mock('../storage/urlHistoryStore', () => ({
   getUrlHistoryEntry: (url: string) => getUrlHistoryEntryMock(url),

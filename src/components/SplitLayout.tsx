@@ -302,10 +302,18 @@ function SplitLayoutInner() {
     changeReference(s => {
       if (info.source === 'sketchfab' && info.sketchfabUid) {
         s.setSource('sketchfab')
-        s.setReferenceMode('browse')
-        s.setFixedImageUrl(null)
         s.setLocalImageUrl(null)
-        s.setReferenceInfo(null)
+        if (info.imageUrl) {
+          // The Sketchfab iframe stays mounted in fixed mode (display:none),
+          // so loadSketchfabModelFnRef below still readies "Change angle".
+          s.setReferenceMode('fixed')
+          s.setFixedImageUrl(info.imageUrl)
+          s.setReferenceInfo(info)
+        } else {
+          s.setReferenceMode('browse')
+          s.setFixedImageUrl(null)
+          s.setReferenceInfo(null)
+        }
         loadSketchfabModelFnRef.current?.(info.sketchfabUid)
       } else if (info.source === 'url' && info.imageUrl) {
         s.setSource('url')

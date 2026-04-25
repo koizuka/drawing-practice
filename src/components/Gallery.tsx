@@ -1,7 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Box, Typography, IconButton, Tooltip, Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
-import { X, Trash2 } from 'lucide-react'
-import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
+import { X, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  getAllDrawings,
+  deleteDrawing,
+  computeStorageUsage,
+  formatBytes,
+  type DrawingRecord,
+  type StorageUsage,
+} from '../storage'
 import { getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
@@ -38,6 +45,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
   const [loading, setLoading] = useState(true)
   const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode)
   const [imageThumbs, setImageThumbs] = useState<Record<string, string | null>>({})
+  const [usage, setUsage] = useState<StorageUsage | null>(null)
   const enqueuedKeysRef = useRef<Set<string>>(new Set())
   const objectUrlsRef = useRef<string[]>([])
 
@@ -46,13 +54,21 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     persistGroupMode(mode)
   }, [])
 
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     getAllDrawings().then(all => {
-      if (!cancelled) {
-        setDrawings(all)
-        setLoading(false)
-      }
+      if (cancelled) return
+      setDrawings(all)
+      setLoading(false)
+      computeStorageUsage(all).then(u => {
+        if (!cancelled) setUsage(u)
+      }).catch(() => { /* ignore */ })
     })
     return () => { cancelled = true }
   }, [])
@@ -95,8 +111,12 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
 
   const handleDelete = useCallback(async (id: number) => {
     await deleteDrawing(id)
-    setDrawings(prev => prev.filter(d => d.id !== id))
-  }, [])
+    const next = drawings.filter(d => d.id !== id)
+    setDrawings(next)
+    computeStorageUsage(next).then(u => {
+      if (mountedRef.current) setUsage(u)
+    }).catch(() => { /* ignore */ })
+  }, [drawings])
 
   const handleLoadDrawingReference = useCallback((drawing: DrawingRecord) => {
     const ref = drawing.reference
@@ -172,6 +192,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
               <ToggleButton value="ref-recent">{t('groupByRefRecent')}</ToggleButton>
             </ToggleButtonGroup>
           </Box>
+          {usage && <StorageUsageRow usage={usage} />}
         </Box>
 
         {/* Content */}
@@ -250,6 +271,82 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
           })}
         </Box>
       </Box>
+    </Box>
+  )
+}
+
+const STORAGE_USAGE_EXPANDED_KEY = 'gallery.storageUsageExpanded'
+
+function loadStorageUsageExpanded(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_USAGE_EXPANDED_KEY) === '1'
+  } catch { return false }
+}
+
+function persistStorageUsageExpanded(expanded: boolean): void {
+  try { localStorage.setItem(STORAGE_USAGE_EXPANDED_KEY, expanded ? '1' : '0') } catch { /* ignore */ }
+}
+
+function StorageUsageRow({ usage }: { usage: StorageUsage }) {
+  const [expanded, setExpanded] = useState<boolean>(loadStorageUsageExpanded)
+  const toggle = useCallback(() => {
+    setExpanded(prev => {
+      const next = !prev
+      persistStorageUsageExpanded(next)
+      return next
+    })
+  }, [])
+
+  const drawingsBytes = usage.drawings.strokes + usage.drawings.thumbnails + usage.drawings.sketchfabImages
+  const totalLogical = drawingsBytes + usage.urlHistoryImageBytes + usage.sessionBytes
+  const breakdownParts = [
+    `${t('storageUsageStrokes')} ${formatBytes(usage.drawings.strokes)}`,
+    `${t('storageUsageThumbnails')} ${formatBytes(usage.drawings.thumbnails)}`,
+    `${t('storageUsageSketchfabImages')} ${formatBytes(usage.drawings.sketchfabImages)}`,
+  ]
+
+  return (
+    <Box sx={{ mt: 1, color: 'text.secondary' }}>
+      <Box
+        component="button"
+        type="button"
+        onClick={toggle}
+        aria-expanded={expanded}
+        sx={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 0.5,
+          background: 'none',
+          border: 'none',
+          p: 0,
+          color: 'inherit',
+          cursor: 'pointer',
+          font: 'inherit',
+        }}
+      >
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
+          {t('storageUsageTitle')}: {formatBytes(totalLogical)}
+        </Typography>
+      </Box>
+      {expanded && (
+        <Box sx={{ mt: 0.5, pl: 2 }}>
+          <Typography variant="caption" component="div">
+            {t('storageUsageDrawings')} {formatBytes(drawingsBytes)} ({breakdownParts.join(', ')})
+          </Typography>
+          {usage.urlHistoryImageBytes > 0 && (
+            <Typography variant="caption" component="div">
+              {t('storageUsageImageHistory')} {formatBytes(usage.urlHistoryImageBytes)}
+            </Typography>
+          )}
+          {usage.estimateUsage != null && (
+            <Typography variant="caption" component="div">
+              {t('storageUsageTotal')} {formatBytes(usage.estimateUsage)}
+              {usage.estimateQuota != null && ` / ${formatBytes(usage.estimateQuota)}`}
+            </Typography>
+          )}
+        </Box>
+      )}
     </Box>
   )
 }
