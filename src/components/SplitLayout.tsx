@@ -45,7 +45,17 @@ function SplitLayoutInner() {
   // Whether the Sketchfab 3D viewer iframe is currently mounted. While true,
   // the reference panel must stay at half-screen so the preview matches the
   // aspect ratio that "Fix This Angle" will capture.
+  // SketchfabViewer is unmounted when source leaves 'sketchfab' and its unmount
+  // cannot push a "showViewer:false" notification, so reset on source change
+  // (via prev-state-in-render) to avoid a stale-active flicker on reopen.
   const [sketchfabViewerActive, setSketchfabViewerActive] = useState(false)
+  const [sfActiveTrackedSource, setSfActiveTrackedSource] = useState(source)
+  if (sfActiveTrackedSource !== source) {
+    setSfActiveTrackedSource(source)
+    if (source !== 'sketchfab' && sketchfabViewerActive) {
+      setSketchfabViewerActive(false)
+    }
+  }
 
   // The reference side can drive the fit when a fit-capable viewer is rendering
   // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
