@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import type { DrawingRecord } from '../storage'
 import type { ReferenceInfo } from '../types'
-import { buildYouTubeThumbnailUrl } from '../utils/youtube'
+import { buildYouTubeGalleryThumbnailUrl } from '../utils/youtube'
 import {
   buildGroups,
   canLoadReference,
@@ -96,8 +96,8 @@ describe('syncThumbUrl', () => {
   it('returns url imageUrl', () => {
     expect(syncThumbUrl(urlRef)).toBe('https://example.com/x.png')
   })
-  it('derives youtube thumbnail from video id', () => {
-    expect(syncThumbUrl(youtubeRef)).toBe(buildYouTubeThumbnailUrl('dQw4w9WgXcQ'))
+  it('derives youtube gallery thumbnail (mqdefault) from video id', () => {
+    expect(syncThumbUrl(youtubeRef)).toBe(buildYouTubeGalleryThumbnailUrl('dQw4w9WgXcQ'))
   })
   it('returns pexels imageUrl', () => {
     expect(syncThumbUrl(pexelsRef)).toBe(pexelsRef.pexelsImageUrl)

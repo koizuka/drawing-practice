@@ -2,5 +2,7 @@ export { saveDrawing, getAllDrawings, getDrawing, deleteDrawing, getDrawingCount
 export { saveDraft, loadDraft, clearDraft } from './sessionStore'
 export { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, URL_HISTORY_LIMIT, URL_HISTORY_IMAGE_LIMIT } from './urlHistoryStore'
 export type { AddUrlHistoryOptions } from './urlHistoryStore'
+export { computeStorageUsage, formatBytes } from './storageUsage'
+export type { StorageUsage } from './storageUsage'
 export type { DrawingRecord, SessionDraft, UrlHistoryEntry, UrlHistoryType } from './db'
 export type { DraftData } from './sessionStore'

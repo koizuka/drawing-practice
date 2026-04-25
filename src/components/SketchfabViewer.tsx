@@ -206,6 +206,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
         author: selectedModel?.author ?? '',
         source: 'sketchfab',
         sketchfabUid: modelUid,
+        imageUrl: result,
       })
     })
   }, [onFixAngle, selectedModel, modelUid])

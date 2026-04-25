@@ -56,6 +56,14 @@ export function buildYouTubeThumbnailUrl(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/default.jpg`
 }
 
+/**
+ * Medium-quality thumbnail URL (320x180, JPEG). Used by the gallery where the
+ * 120x90 default is too low-res for ~180px-wide drawing cards.
+ */
+export function buildYouTubeGalleryThumbnailUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+}
+
 export function buildYouTubeEmbedUrl(videoId: string): string {
   const params = new URLSearchParams({
     playsinline: '1',
