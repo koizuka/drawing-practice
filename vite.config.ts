@@ -11,5 +11,10 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    // Pin the test runner's timezone so date-bucketing tests
+    // (galleryGrouping) don't depend on the developer's local TZ.
+    env: {
+      TZ: 'UTC',
+    },
   },
 })
