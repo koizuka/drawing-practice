@@ -42,6 +42,20 @@ function SplitLayoutInner() {
   const [referenceMode, setReferenceMode] = useState<ReferenceMode>('browse')
   const [fixedImageUrl, setFixedImageUrl] = useState<string | null>(null)
   const [localImageUrl, setLocalImageUrl] = useState<string | null>(null)
+  // Whether the Sketchfab 3D viewer iframe is currently mounted. While true,
+  // the reference panel must stay at half-screen so the preview matches the
+  // aspect ratio that "Fix This Angle" will capture.
+  // SketchfabViewer is unmounted when source leaves 'sketchfab' and its unmount
+  // cannot push a "showViewer:false" notification, so reset on source change
+  // (via prev-state-in-render) to avoid a stale-active flicker on reopen.
+  const [sketchfabViewerActive, setSketchfabViewerActive] = useState(false)
+  const [sfActiveTrackedSource, setSfActiveTrackedSource] = useState(source)
+  if (sfActiveTrackedSource !== source) {
+    setSfActiveTrackedSource(source)
+    if (source !== 'sketchfab' && sketchfabViewerActive) {
+      setSketchfabViewerActive(false)
+    }
+  }
 
   // The reference side can drive the fit when a fit-capable viewer is rendering
   // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
@@ -58,10 +72,17 @@ function SplitLayoutInner() {
   // reference panel the whole viewport so the result grid is browsable. The
   // drawing panel is hidden via display:none rather than unmounted so its
   // canvas/ViewTransform state survives the toggle.
+  // Sketchfab's browse mode covers two screens (search results and the 3D
+  // viewer iframe); only the search-results screen should go fullscreen — the
+  // 3D viewer must stay half-height so the captured screenshot matches the
+  // visible camera framing.
   const isSearchFullscreen =
     !isLandscape &&
-    (source === 'sketchfab' || source === 'pexels') &&
-    referenceMode === 'browse'
+    referenceMode === 'browse' &&
+    (
+      (source === 'sketchfab' && !sketchfabViewerActive) ||
+      source === 'pexels'
+    )
 
   // Timer (lifted from DrawingPanel for autosave access)
   const timer = useTimer()
@@ -443,6 +464,7 @@ function SplitLayoutInner() {
           onReferenceResetOnError={resetReferenceOnError}
           onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
           onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
+          onSketchfabViewerStateChange={setSketchfabViewerActive}
           isFlipped={isFlipped}
           onToggleFlip={handleToggleFlip}
           viewTransform={viewTransform}
