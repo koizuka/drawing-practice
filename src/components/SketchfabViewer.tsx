@@ -125,12 +125,11 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
 
-  // Load the Sketchfab client script
+  // Load the Sketchfab client script. Initial scriptLoaded covers the case
+  // where window.Sketchfab is already present, so the effect only handles the
+  // "needs to be injected" path.
   useEffect(() => {
-    if (window.Sketchfab) {
-      setScriptLoaded(true)
-      return
-    }
+    if (window.Sketchfab) return
     if (document.getElementById('sketchfab-api-script')) return
     const script = document.createElement('script')
     script.id = 'sketchfab-api-script'
@@ -300,7 +299,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   // Expose actions to parent
   useEffect(() => {
     if (actionsRef) {
-      (actionsRef as React.MutableRefObject<SketchfabActions | null>).current = {
+      actionsRef.current = {
         fixAngle: handleFixAngle,
         back: handleBack,
         loadModelByUid: loadModel,

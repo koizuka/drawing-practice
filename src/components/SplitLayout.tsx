@@ -33,7 +33,9 @@ function SplitLayoutInner() {
   const strokeManagerRef = useRef<StrokeManager | null>(null)
 
   // Shared ViewTransform instance for zoom/pan sync between ReferencePanel and DrawingPanel.
-  const viewTransformRef = useRef(new ViewTransform())
+  // useState's lazy initializer ensures only one instance is constructed for the lifetime
+  // of the component (useRef(new ViewTransform()) re-evaluates `new` every render).
+  const [viewTransform] = useState(() => new ViewTransform())
 
   // Lifted state from ReferencePanel
   const [source, setSource] = useState<ReferenceSource>('none')
@@ -64,7 +66,9 @@ function SplitLayoutInner() {
   // Timer (lifted from DrawingPanel for autosave access)
   const timer = useTimer()
   const timerElapsedRef = useRef(timer.elapsedMs)
-  timerElapsedRef.current = timer.elapsedMs
+  useEffect(() => {
+    timerElapsedRef.current = timer.elapsedMs
+  })
 
   // Guide state (from context)
   const { grid, lines, version: guideVersion, restoreGuides } = useGuides()
@@ -116,7 +120,9 @@ function SplitLayoutInner() {
   // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
   // remain a stable callback (prevents unnecessary child re-renders).
   const referenceStateRef = useRef({ source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo })
-  referenceStateRef.current = { source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo }
+  useEffect(() => {
+    referenceStateRef.current = { source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo }
+  })
 
   const captureReferenceSnapshot = useCallback((): ReferenceSnapshot => ({
     ...referenceStateRef.current,
@@ -125,14 +131,16 @@ function SplitLayoutInner() {
   // Restorer invoked by StrokeManager when undo/redo pops a reference entry.
   // Keep it on a ref so we can register a stable callback with StrokeManager.
   const applyReferenceSnapshotRef = useRef<(snap: ReferenceSnapshot) => void>(() => {})
-  applyReferenceSnapshotRef.current = (snap: ReferenceSnapshot) => {
-    setSource(snap.source)
-    setReferenceMode(snap.referenceMode)
-    setFixedImageUrl(snap.fixedImageUrl)
-    setLocalImageUrl(snap.localImageUrl)
-    setReferenceInfo(snap.referenceInfo)
-    pauseAndIncrementVersion()
-  }
+  useEffect(() => {
+    applyReferenceSnapshotRef.current = (snap: ReferenceSnapshot) => {
+      setSource(snap.source)
+      setReferenceMode(snap.referenceMode)
+      setFixedImageUrl(snap.fixedImageUrl)
+      setLocalImageUrl(snap.localImageUrl)
+      setReferenceInfo(snap.referenceInfo)
+      pauseAndIncrementVersion()
+    }
+  })
 
   /**
    * Record the current reference state as an undoable entry, then apply the
@@ -328,12 +336,15 @@ function SplitLayoutInner() {
 
   useAutosave(getAutosaveState, changeVersion, suppressAutosaveRef)
 
-  // Trigger autosave when guide state changes
-  useEffect(() => {
+  // Trigger autosave when guide state changes. Use the render-time prev-prop
+  // pattern instead of an effect so we don't violate react-hooks/set-state-in-effect.
+  const [prevGuideVersion, setPrevGuideVersion] = useState(guideVersion)
+  if (prevGuideVersion !== guideVersion) {
+    setPrevGuideVersion(guideVersion)
     if (guideVersion > 0) {
       incrementChangeVersion()
     }
-  }, [guideVersion, incrementChangeVersion])
+  }
 
   // Clean up stale PR databases on mount
   useEffect(() => {
@@ -434,7 +445,7 @@ function SplitLayoutInner() {
           onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
           isFlipped={isFlipped}
           onToggleFlip={handleToggleFlip}
-          viewTransform={viewTransformRef.current}
+          viewTransform={viewTransform}
           fitLeader={fitLeader}
           externalResetVersion={orientationResetVersion}
         />
@@ -453,7 +464,7 @@ function SplitLayoutInner() {
           restoreVersion={restoreVersion}
           historySyncVersion={historySyncVersion}
           isFlipped={isFlipped}
-          viewTransform={viewTransformRef.current}
+          viewTransform={viewTransform}
           fitLeader={fitLeader}
           externalResetVersion={orientationResetVersion}
         />

@@ -59,16 +59,20 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [needsKey, setNeedsKey] = useState(() => getPexelsApiKey() === '')
+  // Re-check needsKey when the parent bumps apiKeyVersion (e.g. after the
+  // settings dialog stores a new key). Using the render-time prev-prop pattern
+  // instead of an effect so we don't violate react-hooks/set-state-in-effect.
+  const [prevApiKeyVersion, setPrevApiKeyVersion] = useState(apiKeyVersion)
+  if (prevApiKeyVersion !== apiKeyVersion) {
+    setPrevApiKeyVersion(apiKeyVersion)
+    setNeedsKey(getPexelsApiKey() === '')
+  }
 
   // Abort the in-flight search when a new one starts or when unmounting, so
   // a slow earlier response can't overwrite a faster later one.
   const inflightRef = useRef<AbortController | null>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => () => inflightRef.current?.abort(), [])
-
-  useEffect(() => {
-    setNeedsKey(getPexelsApiKey() === '')
-  }, [apiKeyVersion])
 
   /** Map a Pexels error to (user-visible error text, banner flag). Returns null
    *  for errors already communicated via the API-key banner. */
