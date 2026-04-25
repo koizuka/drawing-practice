@@ -86,6 +86,13 @@ const messages = {
     'storageUsageSketchfabImages': 'Sketchfab references',
     'storageUsageImageHistory': 'Image history',
     'storageUsageTotal': 'Browser total',
+    'storageUsageStrokeStats': 'Stroke stats',
+    'storageUsageUnitStrokes': 'strokes',
+    'storageUsageUnitDrawings': 'drawings',
+    'storageUsageUnitPoints': 'pts',
+    'storageUsageAvgPrefix': 'avg',
+    'storageUsagePerStrokeSuffix': '/stroke',
+    'storageUsagePerDrawingSuffix': '/drawing',
 
     // Pexels
     'pexels': 'Pexels',
@@ -202,6 +209,13 @@ const messages = {
     'storageUsageSketchfabImages': 'Sketchfab手本画像',
     'storageUsageImageHistory': '画像履歴',
     'storageUsageTotal': 'ブラウザ全体',
+    'storageUsageStrokeStats': 'ストローク統計',
+    'storageUsageUnitStrokes': '本',
+    'storageUsageUnitDrawings': '作品',
+    'storageUsageUnitPoints': '点',
+    'storageUsageAvgPrefix': '平均',
+    'storageUsagePerStrokeSuffix': '/本',
+    'storageUsagePerDrawingSuffix': '/作品',
 
     // Pexels
     'pexels': 'Pexels',
