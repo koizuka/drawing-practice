@@ -316,7 +316,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
             ref={iframeRef}
             title="Sketchfab Viewer"
             style={{ width: '100%', height: '100%', border: 'none' }}
-            allow="autoplay; fullscreen; xr-spatial-tracking"
+            allow="autoplay; fullscreen; xr-spatial-tracking; accelerometer; gyroscope; magnetometer"
           />
           {loading && (
             <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>

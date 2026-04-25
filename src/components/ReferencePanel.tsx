@@ -229,6 +229,8 @@ interface ReferencePanelProps {
    * it adds an entry itself (e.g. Gallery "use this reference" reload).
    */
   onRegisterReloadUrlHistory?: (fn: () => void) => void
+  /** Notifies the parent when the Sketchfab 3D viewer iframe is mounted/unmounted. */
+  onSketchfabViewerStateChange?: (active: boolean) => void
   isFlipped?: boolean
   onToggleFlip?: () => void
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -248,6 +250,7 @@ export function ReferencePanel({
   source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
   onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
+  onSketchfabViewerStateChange,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader, externalResetVersion,
 }: ReferencePanelProps) {
@@ -572,7 +575,8 @@ export function ReferencePanel({
   const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
     setSfShowViewer(state.showViewer)
     setSfIsReady(state.isReady)
-  }, [])
+    onSketchfabViewerStateChange?.(state.showViewer)
+  }, [onSketchfabViewerStateChange])
 
   // Load a Sketchfab model by UID (called from parent for gallery "load reference")
   const loadSketchfabModel = useCallback((uid: string) => {
