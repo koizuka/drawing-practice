@@ -45,6 +45,7 @@ npm run test:watch # Run tests in watch mode
 - Model search by category or keyword via Data API
 - Viewer API embedding with screenshot capture ("Fix This Angle")
 - Screenshot becomes fixed image for drawing reference and is also persisted on `ReferenceInfo.imageUrl` so the gallery can show a per-drawing thumbnail and "Use this reference" can restore the exact same angle directly into `fixed` mode
+- **Thumbnail timing**: the screenshot is captured at Fix Angle time (not at save time). The same data URL is stored in both `fixedImageUrl` (for drawing) and `ReferenceInfo.imageUrl` (for persistence). Retaking the angle overwrites both. Save simply writes whatever `imageUrl` is already in `ReferenceInfo` to IndexedDB — no resize or re-encode happens at save, so the gallery thumbnail always reflects the exact angle the user was drawing on. Drawings with no `imageUrl` exist only as legacy records from before this change.
 
 **ImageViewer** - Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion). Loads images with non-CORS fallback for cross-origin URLs.
 
