@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
+import { Box, Button, IconButton, InputAdornment, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
+import { X } from 'lucide-react'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../types'
 
@@ -120,6 +121,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   const [nextPageUrl, setNextPageUrl] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
   const lastSearchRef = useRef<{ type: 'search'; query: string; category?: string } | { type: 'category'; slug: string } | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
 
@@ -335,7 +337,31 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
               placeholder={t('searchModels')}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') handleSearch(searchQuery) }}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  handleSearch(searchQuery)
+                  searchInputRef.current?.blur()
+                }
+              }}
+              inputRef={searchInputRef}
+              slotProps={{
+                input: {
+                  endAdornment: searchQuery ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        aria-label={t('clearSearch')}
+                        onClick={() => {
+                          setSearchQuery('')
+                          searchInputRef.current?.focus()
+                        }}
+                      >
+                        <X size={16} />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : null,
+                },
+              }}
               sx={{ flex: 1 }}
             />
             <Button size="small" variant="contained" onClick={() => handleSearch(searchQuery)}>
