@@ -5,6 +5,9 @@ export interface StorageUsage {
     strokes: number
     thumbnails: number
     sketchfabImages: number
+    drawingCount: number
+    strokeCount: number
+    pointCount: number
   }
   urlHistoryImageBytes: number
   sessionBytes: number
@@ -20,14 +23,27 @@ function computeDrawingsBreakdown(drawings: readonly DrawingRecord[]): StorageUs
   let strokes = 0
   let thumbnails = 0
   let sketchfabImages = 0
+  let strokeCount = 0
+  let pointCount = 0
   for (const d of drawings) {
     strokes += jsonByteSize(d.strokes)
     thumbnails += d.thumbnail.length
+    strokeCount += d.strokes.length
+    for (const s of d.strokes) {
+      pointCount += s.points.length
+    }
     if (d.reference?.source === 'sketchfab' && d.reference.imageUrl) {
       sketchfabImages += d.reference.imageUrl.length
     }
   }
-  return { strokes, thumbnails, sketchfabImages }
+  return {
+    strokes,
+    thumbnails,
+    sketchfabImages,
+    drawingCount: drawings.length,
+    strokeCount,
+    pointCount,
+  }
 }
 
 async function sumUrlHistoryImageBytes(): Promise<number> {

@@ -334,6 +334,15 @@ function StorageUsageRow({ usage }: { usage: StorageUsage }) {
           <Typography variant="caption" component="div">
             {t('storageUsageDrawings')} {formatBytes(drawingsBytes)} ({breakdownParts.join(', ')})
           </Typography>
+          {usage.drawings.strokeCount > 0 && (
+            <Typography variant="caption" component="div">
+              {t('storageUsageStrokeStats')}: {usage.drawings.strokeCount} {t('storageUsageUnitStrokes')}
+              {usage.drawings.drawingCount > 0 && ` / ${usage.drawings.drawingCount} ${t('storageUsageUnitDrawings')}`}
+              {' / '}{t('storageUsageAvgPrefix')} {(usage.drawings.pointCount / usage.drawings.strokeCount).toFixed(1)} {t('storageUsageUnitPoints')}{t('storageUsagePerStrokeSuffix')}
+              {' / '}{t('storageUsageAvgPrefix')} {formatBytes(Math.round(usage.drawings.strokes / usage.drawings.strokeCount))}{t('storageUsagePerStrokeSuffix')}
+              {usage.drawings.drawingCount > 0 && ` / ${t('storageUsageAvgPrefix')} ${(usage.drawings.strokeCount / usage.drawings.drawingCount).toFixed(1)} ${t('storageUsageUnitStrokes')}${t('storageUsagePerDrawingSuffix')}`}
+            </Typography>
+          )}
           {usage.urlHistoryImageBytes > 0 && (
             <Typography variant="caption" component="div">
               {t('storageUsageImageHistory')} {formatBytes(usage.urlHistoryImageBytes)}
