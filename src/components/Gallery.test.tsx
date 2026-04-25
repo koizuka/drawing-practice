@@ -206,10 +206,9 @@ describe('Gallery', () => {
     })
 
     render(<Gallery onClose={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument())
-
-    await waitFor(() =>
-      expect(getUrlHistoryEntryMock).toHaveBeenCalledWith('local:abc'),
-    )
+    await waitFor(() => {
+      expect(screen.getByText('Gallery (1)')).toBeInTheDocument()
+      expect(getUrlHistoryEntryMock).toHaveBeenCalledWith('local:abc')
+    })
   })
 })

@@ -18,6 +18,16 @@ import {
 
 const dayFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })
 
+function formatGroupDateLabel(
+  mode: GroupMode,
+  firstUsedAt: Date,
+  lastUsedAt: Date,
+): string | null {
+  if (mode === 'ref-first') return `${t('groupLabelFirstUsed')}: ${dayFormatter.format(firstUsedAt)}`
+  if (mode === 'ref-recent') return `${t('groupLabelRecentUsed')}: ${dayFormatter.format(lastUsedAt)}`
+  return null
+}
+
 interface GalleryProps {
   onClose: () => void
   onLoadReference?: (info: ReferenceInfo) => void
@@ -47,9 +57,6 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     return () => { cancelled = true }
   }, [])
 
-  // Resolve image-source reference thumbnails by reading the Blob from URL
-  // history. Each unique referenceKey is fetched at most once; results are
-  // cached for the lifetime of the gallery view.
   useEffect(() => {
     let cancelled = false
     const tasks: Array<{ key: string; historyKey: string }> = []
@@ -180,11 +187,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
           {!loading && groups.map((group, gi) => {
             const groupThumb = isRefMode ? getThumbForRef(group.reference) : null
             const showGroupButton = isRefMode && canLoadReference(group.reference)
-            const groupDateLabel = isRefMode
-              ? (groupMode === 'ref-first'
-                  ? `${t('groupLabelFirstUsed')}: ${dayFormatter.format(group.firstUsedAt)}`
-                  : `${t('groupLabelRecentUsed')}: ${dayFormatter.format(group.lastUsedAt)}`)
-              : null
+            const groupDateLabel = formatGroupDateLabel(groupMode, group.firstUsedAt, group.lastUsedAt)
 
             return (
               <Box
