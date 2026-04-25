@@ -5,11 +5,14 @@ import {
   Button,
   Chip,
   CircularProgress,
+  IconButton,
+  InputAdornment,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material'
+import { X } from 'lucide-react'
 import {
   buildPexelsReferenceInfo,
   getPexelsApiKey,
@@ -60,6 +63,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   // Abort the in-flight search when a new one starts or when unmounting, so
   // a slow earlier response can't overwrite a faster later one.
   const inflightRef = useRef<AbortController | null>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => () => inflightRef.current?.abort(), [])
 
   useEffect(() => {
@@ -167,7 +171,32 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
           placeholder={t('pexelsSearchPlaceholder')}
           value={query}
           onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') void runSearch(query) }}
+          onKeyDown={e => {
+            if (e.key === 'Enter') {
+              void runSearch(query)
+              searchInputRef.current?.blur()
+            }
+          }}
+          inputRef={searchInputRef}
+          slotProps={{
+            input: {
+              endAdornment: query ? (
+                <InputAdornment position="end">
+                  <IconButton
+                    size="small"
+                    aria-label={t('clearSearch')}
+                    onClick={() => {
+                      setQuery('')
+                      searchInputRef.current?.focus()
+                    }}
+                    disabled={needsKey}
+                  >
+                    <X size={16} />
+                  </IconButton>
+                </InputAdornment>
+              ) : null,
+            },
+          }}
           sx={{ flex: 1 }}
           disabled={needsKey}
         />

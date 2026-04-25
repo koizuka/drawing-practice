@@ -36,6 +36,7 @@ const messages = {
     // SketchfabViewer
     'searchModels': 'Search models...',
     'search': 'Search',
+    'clearSearch': 'Clear search',
     'modelUid': 'Model UID...',
     'load': 'Load',
     'loadingModel': 'Loading model...',
@@ -137,6 +138,7 @@ const messages = {
     // SketchfabViewer
     'searchModels': 'モデルを検索...',
     'search': '検索',
+    'clearSearch': '検索をクリア',
     'modelUid': 'モデルUID...',
     'load': '読込',
     'loadingModel': 'モデルを読み込み中...',
