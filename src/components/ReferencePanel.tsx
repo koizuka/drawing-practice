@@ -17,6 +17,7 @@ import {
 } from '../utils/pexels'
 import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
 import { resizeImageForHistory, sha256Hex } from '../utils/imageResize'
+import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
   if (entry.type === 'image') {
@@ -50,7 +51,6 @@ function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
   return <ImageIcon size={14} />
 }
 
-import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -259,21 +259,23 @@ export function ReferencePanel({
   const [urlInput, setUrlInput] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
   const [urlHistory, setUrlHistory] = useState<UrlHistoryEntry[]>([])
-  // Track thumbnail src strings that failed to load, keyed by entry url, so
-  // we render the fallback type icon instead of a broken-image box. Reset on
-  // history reload so a previously broken URL gets a fresh attempt if its
-  // entry is added back.
   const [thumbErrors, setThumbErrors] = useState<Set<string>>(() => new Set())
 
   const reloadUrlHistory = useCallback(() => {
     getUrlHistory().then(list => {
       setUrlHistory(list)
-      setThumbErrors(new Set())
+      // Drop suppression for entries no longer in history; keep it for entries
+      // still present so a known-404 thumbnail isn't re-fetched on every reload.
+      setThumbErrors(prev => {
+        if (prev.size === 0) return prev
+        const stillPresent = new Set<string>()
+        const urls = new Set(list.map(e => e.url))
+        for (const u of prev) if (urls.has(u)) stillPresent.add(u)
+        return stillPresent
+      })
     }).catch(() => { /* ignore storage errors */ })
   }, [])
 
-  // ObjectURLs for 'image' history entries. Recreated when urlHistory changes
-  // and revoked in the effect cleanup so we don't leak Blob references.
   const imageThumbUrls = useMemo(() => {
     const map = new Map<string, string>()
     for (const e of urlHistory) {
@@ -546,7 +548,7 @@ export function ReferencePanel({
 
   const handleSelectPexelsPhoto = useCallback((
     info: Extract<ReferenceInfo, { source: 'pexels' }>,
-    extras: { thumbnailUrl: string },
+    thumbnailUrl: string,
   ) => {
     onReferenceChange(s => {
       s.setSource('pexels')
@@ -556,10 +558,7 @@ export function ReferencePanel({
       s.setReferenceInfo(info)
     })
     if (info.pexelsPageUrl) {
-      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', {
-        title: info.title,
-        thumbnailUrl: extras.thumbnailUrl,
-      })
+      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', { title: info.title, thumbnailUrl })
     }
   }, [onReferenceChange, addAndReloadHistory])
 

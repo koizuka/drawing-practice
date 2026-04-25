@@ -47,6 +47,15 @@ export function buildYouTubeCanonicalUrl(videoId: string): string {
   return `https://youtu.be/${videoId}`
 }
 
+/**
+ * Default-quality thumbnail URL (120x90, JPEG). Used by the URL-history
+ * dropdown preview — derived at render time so we don't need to persist a
+ * thumbnailUrl for YouTube history entries.
+ */
+export function buildYouTubeThumbnailUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/default.jpg`
+}
+
 export function buildYouTubeEmbedUrl(videoId: string): string {
   const params = new URLSearchParams({
     playsinline: '1',

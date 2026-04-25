@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { vi, type Mock } from 'vitest'
 import type { UrlHistoryEntry } from '../storage/db'
+import { buildYouTubeThumbnailUrl } from '../utils/youtube'
 import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 
 // Stub draft loader so the SplitLayout draft-restore effect resolves quickly.
@@ -57,9 +58,7 @@ describe('resolveHistoryThumbnailSrc', () => {
       type: 'youtube',
       lastUsedAt: NOW,
     }
-    expect(resolveHistoryThumbnailSrc(entry, new Map())).toBe(
-      'https://i.ytimg.com/vi/dQw4w9WgXcQ/default.jpg',
-    )
+    expect(resolveHistoryThumbnailSrc(entry, new Map())).toBe(buildYouTubeThumbnailUrl('dQw4w9WgXcQ'))
   })
 
   it('returns null for a YouTube entry whose URL no longer parses to a video id', () => {

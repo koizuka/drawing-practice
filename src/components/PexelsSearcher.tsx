@@ -24,10 +24,7 @@ import { t } from '../i18n'
 type Orientation = 'all' | 'landscape' | 'portrait' | 'square'
 
 interface PexelsSearcherProps {
-  onSelectPhoto: (
-    info: Extract<ReferenceInfo, { source: 'pexels' }>,
-    extras: { thumbnailUrl: string },
-  ) => void
+  onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void
   onOpenApiKeySettings: () => void
   initialQuery?: string
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
@@ -143,7 +140,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   }, [hasMore, loadingMore, activeQuery, activeOrientation, currentPage, handleError])
 
   const handleSelect = useCallback((photo: PexelsPhoto) => {
-    onSelectPhoto(buildPexelsReferenceInfo(photo), { thumbnailUrl: photo.src.tiny })
+    onSelectPhoto(buildPexelsReferenceInfo(photo), photo.src.tiny)
   }, [onSelectPhoto])
 
   const handleChip = useCallback((preset: string) => {
