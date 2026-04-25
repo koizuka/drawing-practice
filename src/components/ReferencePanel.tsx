@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
@@ -17,6 +17,7 @@ import {
 } from '../utils/pexels'
 import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
 import { resizeImageForHistory, sha256Hex } from '../utils/imageResize'
+import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
   if (entry.type === 'image') {
@@ -49,6 +50,7 @@ function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
   // 'image' and 'url' both render with the generic image glyph.
   return <ImageIcon size={14} />
 }
+
 import { useGuides } from '../guides/useGuides'
 import type { GridMode } from '../guides/types'
 import { useFullscreen } from '../hooks/useFullscreen'
@@ -257,10 +259,37 @@ export function ReferencePanel({
   const [urlInput, setUrlInput] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
   const [urlHistory, setUrlHistory] = useState<UrlHistoryEntry[]>([])
+  const [thumbErrors, setThumbErrors] = useState<Set<string>>(() => new Set())
 
   const reloadUrlHistory = useCallback(() => {
-    getUrlHistory().then(setUrlHistory).catch(() => { /* ignore storage errors */ })
+    getUrlHistory().then(list => {
+      setUrlHistory(list)
+      // Drop suppression for entries no longer in history; keep it for entries
+      // still present so a known-404 thumbnail isn't re-fetched on every reload.
+      setThumbErrors(prev => {
+        if (prev.size === 0) return prev
+        const stillPresent = new Set<string>()
+        const urls = new Set(list.map(e => e.url))
+        for (const u of prev) if (urls.has(u)) stillPresent.add(u)
+        return stillPresent
+      })
+    }).catch(() => { /* ignore storage errors */ })
   }, [])
+
+  const imageThumbUrls = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const e of urlHistory) {
+      if (e.type === 'image' && e.imageBlob) {
+        map.set(e.url, URL.createObjectURL(e.imageBlob))
+      }
+    }
+    return map
+  }, [urlHistory])
+  useEffect(() => {
+    return () => {
+      for (const u of imageThumbUrls.values()) URL.revokeObjectURL(u)
+    }
+  }, [imageThumbUrls])
 
   const addAndReloadHistory = useCallback((
     url: string,
@@ -423,7 +452,10 @@ export function ReferencePanel({
             s.setReferenceInfo(info)
           })
           setUrlInput('')
-          void addAndReloadHistory(url, 'pexels', info.title)
+          void addAndReloadHistory(url, 'pexels', {
+            title: info.title,
+            thumbnailUrl: photo.src.tiny,
+          })
         })
         .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
         .finally(() => setUrlLoading(false))
@@ -514,7 +546,10 @@ export function ReferencePanel({
     })
   }, [onReferenceChange])
 
-  const handleSelectPexelsPhoto = useCallback((info: Extract<ReferenceInfo, { source: 'pexels' }>) => {
+  const handleSelectPexelsPhoto = useCallback((
+    info: Extract<ReferenceInfo, { source: 'pexels' }>,
+    thumbnailUrl: string,
+  ) => {
     onReferenceChange(s => {
       s.setSource('pexels')
       s.setReferenceMode('fixed')
@@ -523,7 +558,7 @@ export function ReferencePanel({
       s.setReferenceInfo(info)
     })
     if (info.pexelsPageUrl) {
-      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', info.title)
+      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', { title: info.title, thumbnailUrl })
     }
   }, [onReferenceChange, addAndReloadHistory])
 
@@ -839,7 +874,7 @@ export function ReferencePanel({
             px: 2,
             py: 2,
           }}>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%', maxWidth: 360 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%', maxWidth: 480 }}>
               <Button
                 variant="outlined"
                 fullWidth
@@ -893,7 +928,7 @@ export function ReferencePanel({
                 </Tooltip>
               </Box>
             </Box>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 360 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>
               <Typography variant="caption" color="text.secondary">{t('urlSectionLabel')}</Typography>
               <Box sx={{ display: 'flex', gap: 1 }}>
               <Autocomplete<UrlHistoryEntry, false, false, true>
@@ -959,10 +994,44 @@ export function ReferencePanel({
                 renderOption={(props, option) => {
                   const { key, ...rest } = props as typeof props & { key: string }
                   const { primary, secondary } = describeHistoryUrl(option)
+                  const thumbSrc = resolveHistoryThumbnailSrc(option, imageThumbUrls)
+                  const showThumb = thumbSrc !== null && !thumbErrors.has(option.url)
                   return (
                     <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Box component="span" sx={{ color: 'text.secondary', display: 'inline-flex' }}>
-                        <HistoryTypeIcon type={option.type} />
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'text.secondary',
+                          bgcolor: showThumb ? 'action.hover' : 'transparent',
+                          borderRadius: 0.5,
+                          overflow: 'hidden',
+                        }}
+                      >
+                        {showThumb ? (
+                          <Box
+                            component="img"
+                            src={thumbSrc}
+                            alt=""
+                            loading="lazy"
+                            referrerPolicy="no-referrer"
+                            onError={() => {
+                              setThumbErrors(prev => {
+                                if (prev.has(option.url)) return prev
+                                const next = new Set(prev)
+                                next.add(option.url)
+                                return next
+                              })
+                            }}
+                            sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                          />
+                        ) : (
+                          <HistoryTypeIcon type={option.type} />
+                        )}
                       </Box>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
