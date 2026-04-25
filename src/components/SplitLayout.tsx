@@ -51,6 +51,16 @@ function SplitLayoutInner() {
       ? 'reference'
       : 'drawing'
 
+  // In portrait the split is top/bottom and the reference panel only gets
+  // half the height. While searching Sketchfab/Pexels (browse mode), give the
+  // reference panel the whole viewport so the result grid is browsable. The
+  // drawing panel is hidden via display:none rather than unmounted so its
+  // canvas/ViewTransform state survives the toggle.
+  const isSearchFullscreen =
+    !isLandscape &&
+    (source === 'sketchfab' || source === 'pexels') &&
+    referenceMode === 'browse'
+
   // Timer (lifted from DrawingPanel for autosave access)
   const timer = useTimer()
   const timerElapsedRef = useRef(timer.elapsedMs)
@@ -429,7 +439,7 @@ function SplitLayoutInner() {
           externalResetVersion={orientationResetVersion}
         />
       </Box>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
         <DrawingPanel
           referenceSize={referenceSize}
           referenceInfo={referenceInfo}
