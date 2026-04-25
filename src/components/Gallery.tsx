@@ -1,10 +1,32 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Box, Typography, IconButton, Tooltip, Button } from '@mui/material'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { Box, Typography, IconButton, Tooltip, Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import { X, Trash2 } from 'lucide-react'
 import { getAllDrawings, deleteDrawing, type DrawingRecord } from '../storage'
+import { getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
-import type { ReferenceInfo } from '../types'
+import { referenceKey, type ReferenceInfo } from '../types'
+import {
+  buildGroups,
+  canLoadReference,
+  loadGroupMode,
+  persistGroupMode,
+  refLabelOf,
+  syncThumbUrl,
+  type GroupMode,
+} from './galleryGrouping'
+
+const dayFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })
+
+function formatGroupDateLabel(
+  mode: GroupMode,
+  firstUsedAt: Date,
+  lastUsedAt: Date,
+): string | null {
+  if (mode === 'ref-first') return `${t('groupLabelFirstUsed')}: ${dayFormatter.format(firstUsedAt)}`
+  if (mode === 'ref-recent') return `${t('groupLabelRecentUsed')}: ${dayFormatter.format(lastUsedAt)}`
+  return null
+}
 
 interface GalleryProps {
   onClose: () => void
@@ -14,6 +36,15 @@ interface GalleryProps {
 export function Gallery({ onClose, onLoadReference }: GalleryProps) {
   const [drawings, setDrawings] = useState<DrawingRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode)
+  const [imageThumbs, setImageThumbs] = useState<Record<string, string | null>>({})
+  const enqueuedKeysRef = useRef<Set<string>>(new Set())
+  const objectUrlsRef = useRef<string[]>([])
+
+  const setGroupMode = useCallback((mode: GroupMode) => {
+    setGroupModeState(mode)
+    persistGroupMode(mode)
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -26,50 +57,72 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    const tasks: Array<{ key: string; historyKey: string }> = []
+    for (const d of drawings) {
+      const ref = d.reference
+      if (!ref || ref.source !== 'image' || !ref.url) continue
+      const key = referenceKey(ref)
+      if (enqueuedKeysRef.current.has(key)) continue
+      enqueuedKeysRef.current.add(key)
+      tasks.push({ key, historyKey: ref.url })
+    }
+    for (const task of tasks) {
+      getUrlHistoryEntry(task.historyKey).then(entry => {
+        if (cancelled) return
+        if (entry?.imageBlob) {
+          const url = URL.createObjectURL(entry.imageBlob)
+          objectUrlsRef.current.push(url)
+          setImageThumbs(prev => ({ ...prev, [task.key]: url }))
+        } else {
+          setImageThumbs(prev => ({ ...prev, [task.key]: null }))
+        }
+      }).catch(() => {
+        if (cancelled) return
+        setImageThumbs(prev => ({ ...prev, [task.key]: null }))
+      })
+    }
+    return () => { cancelled = true }
+  }, [drawings])
+
+  useEffect(() => {
+    return () => {
+      for (const url of objectUrlsRef.current) URL.revokeObjectURL(url)
+      objectUrlsRef.current = []
+    }
+  }, [])
+
   const handleDelete = useCallback(async (id: number) => {
     await deleteDrawing(id)
     setDrawings(prev => prev.filter(d => d.id !== id))
   }, [])
 
-  const handleLoadReference = useCallback((drawing: DrawingRecord) => {
+  const handleLoadDrawingReference = useCallback((drawing: DrawingRecord) => {
     const ref = drawing.reference
     if (!ref) return
     onLoadReference?.(ref)
     onClose()
   }, [onLoadReference, onClose])
 
-  const formatDate = (date: Date) => {
-    return new Date(date).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    })
-  }
+  const handleLoadGroupReference = useCallback((ref: ReferenceInfo | undefined) => {
+    if (!ref) return
+    onLoadReference?.(ref)
+    onClose()
+  }, [onLoadReference, onClose])
 
-  const getRefLabel = (drawing: DrawingRecord): string => {
-    if (drawing.reference) {
-      const parts = [drawing.reference.title]
-      if (drawing.reference.author) parts.push(drawing.reference.author)
-      return parts.join(' - ')
-    }
-    return drawing.referenceInfo || ''
-  }
+  const groups = useMemo(
+    () => buildGroups(drawings, groupMode, t('ungroupedReferences')),
+    [drawings, groupMode],
+  )
 
-  const canLoadReference = (drawing: DrawingRecord): boolean => {
-    if (!drawing.reference) return false
-    if (drawing.reference.source === 'sketchfab' && drawing.reference.sketchfabUid) return true
-    if (drawing.reference.source === 'url' && drawing.reference.imageUrl) return true
-    if (drawing.reference.source === 'youtube' && drawing.reference.youtubeVideoId) return true
-    if (drawing.reference.source === 'pexels' && drawing.reference.pexelsImageUrl) return true
-    // Local images are reloadable as long as the drawing has a history key
-    // recorded. The actual availability of the Blob in URL history is checked
-    // lazily at load time (the entry may have been evicted by the 10-cap, in
-    // which case SplitLayout surfaces the error).
-    if (drawing.reference.source === 'image' && drawing.reference.url) return true
-    return false
-  }
+  const getThumbForRef = useCallback((ref: ReferenceInfo | undefined): string | null => {
+    if (!ref) return null
+    if (ref.source === 'image') return imageThumbs[referenceKey(ref)] ?? null
+    return syncThumbUrl(ref)
+  }, [imageThumbs])
+
+  const isRefMode = groupMode !== 'date'
 
   return (
     <Box sx={{
@@ -92,19 +145,33 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
         overflow: 'hidden',
       }}>
         {/* Header */}
-        <Box sx={{
-          display: 'flex',
-          alignItems: 'center',
-          px: 2,
-          py: 1.5,
-          borderBottom: '1px solid #ddd',
-        }}>
-          <Typography variant="h6" sx={{ flex: 1 }}>
-            {t('galleryTitle')} ({drawings.length})
-          </Typography>
-          <IconButton onClick={onClose} size="small">
-            <X size={20} />
-          </IconButton>
+        <Box sx={{ borderBottom: '1px solid #ddd', px: 2, py: 1.5 }}>
+          {/* Top row: title + close. Pinned together so the X stays at the
+              top-right corner even on narrow screens where the toggle row
+              below has to wrap. */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ flex: 1, minWidth: 0 }}>
+              {t('galleryTitle')} ({drawings.length})
+            </Typography>
+            <IconButton onClick={onClose} size="small">
+              <X size={20} />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: 'flex', mt: 1, flexWrap: 'wrap', gap: 1 }}>
+            <ToggleButtonGroup
+              value={groupMode}
+              exclusive
+              size="small"
+              onChange={(_e, val) => {
+                if (val === null) return
+                setGroupMode(val as GroupMode)
+              }}
+            >
+              <ToggleButton value="date">{t('groupByDate')}</ToggleButton>
+              <ToggleButton value="ref-first">{t('groupByRefFirst')}</ToggleButton>
+              <ToggleButton value="ref-recent">{t('groupByRefRecent')}</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
         </Box>
 
         {/* Content */}
@@ -117,67 +184,160 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
             <Typography color="text.secondary">{t('noDrawings')}</Typography>
           )}
 
-          {!loading && drawings.length > 0 && (
-            <Box sx={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-              gap: 2,
-            }}>
-              {drawings.map(drawing => {
-                const refLabel = getRefLabel(drawing)
-                return (
-                  <Box
-                    key={drawing.id}
-                    sx={{
-                      border: '1px solid #ddd',
-                      borderRadius: 1,
-                      overflow: 'hidden',
-                      '&:hover': { borderColor: 'primary.main' },
-                    }}
-                  >
-                    {drawing.thumbnail && (
+          {!loading && groups.map((group, gi) => {
+            const groupThumb = isRefMode ? getThumbForRef(group.reference) : null
+            const showGroupButton = isRefMode && canLoadReference(group.reference)
+            const groupDateLabel = formatGroupDateLabel(groupMode, group.firstUsedAt, group.lastUsedAt)
+
+            return (
+              <Box
+                key={group.key}
+                sx={gi > 0 ? { borderTop: '1px solid #ddd', pt: 2, mt: 2 } : undefined}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                  {isRefMode && (
+                    groupThumb ? (
                       <img
-                        src={drawing.thumbnail}
-                        alt={`#${drawing.id}`}
-                        style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
+                        src={groupThumb}
+                        alt={t('referenceThumbnailAlt')}
+                        style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, background: '#fafafa', flexShrink: 0 }}
                       />
-                    )}
-                    <Box sx={{ p: 1 }}>
-                      {refLabel && (
-                        <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {refLabel}
-                        </Typography>
-                      )}
-                      <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-                        {formatDate(drawing.createdAt)} / {formatTime(drawing.elapsedMs)}
+                    ) : (
+                      <Box sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: '#eee', flexShrink: 0 }} />
+                    )
+                  )}
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {group.label}
+                    </Typography>
+                    {groupDateLabel && (
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                        {groupDateLabel}
                       </Typography>
-                      <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, alignItems: 'center' }}>
-                        {canLoadReference(drawing) && (
-                          <Button
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleLoadReference(drawing)}
-                            sx={{ fontSize: '0.65rem', py: 0, minHeight: 24 }}
-                          >
-                            {t('loadReference')}
-                          </Button>
-                        )}
-                        <Box sx={{ flex: 1 }} />
-                        <Tooltip title={t('delete')}>
-                          <IconButton
-                            size="small"
-                            onClick={() => drawing.id != null && handleDelete(drawing.id)}
-                          >
-                            <Trash2 size={20} />
-                          </IconButton>
-                        </Tooltip>
-                      </Box>
-                    </Box>
+                    )}
                   </Box>
-                )
-              })}
-            </Box>
+                  {showGroupButton && (
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => handleLoadGroupReference(group.reference)}
+                      sx={{ flexShrink: 0 }}
+                    >
+                      {t('loadReference')}
+                    </Button>
+                  )}
+                </Box>
+
+                <Box sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                  gap: 2,
+                }}>
+                  {group.drawings.map(drawing => (
+                    <DrawingCard
+                      key={drawing.id}
+                      drawing={drawing}
+                      showReferenceLabel={!isRefMode}
+                      showReferenceButton={!isRefMode && canLoadReference(drawing.reference)}
+                      referenceThumbUrl={!isRefMode ? getThumbForRef(drawing.reference) : null}
+                      onDelete={handleDelete}
+                      onLoadReference={handleLoadDrawingReference}
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )
+          })}
+        </Box>
+      </Box>
+    </Box>
+  )
+}
+
+const cardDateFormatter = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
+
+interface DrawingCardProps {
+  drawing: DrawingRecord
+  showReferenceLabel: boolean
+  showReferenceButton: boolean
+  referenceThumbUrl: string | null
+  onDelete: (id: number) => void
+  onLoadReference: (drawing: DrawingRecord) => void
+}
+
+function DrawingCard({
+  drawing,
+  showReferenceLabel,
+  showReferenceButton,
+  referenceThumbUrl,
+  onDelete,
+  onLoadReference,
+}: DrawingCardProps) {
+  const refLabel = showReferenceLabel
+    ? refLabelOf(drawing.reference, drawing.referenceInfo || '')
+    : ''
+  return (
+    <Box
+      sx={{
+        border: '1px solid #ddd',
+        borderRadius: 1,
+        overflow: 'hidden',
+        '&:hover': { borderColor: 'primary.main' },
+      }}
+    >
+      {drawing.thumbnail && (
+        <img
+          src={drawing.thumbnail}
+          alt={`#${drawing.id}`}
+          style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
+        />
+      )}
+      <Box sx={{ p: 1 }}>
+        {refLabel && (
+          <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {refLabel}
+          </Typography>
+        )}
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+          {cardDateFormatter.format(new Date(drawing.createdAt))} / {formatTime(drawing.elapsedMs)}
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, alignItems: 'center' }}>
+          {showReferenceButton && (
+            <>
+              {referenceThumbUrl ? (
+                <img
+                  src={referenceThumbUrl}
+                  alt={t('referenceThumbnailAlt')}
+                  style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2, flexShrink: 0, background: '#fafafa' }}
+                />
+              ) : (
+                <Box sx={{ width: 24, height: 24, borderRadius: 0.5, bgcolor: '#eee', flexShrink: 0 }} />
+              )}
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={() => onLoadReference(drawing)}
+                sx={{ fontSize: '0.65rem', py: 0, minHeight: 24 }}
+              >
+                {t('loadReference')}
+              </Button>
+            </>
           )}
+          <Box sx={{ flex: 1 }} />
+          <Tooltip title={t('delete')}>
+            <IconButton
+              size="small"
+              onClick={() => drawing.id != null && onDelete(drawing.id)}
+            >
+              <Trash2 size={20} />
+            </IconButton>
+          </Tooltip>
         </Box>
       </Box>
     </Box>
