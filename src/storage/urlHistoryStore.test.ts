@@ -223,6 +223,65 @@ describe('urlHistoryStore', () => {
       expect(deletedUrls).toEqual(['local:0'])
     })
 
+    it('re-upsert of an image bumps lastUsedAt strictly greater than the latest peer', async () => {
+      // Existing test at "preserves existing imageBlob..." only asserts the field
+      // is preserved; this one nails down the LRU contract — the bumped timestamp
+      // must outrank every existing peer so the entry can survive the next eviction.
+      const peerLatest = 1009
+      mockGet().mockResolvedValueOnce({
+        url: 'local:0',
+        type: 'image',
+        fileName: 'img0.jpg',
+        imageBlob: new Blob(['x']),
+        lastUsedAt: new Date(1000),
+      })
+      await addUrlHistory('local:0', 'image', { fileName: 'img0.jpg' })
+      const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry
+      expect(arg.lastUsedAt.getTime()).toBeGreaterThan(peerLatest)
+    })
+
+    it('LRU: a recently re-touched image survives the next eviction', async () => {
+      // Round-trip scenario: re-touching an existing image must shift which entry
+      // counts as "oldest" so a subsequent over-cap add evicts a different row.
+      const buildImages = (overrides: Record<string, number> = {}): UrlHistoryEntry[] =>
+        Array.from({ length: URL_HISTORY_IMAGE_LIMIT }, (_, i) => ({
+          url: `local:${i}`,
+          type: 'image',
+          fileName: `img${i}.jpg`,
+          imageBlob: new Blob(['x']),
+          lastUsedAt: new Date(overrides[`local:${i}`] ?? 1000 + i),
+        }))
+
+      mockGet().mockResolvedValueOnce({
+        url: 'local:0',
+        type: 'image',
+        fileName: 'img0.jpg',
+        imageBlob: new Blob(['x']),
+        lastUsedAt: new Date(1000),
+      })
+      mockToArray().mockResolvedValueOnce(buildImages())
+      await addUrlHistory('local:0', 'image', { fileName: 'img0.jpg' })
+      const bumpedTs = (mockPut().mock.calls[0][0] as UrlHistoryEntry).lastUsedAt.getTime()
+      expect(mockBulkDelete()).not.toHaveBeenCalled()
+
+      // Mock the post-put state: 10 originals (with local:0 bumped) + the new
+      // entry, putting us at 11 → eviction must drop exactly one.
+      mockToArray().mockResolvedValueOnce([
+        ...buildImages({ 'local:0': bumpedTs }),
+        {
+          url: 'local:new',
+          type: 'image',
+          fileName: 'new.jpg',
+          imageBlob: new Blob(['new']),
+          lastUsedAt: new Date(bumpedTs + 100),
+        },
+      ])
+      await addUrlHistory('local:new', 'image', { fileName: 'new.jpg', imageBlob: new Blob(['new']) })
+
+      expect(mockBulkDelete()).toHaveBeenCalledTimes(1)
+      expect(mockBulkDelete().mock.calls[0][0]).toEqual(['local:1'])
+    })
+
     it('image history does not evict URL/YouTube entries when only the URL side is at its limit', async () => {
       // URLs at exactly their limit, no images at all yet — adding a new image
       // must not prune any URL entry.
