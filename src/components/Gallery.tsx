@@ -6,119 +6,17 @@ import { getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
 import { referenceKey, type ReferenceInfo } from '../types'
+import {
+  buildGroups,
+  canLoadReference,
+  loadGroupMode,
+  persistGroupMode,
+  refLabelOf,
+  syncThumbUrl,
+  type GroupMode,
+} from './galleryGrouping'
 
-type GroupMode = 'date' | 'ref-first' | 'ref-recent'
-const STORAGE_KEY = 'gallery.groupMode'
-const LEGACY_GROUP_KEY = '__legacy__'
-
-function loadGroupMode(): GroupMode {
-  try {
-    const v = localStorage.getItem(STORAGE_KEY)
-    if (v === 'date' || v === 'ref-first' || v === 'ref-recent') return v
-  } catch { /* ignore */ }
-  return 'date'
-}
-
-function persistGroupMode(mode: GroupMode): void {
-  try { localStorage.setItem(STORAGE_KEY, mode) } catch { /* ignore */ }
-}
-
-const monthFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' })
 const dayFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })
-
-function refLabelOf(ref: ReferenceInfo | undefined, fallback: string): string {
-  if (!ref) return fallback
-  const parts = [ref.title]
-  if (ref.author) parts.push(ref.author)
-  const joined = parts.join(' - ')
-  return joined || fallback
-}
-
-function canLoadReference(ref: ReferenceInfo | undefined): boolean {
-  if (!ref) return false
-  if (ref.source === 'sketchfab' && ref.sketchfabUid) return true
-  if (ref.source === 'url' && ref.imageUrl) return true
-  if (ref.source === 'youtube' && ref.youtubeVideoId) return true
-  if (ref.source === 'pexels' && ref.pexelsImageUrl) return true
-  // Local images are reloadable as long as the drawing has a history key
-  // recorded. The actual availability of the Blob in URL history is checked
-  // lazily at load time (the entry may have been evicted by the 10-cap, in
-  // which case SplitLayout surfaces the error).
-  if (ref.source === 'image' && ref.url) return true
-  return false
-}
-
-/**
- * Sync thumbnail URL for non-image references. Image references resolve
- * asynchronously via the imageThumbs cache populated from urlHistory blobs.
- */
-function syncThumbUrl(ref: ReferenceInfo): string | null {
-  switch (ref.source) {
-    case 'sketchfab': return ref.imageUrl ?? null
-    case 'url': return ref.imageUrl
-    case 'youtube': return `https://i.ytimg.com/vi/${ref.youtubeVideoId}/default.jpg`
-    case 'pexels': return ref.pexelsImageUrl
-    case 'image': return null
-  }
-}
-
-interface Group {
-  key: string
-  label: string
-  reference?: ReferenceInfo
-  firstUsedAt: Date
-  lastUsedAt: Date
-  drawings: DrawingRecord[]
-}
-
-function buildGroups(drawings: DrawingRecord[], mode: GroupMode): Group[] {
-  if (drawings.length === 0) return []
-  const buckets = new Map<string, Group>()
-
-  for (const d of drawings) {
-    const date = new Date(d.createdAt)
-    let key: string
-    let label: string
-    let reference: ReferenceInfo | undefined
-
-    if (mode === 'date') {
-      key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      label = monthFormatter.format(date)
-    } else {
-      const ref = d.reference
-      reference = ref
-      if (ref) {
-        key = referenceKey(ref)
-        label = refLabelOf(ref, t('ungroupedReferences'))
-      } else {
-        key = LEGACY_GROUP_KEY
-        label = t('ungroupedReferences')
-      }
-    }
-
-    let g = buckets.get(key)
-    if (!g) {
-      g = { key, label, reference, firstUsedAt: date, lastUsedAt: date, drawings: [] }
-      buckets.set(key, g)
-    }
-    g.drawings.push(d)
-    if (date < g.firstUsedAt) g.firstUsedAt = date
-    if (date > g.lastUsedAt) g.lastUsedAt = date
-  }
-
-  const groups = Array.from(buckets.values())
-  for (const g of groups) {
-    g.drawings.sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt))
-  }
-  if (mode === 'date') {
-    groups.sort((a, b) => b.key.localeCompare(a.key))
-  } else if (mode === 'ref-first') {
-    groups.sort((a, b) => +b.firstUsedAt - +a.firstUsedAt)
-  } else {
-    groups.sort((a, b) => +b.lastUsedAt - +a.lastUsedAt)
-  }
-  return groups
-}
 
 interface GalleryProps {
   onClose: () => void
@@ -206,7 +104,10 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     onClose()
   }, [onLoadReference, onClose])
 
-  const groups = useMemo(() => buildGroups(drawings, groupMode), [drawings, groupMode])
+  const groups = useMemo(
+    () => buildGroups(drawings, groupMode, t('ungroupedReferences')),
+    [drawings, groupMode],
+  )
 
   const getThumbForRef = useCallback((ref: ReferenceInfo | undefined): string | null => {
     if (!ref) return null
@@ -237,34 +138,33 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
         overflow: 'hidden',
       }}>
         {/* Header */}
-        <Box sx={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1.5,
-          px: 2,
-          py: 1.5,
-          borderBottom: '1px solid #ddd',
-          flexWrap: 'wrap',
-        }}>
-          <Typography variant="h6" sx={{ flex: 1, minWidth: 120 }}>
-            {t('galleryTitle')} ({drawings.length})
-          </Typography>
-          <ToggleButtonGroup
-            value={groupMode}
-            exclusive
-            size="small"
-            onChange={(_e, val) => {
-              if (val === null) return
-              setGroupMode(val as GroupMode)
-            }}
-          >
-            <ToggleButton value="date">{t('groupByDate')}</ToggleButton>
-            <ToggleButton value="ref-first">{t('groupByRefFirst')}</ToggleButton>
-            <ToggleButton value="ref-recent">{t('groupByRefRecent')}</ToggleButton>
-          </ToggleButtonGroup>
-          <IconButton onClick={onClose} size="small">
-            <X size={20} />
-          </IconButton>
+        <Box sx={{ borderBottom: '1px solid #ddd', px: 2, py: 1.5 }}>
+          {/* Top row: title + close. Pinned together so the X stays at the
+              top-right corner even on narrow screens where the toggle row
+              below has to wrap. */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography variant="h6" sx={{ flex: 1, minWidth: 0 }}>
+              {t('galleryTitle')} ({drawings.length})
+            </Typography>
+            <IconButton onClick={onClose} size="small">
+              <X size={20} />
+            </IconButton>
+          </Box>
+          <Box sx={{ display: 'flex', mt: 1, flexWrap: 'wrap', gap: 1 }}>
+            <ToggleButtonGroup
+              value={groupMode}
+              exclusive
+              size="small"
+              onChange={(_e, val) => {
+                if (val === null) return
+                setGroupMode(val as GroupMode)
+              }}
+            >
+              <ToggleButton value="date">{t('groupByDate')}</ToggleButton>
+              <ToggleButton value="ref-first">{t('groupByRefFirst')}</ToggleButton>
+              <ToggleButton value="ref-recent">{t('groupByRefRecent')}</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
         </Box>
 
         {/* Content */}
