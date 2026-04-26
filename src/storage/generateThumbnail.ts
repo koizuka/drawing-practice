@@ -43,7 +43,7 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   ctx.translate(-minX + padding, -minY + padding)
 
   ctx.strokeStyle = '#000000'
-  ctx.lineWidth = 2 / scale
+  ctx.lineWidth = Math.max(2, 0.75 / scale)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 
