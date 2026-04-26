@@ -5,6 +5,7 @@ import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { GridSettings, GuideLine } from '../guides/types'
 import type { Stroke, Point } from '../drawing/types'
 import type { GuideInteractionMode } from './ImageViewer'
+import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH } from '../drawing/constants'
 import type { ViewTransform } from '../drawing/ViewTransform'
 
 const LOGICAL_WIDTH = 1920
@@ -220,8 +221,8 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       const passes = [
-        { color: OVERLAY_HALO_COLOR, width: 5 / scale },
-        { color: OVERLAY_COLOR, width: 2 / scale },
+        { color: OVERLAY_HALO_COLOR, width: (STROKE_WIDTH * OVERLAY_HALO_MULTIPLIER) / scale },
+        { color: OVERLAY_COLOR, width: STROKE_WIDTH / scale },
       ]
       for (const pass of passes) {
         ctx.strokeStyle = pass.color

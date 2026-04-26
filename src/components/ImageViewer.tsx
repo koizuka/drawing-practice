@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { Box } from '@mui/material'
+import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH } from '../drawing/constants'
 import { ViewTransform } from '../drawing/ViewTransform'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { GridSettings, GuideLine } from '../guides/types'
@@ -149,8 +150,8 @@ export function ImageViewer({
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       const passes = [
-        { color: OVERLAY_HALO_COLOR, width: 5 / vt.scale },
-        { color: OVERLAY_COLOR, width: 2 / vt.scale },
+        { color: OVERLAY_HALO_COLOR, width: (STROKE_WIDTH * OVERLAY_HALO_MULTIPLIER) / vt.scale },
+        { color: OVERLAY_COLOR, width: STROKE_WIDTH / vt.scale },
       ]
       for (const pass of passes) {
         ctx.strokeStyle = pass.color
