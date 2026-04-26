@@ -1,3 +1,4 @@
+import { STROKE_WIDTH } from '../drawing/constants'
 import type { Stroke } from '../drawing/types'
 
 const THUMBNAIL_SIZE = 200
@@ -43,7 +44,7 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   ctx.translate(-minX + padding, -minY + padding)
 
   ctx.strokeStyle = '#000000'
-  ctx.lineWidth = Math.max(2, 0.75 / scale)
+  ctx.lineWidth = Math.max(STROKE_WIDTH, 0.75 / scale)
   ctx.lineCap = 'round'
   ctx.lineJoin = 'round'
 

@@ -136,6 +136,7 @@ src/
 │   └── Gallery.tsx
 ├── drawing/
 │   ├── types.ts
+│   ├── constants.ts        # Shared stroke width / overlay halo multiplier
 │   ├── StrokeManager.ts
 │   ├── CanvasRenderer.ts
 │   ├── ViewTransform.ts

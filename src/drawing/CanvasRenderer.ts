@@ -1,3 +1,4 @@
+import { STROKE_WIDTH } from './constants'
 import type { Point, Stroke } from './types'
 
 export interface CanvasRendererOptions {
@@ -10,7 +11,7 @@ export interface CanvasRendererOptions {
 
 const DEFAULT_OPTIONS: CanvasRendererOptions = {
   strokeColor: '#000000',
-  strokeWidth: 2,
+  strokeWidth: STROKE_WIDTH,
   highlightColor: '#ff4444',
   highlightWidth: 4,
   backgroundColor: '#ffffff',
