@@ -405,14 +405,14 @@ function DrawingCard({
         />
       )}
       <Box sx={{ p: 1 }}>
+        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
+          {cardDateFormatter.format(new Date(drawing.createdAt))} / {formatTime(drawing.elapsedMs)}
+        </Typography>
         {refLabel && (
           <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {refLabel}
           </Typography>
         )}
-        <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-          {cardDateFormatter.format(new Date(drawing.createdAt))} / {formatTime(drawing.elapsedMs)}
-        </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, alignItems: 'center' }}>
           {showReferenceButton && (
             <>
