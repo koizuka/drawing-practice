@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Box, Typography, IconButton, Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { Box, Typography, IconButton, Button, ToggleButton, ToggleButtonGroup, Menu, MenuItem } from '@mui/material'
 import { ToolbarTooltip } from './ToolbarTooltip'
-import { X, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
+import { X, Trash2, ChevronDown, ChevronRight, Download } from 'lucide-react'
 import {
   getAllDrawings,
   deleteDrawing,
@@ -10,6 +10,7 @@ import {
   type DrawingRecord,
   type StorageUsage,
 } from '../storage'
+import { exportDrawing, type ExportFormat } from '../storage/exportDrawing'
 import { getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { formatTime } from '../hooks/useTimer'
 import { t } from '../i18n'
@@ -437,6 +438,7 @@ function DrawingCard({
             </>
           )}
           <Box sx={{ flex: 1 }} />
+          <ExportMenuButton drawing={drawing} />
           <ToolbarTooltip title={t('delete')}>
             <IconButton
               size="small"
@@ -448,5 +450,39 @@ function DrawingCard({
         </Box>
       </Box>
     </Box>
+  )
+}
+
+function ExportMenuButton({ drawing }: { drawing: DrawingRecord }) {
+  const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
+  const handleExport = async (format: ExportFormat) => {
+    setAnchorEl(null)
+    try {
+      await exportDrawing(drawing, format)
+    } catch (err) {
+      console.error('Failed to export drawing', err)
+      alert(t('exportFailed'))
+    }
+  }
+
+  return (
+    <>
+      <ToolbarTooltip title={t('exportDrawing')}>
+        <span>
+          <IconButton
+            size="small"
+            onClick={e => setAnchorEl(e.currentTarget)}
+            disabled={drawing.strokes.length === 0}
+          >
+            <Download size={20} />
+          </IconButton>
+        </span>
+      </ToolbarTooltip>
+      <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={() => setAnchorEl(null)}>
+        <MenuItem onClick={() => handleExport('svg')}>SVG</MenuItem>
+        <MenuItem onClick={() => handleExport('png')}>PNG</MenuItem>
+        <MenuItem onClick={() => handleExport('jpeg')}>JPEG</MenuItem>
+      </Menu>
+    </>
   )
 }
