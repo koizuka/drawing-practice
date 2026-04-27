@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { Box, Typography, IconButton, Tooltip, Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { Box, Typography, IconButton, Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
+import { ToolbarTooltip } from './ToolbarTooltip'
 import { X, Trash2, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   getAllDrawings,
@@ -436,14 +437,14 @@ function DrawingCard({
             </>
           )}
           <Box sx={{ flex: 1 }} />
-          <Tooltip title={t('delete')}>
+          <ToolbarTooltip title={t('delete')}>
             <IconButton
               size="small"
               onClick={() => drawing.id != null && onDelete(drawing.id)}
             >
               <Trash2 size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         </Box>
       </Box>
     </Box>

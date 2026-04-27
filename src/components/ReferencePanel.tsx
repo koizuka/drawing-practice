@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
-import { Box, Button, Tooltip, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
+import { Box, Button, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
+import { ToolbarTooltip } from './ToolbarTooltip'
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound } from 'lucide-react'
 import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
@@ -130,7 +131,7 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
       pointerEvents: 'none',
     }}>
       {collapsed ? (
-        <Tooltip title={t('expandReferenceInfo')}>
+        <ToolbarTooltip title={t('expandReferenceInfo')}>
           <IconButton
             size="small"
             onClick={() => setCollapsed(false)}
@@ -144,7 +145,7 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
           >
             <Info size={18} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
       ) : (
         <Box sx={{
           display: 'flex',
@@ -185,7 +186,7 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
               </Typography>
             )}
           </Box>
-          <Tooltip title={t('collapseReferenceInfo')}>
+          <ToolbarTooltip title={t('collapseReferenceInfo')}>
             <IconButton
               size="small"
               onClick={() => setCollapsed(true)}
@@ -199,7 +200,7 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
             >
               <X size={14} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         </Box>
       )}
     </Box>
@@ -655,11 +656,11 @@ export function ReferencePanel({
       >
         {/* Close button (when source is set) */}
         {!isNone && (
-          <Tooltip title={t('cancel')}>
+          <ToolbarTooltip title={t('cancel')}>
             <IconButton size="small" onClick={handleClose}>
               <X size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
         {/* Sketchfab model viewer: Back to search results */}
@@ -692,7 +693,7 @@ export function ReferencePanel({
 
         {/* Works in both modes — pausing shouldn't require giving up zoom. */}
         {isYouTube && (
-          <Tooltip title={youtubePlaying ? t('youtubePause') : t('youtubePlay')}>
+          <ToolbarTooltip title={youtubePlaying ? t('youtubePause') : t('youtubePlay')}>
             <IconButton
               size="small"
               onClick={() => {
@@ -705,11 +706,11 @@ export function ReferencePanel({
             >
               {youtubePlaying ? <Pause size={20} /> : <Play size={20} />}
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
         {isYouTube && youtubeVideoInteractMode && (
-          <Tooltip title={t('youtubeReturnToZoom')}>
+          <ToolbarTooltip title={t('youtubeReturnToZoom')}>
             <IconButton
               size="small"
               aria-label={t('youtubeReturnToZoom')}
@@ -722,7 +723,7 @@ export function ReferencePanel({
             >
               <ZoomIn size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
         {/* Guide line tools — add/delete-mode require a viewer to interact with. */}
@@ -730,7 +731,7 @@ export function ReferencePanel({
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
-            <Tooltip title={t('addGuideLine')}>
+            <ToolbarTooltip title={t('addGuideLine')}>
               <IconButton
                 size="small"
                 onClick={() => toggleGuideMode('add')}
@@ -742,9 +743,9 @@ export function ReferencePanel({
               >
                 <PenLine size={20} />
               </IconButton>
-            </Tooltip>
+            </ToolbarTooltip>
 
-            <Tooltip title={t('deleteGuideLine')}>
+            <ToolbarTooltip title={t('deleteGuideLine')}>
               <span>
                 <IconButton
                   size="small"
@@ -759,15 +760,15 @@ export function ReferencePanel({
                   <CircleX size={20} />
                 </IconButton>
               </span>
-            </Tooltip>
+            </ToolbarTooltip>
 
-            <Tooltip title={t('clearGuideLines')}>
+            <ToolbarTooltip title={t('clearGuideLines')}>
               <span>
                 <IconButton size="small" onClick={clearLines} disabled={lines.length === 0}>
                   <Trash2 size={20} />
                 </IconButton>
               </span>
-            </Tooltip>
+            </ToolbarTooltip>
           </>
         )}
 
@@ -776,11 +777,11 @@ export function ReferencePanel({
         {!(isFixed || isYouTube) && lines.length > 0 && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <Tooltip title={t('clearGuideLines')}>
+            <ToolbarTooltip title={t('clearGuideLines')}>
               <IconButton size="small" onClick={clearLines}>
                 <Trash2 size={20} />
               </IconButton>
-            </Tooltip>
+            </ToolbarTooltip>
           </>
         )}
 
@@ -801,7 +802,7 @@ export function ReferencePanel({
 
         {/* View controls (always visible) */}
         {(isFixed || isYouTube) && !inYouTubeVideoMode && (
-          <Tooltip title={t('compare')}>
+          <ToolbarTooltip title={t('compare')}>
             <IconButton
               size="small"
               onClick={onToggleOverlay}
@@ -813,10 +814,10 @@ export function ReferencePanel({
             >
               <Layers size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
-        <Tooltip title={t('cycleGrid')}>
+        <ToolbarTooltip title={t('cycleGrid')}>
           <IconButton
             size="small"
             onClick={cycleGridMode}
@@ -828,10 +829,10 @@ export function ReferencePanel({
           >
             <GridIcon mode={grid.mode} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
 
         {!isYouTube && (
-          <Tooltip title={t('flipHorizontal')}>
+          <ToolbarTooltip title={t('flipHorizontal')}>
             <IconButton
               size="small"
               onClick={onToggleFlip}
@@ -843,23 +844,23 @@ export function ReferencePanel({
             >
               <FlipHorizontal2 size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
         {isFixed && (
-          <Tooltip title={t('resetZoom')}>
+          <ToolbarTooltip title={t('resetZoom')}>
             <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
               <LocateFixed size={20} />
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
 
         {fullscreenSupported && (
-          <Tooltip title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}>
+          <ToolbarTooltip title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}>
             <IconButton size="small" onClick={toggleFullscreen}>
               {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
             </IconButton>
-          </Tooltip>
+          </ToolbarTooltip>
         )}
       </Box>
 
@@ -922,14 +923,14 @@ export function ReferencePanel({
                     </Typography>
                   </Box>
                 </Button>
-                <Tooltip title={t('pexelsApiKeySettings')}>
+                <ToolbarTooltip title={t('pexelsApiKeySettings')}>
                   <IconButton
                     onClick={() => setPexelsKeyDialogOpen(true)}
                     sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
                   >
                     <KeyRound size={18} />
                   </IconButton>
-                </Tooltip>
+                </ToolbarTooltip>
               </Box>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>
@@ -1047,7 +1048,7 @@ export function ReferencePanel({
                           </Typography>
                         )}
                       </Box>
-                      <Tooltip title={t('urlHistoryDelete')}>
+                      <ToolbarTooltip title={t('urlHistoryDelete')}>
                         <IconButton
                           size="small"
                           aria-label={t('urlHistoryDelete')}
@@ -1062,7 +1063,7 @@ export function ReferencePanel({
                         >
                           <Trash2 size={14} />
                         </IconButton>
-                      </Tooltip>
+                      </ToolbarTooltip>
                     </li>
                   )
                 }}
