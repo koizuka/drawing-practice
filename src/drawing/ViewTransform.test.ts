@@ -99,6 +99,37 @@ describe('ViewTransform', () => {
     })
   })
 
+  describe('isDirty', () => {
+    it('starts clean', () => {
+      expect(vt.isDirty()).toBe(false)
+    })
+
+    it('becomes dirty after applyPinch', () => {
+      vt.applyPinch(0, 0, 2, 0, 0)
+      expect(vt.isDirty()).toBe(true)
+    })
+
+    it('becomes clean after reset', () => {
+      vt.applyPinch(0, 0, 2, 0, 0)
+      vt.reset()
+      expect(vt.isDirty()).toBe(false)
+    })
+
+    it('becomes clean after fitTo', () => {
+      vt.applyPinch(0, 0, 2, 0, 0)
+      vt.fitTo({ width: 100, height: 100 }, { width: 50, height: 50 })
+      expect(vt.isDirty()).toBe(false)
+    })
+
+    it('notifies listeners when dirty flag flips', () => {
+      const states: boolean[] = []
+      vt.subscribe(() => states.push(vt.isDirty()))
+      vt.applyPinch(0, 0, 2, 0, 0)
+      vt.reset()
+      expect(states).toEqual([true, false])
+    })
+  })
+
   describe('subscribe', () => {
     it('notifies listener when applyPinch is called', () => {
       const listener = vi.fn()

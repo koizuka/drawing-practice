@@ -258,6 +258,7 @@ export function ReferencePanel({
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
   const [viewResetVersion, setViewResetVersion] = useState(0)
+  const [, setViewTick] = useState(0)
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none')
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null)
   const [urlInput, setUrlInput] = useState('')
@@ -312,6 +313,15 @@ export function ReferencePanel({
   }, [onRegisterReloadUrlHistory, reloadUrlHistory])
 
   const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
+
+  // Re-render when the shared ViewTransform changes so the reset button can
+  // reflect the current dirty state.
+  useEffect(() => {
+    if (!viewTransform) return
+    return viewTransform.subscribe(() => setViewTick(t => t + 1))
+  }, [viewTransform])
+
+  const resetDisabled = viewTransform ? !viewTransform.isDirty() : false
 
   // Sketchfab viewer state (reported by child)
   const [sfShowViewer, setSfShowViewer] = useState(false)
@@ -849,9 +859,15 @@ export function ReferencePanel({
 
         {isFixed && (
           <ToolbarTooltip title={t('resetZoom')}>
-            <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
-              <LocateFixed size={20} />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => setViewResetVersion(v => v + 1)}
+                disabled={resetDisabled}
+              >
+                <LocateFixed size={20} />
+              </IconButton>
+            </span>
           </ToolbarTooltip>
         )}
 

@@ -17,6 +17,7 @@ const MAX_SCALE = 8
 
 export class ViewTransform {
   private transform: Transform
+  private dirty = false
   private listeners = new Set<() => void>()
 
   constructor(initial?: Transform) {
@@ -27,8 +28,13 @@ export class ViewTransform {
     return { ...this.transform }
   }
 
+  isDirty(): boolean {
+    return this.dirty
+  }
+
   reset(): void {
     this.transform = { ...IDENTITY_TRANSFORM }
+    this.dirty = false
     this.notify()
   }
 
@@ -41,6 +47,7 @@ export class ViewTransform {
     this.transform.offsetX = focalX - actualScaleDelta * (focalX - this.transform.offsetX) + translateX
     this.transform.offsetY = focalY - actualScaleDelta * (focalY - this.transform.offsetY) + translateY
     this.transform.scale = newScale
+    this.dirty = true
     this.notify()
   }
 
@@ -50,6 +57,7 @@ export class ViewTransform {
     this.transform.offsetX = (container.width - content.width * scale) / 2
     this.transform.offsetY = (container.height - content.height * scale) / 2
     this.transform.scale = scale
+    this.dirty = false
     this.notify()
   }
 
