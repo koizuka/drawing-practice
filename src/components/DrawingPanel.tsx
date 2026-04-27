@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
-import { Box, IconButton, Tooltip, Button, Typography } from '@mui/material'
+import { Box, IconButton, Button, Typography } from '@mui/material'
+import { ToolbarTooltip } from './ToolbarTooltip'
 import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import type { ViewTransform } from '../drawing/ViewTransform'
@@ -197,7 +198,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         }}
       >
         {/* Drawing tools */}
-        <Tooltip title={`${t('pen')} (P)`}>
+        <ToolbarTooltip title={`${t('pen')} (P)`}>
           <IconButton
             size="small"
             onClick={handlePenTool}
@@ -209,9 +210,9 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           >
             <Pen size={20} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
 
-        <Tooltip title={`${t('eraser')} (E)`}>
+        <ToolbarTooltip title={`${t('eraser')} (E)`}>
           <IconButton
             size="small"
             onClick={handleEraserTool}
@@ -223,43 +224,43 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           >
             <Eraser size={20} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
         {/* Edit */}
-        <Tooltip title={`${t('undo')} (${mod}Z)`}>
+        <ToolbarTooltip title={`${t('undo')} (${mod}Z)`}>
           <span>
             <IconButton size="small" onClick={handleUndo} disabled={!canUndo}>
               <Undo2 size={20} />
             </IconButton>
           </span>
-        </Tooltip>
+        </ToolbarTooltip>
 
-        <Tooltip title={`${t('redo')} (${mod}Shift+Z)`}>
+        <ToolbarTooltip title={`${t('redo')} (${mod}Shift+Z)`}>
           <span>
             <IconButton size="small" onClick={handleRedo} disabled={!canRedo}>
               <Redo2 size={20} />
             </IconButton>
           </span>
-        </Tooltip>
+        </ToolbarTooltip>
 
-        <Tooltip title={t('clearAll')}>
+        <ToolbarTooltip title={t('clearAll')}>
           <span>
             <IconButton size="small" onClick={handleClear} disabled={strokeCount === 0}>
               <Trash2 size={20} />
             </IconButton>
           </span>
-        </Tooltip>
+        </ToolbarTooltip>
 
         <Box sx={{ flex: 1 }} />
 
         {/* View */}
-        <Tooltip title={t('resetZoom')}>
+        <ToolbarTooltip title={t('resetZoom')}>
           <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
             <LocateFixed size={20} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
@@ -277,7 +278,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <Tooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
+        <ToolbarTooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
           <span>
             <IconButton
               size="small"
@@ -293,13 +294,13 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
               {saved ? <Check size={20} /> : <Save size={20} />}
             </IconButton>
           </span>
-        </Tooltip>
+        </ToolbarTooltip>
 
-        <Tooltip title={t('gallery')}>
+        <ToolbarTooltip title={t('gallery')}>
           <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
             <Images size={20} />
           </IconButton>
-        </Tooltip>
+        </ToolbarTooltip>
 
         {/* Eraser confirmation */}
         {highlightedStrokeIndex !== null && (
