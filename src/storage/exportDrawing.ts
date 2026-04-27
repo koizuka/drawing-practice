@@ -140,7 +140,7 @@ export function exportDrawingAsSvg(drawing: DrawingRecord): Blob {
   return new Blob([svg], { type: 'image/svg+xml' })
 }
 
-function rasterScale(boxWidth: number, boxHeight: number): number {
+export function rasterScale(boxWidth: number, boxHeight: number): number {
   const longEdge = Math.max(boxWidth, boxHeight)
   const targetScale = Math.max(1, RASTER_TARGET_LONG_EDGE / longEdge)
   // Cap by both edge length and total pixels so wide-aspect huge drawings

@@ -6,6 +6,7 @@ import {
   formatTimestamp,
   paddedBox,
   pointsToPathData,
+  rasterScale,
   sanitizeTitle,
 } from './exportDrawing'
 import type { DrawingRecord } from './db'
@@ -110,6 +111,49 @@ describe('buildExportFilename', () => {
       reference: { source: 'pexels', title: '猫のポーズ', author: '', pexelsPhotoId: 1, pexelsImageUrl: '' },
     })
     expect(buildExportFilename(drawing, 'svg')).toBe('drawing-practice-20260427-132700-猫のポーズ.svg')
+  })
+
+  it('truncates very long reference titles in the filename', () => {
+    const longTitle = 'a'.repeat(120)
+    const drawing = makeDrawing([], {
+      reference: { source: 'url', title: longTitle, author: '', imageUrl: 'http://x' },
+    })
+    const name = buildExportFilename(drawing, 'svg')
+    const titlePart = name.replace(/^drawing-practice-\d{8}-\d{6}-/, '').replace(/\.svg$/, '')
+    expect(titlePart.length).toBeLessThanOrEqual(50)
+    expect(name.length).toBeLessThan(120)
+  })
+})
+
+describe('rasterScale', () => {
+  const TARGET = 2048
+  const MAX = 4
+  const MAX_PIXELS = 8_000_000
+
+  it('upscales small drawings toward the target long edge but not past the absolute cap', () => {
+    expect(rasterScale(100, 100)).toBe(MAX)  // would need 20.48x to hit target; capped at 4
+    expect(rasterScale(1024, 512)).toBe(TARGET / 1024)  // hits the long-edge target exactly
+  })
+
+  it('returns 1x for drawings already at the target long edge', () => {
+    expect(rasterScale(TARGET, TARGET / 2)).toBe(1)
+  })
+
+  it('downscales below 1x when the drawing exceeds RASTER_MAX_PIXELS', () => {
+    // 4000 * 3000 = 12 Mpx > 8 Mpx cap → scale must be < 1.
+    const scale = rasterScale(4000, 3000)
+    expect(scale).toBeLessThan(1)
+    const pixels = 4000 * 3000 * scale * scale
+    expect(pixels).toBeLessThanOrEqual(MAX_PIXELS + 1)
+  })
+
+  it('keeps the pixel cap binding even for extremely wide aspect ratios', () => {
+    // 10000 x 1000 = 10 Mpx; long-edge target alone would say 2048/10000 = 0.2048,
+    // pixels at that scale = 10M * 0.2048^2 ≈ 419k, well under the cap, so the
+    // long-edge target wins. Test the inverse case where the cap is the tighter bound.
+    const scale = rasterScale(20000, 1000)  // 20 Mpx
+    const pixels = 20000 * 1000 * scale * scale
+    expect(pixels).toBeLessThanOrEqual(MAX_PIXELS + 1)
   })
 })
 
