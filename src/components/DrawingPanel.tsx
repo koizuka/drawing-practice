@@ -57,6 +57,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [canRedo, setCanRedo] = useState(false)
   const [redrawVersion, setRedrawVersion] = useState(0)
   const [viewResetVersion, setViewResetVersion] = useState(0)
+  const [, setViewTick] = useState(0)
   const [showGallery, setShowGallery] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -67,6 +68,15 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   useEffect(() => {
     onStrokeManagerReady?.(strokeManagerRef.current)
   }, [onStrokeManagerReady])
+
+  // Re-render when the shared ViewTransform changes so the reset button can
+  // reflect the current dirty state.
+  useEffect(() => {
+    if (!viewTransform) return
+    return viewTransform.subscribe(() => setViewTick(t => t + 1))
+  }, [viewTransform])
+
+  const resetDisabled = viewTransform ? !viewTransform.isDirty() : false
 
   // Sync UI state after restore
   useEffect(() => {
@@ -257,9 +267,15 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
 
         {/* View */}
         <ToolbarTooltip title={t('resetZoom')}>
-          <IconButton size="small" onClick={() => setViewResetVersion(v => v + 1)}>
-            <LocateFixed size={20} />
-          </IconButton>
+          <span>
+            <IconButton
+              size="small"
+              onClick={() => setViewResetVersion(v => v + 1)}
+              disabled={resetDisabled}
+            >
+              <LocateFixed size={20} />
+            </IconButton>
+          </span>
         </ToolbarTooltip>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
