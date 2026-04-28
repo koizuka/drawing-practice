@@ -164,6 +164,10 @@ export function SketchfabViewer({
   >(null)
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
+  // Latest UID requested via loadModel; the async metadata fetch checks this
+  // before applying its result so a slow earlier fetch can't overwrite a
+  // newer load's metadata.
+  const metaFetchUidRef = useRef<string | null>(null)
 
   const [searchHistory, setSearchHistory] = useState<SketchfabSearchHistoryEntry[]>([])
   const reloadHistory = useCallback(() => {
@@ -232,14 +236,19 @@ export function SketchfabViewer({
     setShowViewer(true)
     setModelUid(uid)
     if (meta) {
+      metaFetchUidRef.current = null
       setSelectedModel(meta)
     } else {
       // External callers (URL paste, gallery "use this reference") don't fill
       // selectedModel via the search grid, so Fix Angle would otherwise produce
       // an empty title/author. Fetch metadata async — best-effort, no error UI.
-      // Clear stale selection first so a slow fetch can't race a later load.
+      // Clear stale selection first so a slow fetch can't race a later load,
+      // and gate the result on metaFetchUidRef so an earlier in-flight fetch
+      // resolving after a newer load can't overwrite the newer metadata.
       setSelectedModel(null)
+      metaFetchUidRef.current = uid
       void getSketchfabModel(uid).then(fetched => {
+        if (metaFetchUidRef.current !== uid) return
         setSelectedModel({ name: fetched.title, author: fetched.author, thumbnailUrl: fetched.thumbnailUrl })
       }).catch(() => { /* metadata is best-effort */ })
     }
@@ -301,18 +310,23 @@ export function SketchfabViewer({
 
   const handleSearch = useCallback(async (query: string, category?: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
     const effectiveFilter = filter ?? timeFilter
-    lastSearchRef.current = { type: 'search', query, category }
+    // Trim once so endpoint selection, query params, lastSearchRef, and
+    // recordSearch all agree on whether the query is empty. Otherwise a
+    // whitespace-only string would hit /v3/search with a meaningless q while
+    // recordSearch (which uses query.trim()) silently skipped history.
+    const trimmedQuery = query.trim()
+    lastSearchRef.current = { type: 'search', query: trimmedQuery, category }
     setActiveCategory(category ?? null)
     setError(null)
     try {
       // /v3/search supports keyword search but ignores published_since
       // /v3/models supports published_since but has poor keyword search
-      const useSearchEndpoint = !!query
+      const useSearchEndpoint = !!trimmedQuery
       const params = new URLSearchParams({
         count: '24',
       })
       if (useSearchEndpoint) params.set('type', 'models')
-      if (query) params.set('q', query)
+      if (trimmedQuery) params.set('q', trimmedQuery)
       if (category) params.set('categories', category)
       if (!useSearchEndpoint) {
         const publishedSince = getPublishedSince(effectiveFilter)
@@ -328,7 +342,7 @@ export function SketchfabViewer({
       const data: SearchResponse = await res.json()
       setSearchResults(parseSearchResults(data))
       setNextPageUrl(data.next ?? null)
-      recordSearch({ query, timeFilter: effectiveFilter, ...(category ? { category } : {}) })
+      recordSearch({ query: trimmedQuery, timeFilter: effectiveFilter, ...(category ? { category } : {}) })
     } catch {
       setError(t('searchFailed'))
     }
@@ -349,7 +363,10 @@ export function SketchfabViewer({
     if (publishedSince) params.set('published_since', publishedSince)
 
     fetch(`https://api.sketchfab.com/v3/models?${params}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Fetch failed')
+        return r.json()
+      })
       .then((data: SearchResponse) => {
         setSearchResults(parseSearchResults(data))
         setNextPageUrl(data.next ?? null)
