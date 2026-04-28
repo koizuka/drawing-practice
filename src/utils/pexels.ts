@@ -2,6 +2,15 @@ import type { ReferenceInfo } from '../types'
 
 const PEXELS_API_BASE = 'https://api.pexels.com/v1'
 const API_KEY_STORAGE_KEY = 'pexelsApiKey'
+const LAST_SEARCH_STORAGE_KEY = 'pexels.lastSearch'
+
+export type PexelsOrientationFilter = 'all' | 'landscape' | 'portrait' | 'square'
+const ORIENTATION_FILTERS: readonly PexelsOrientationFilter[] = ['all', 'landscape', 'portrait', 'square']
+
+export interface PexelsLastSearch {
+  query: string
+  orientation: PexelsOrientationFilter
+}
 
 export interface PexelsPhotoSrc {
   original: string
@@ -88,6 +97,29 @@ export function setPexelsApiKey(key: string): void {
     } else {
       localStorage.setItem(API_KEY_STORAGE_KEY, key)
     }
+  } catch {
+    // localStorage disabled / unavailable
+  }
+}
+
+export function getPexelsLastSearch(): PexelsLastSearch | null {
+  try {
+    const raw = localStorage.getItem(LAST_SEARCH_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object') return null
+    const { query, orientation } = parsed as Record<string, unknown>
+    if (typeof query !== 'string' || typeof orientation !== 'string') return null
+    if (!ORIENTATION_FILTERS.includes(orientation as PexelsOrientationFilter)) return null
+    return { query, orientation: orientation as PexelsOrientationFilter }
+  } catch {
+    return null
+  }
+}
+
+export function setPexelsLastSearch(query: string, orientation: PexelsOrientationFilter): void {
+  try {
+    localStorage.setItem(LAST_SEARCH_STORAGE_KEY, JSON.stringify({ query, orientation }))
   } catch {
     // localStorage disabled / unavailable
   }
