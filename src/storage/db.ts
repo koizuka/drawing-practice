@@ -3,6 +3,7 @@ import type { Stroke } from '../drawing/types'
 import type { GuideLine, GridSettings } from '../guides/types'
 import type { ReferenceInfo, ReferenceSource } from '../types'
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels'
+import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab'
 
 export interface DrawingRecord {
   id?: number
@@ -29,7 +30,7 @@ export interface SessionDraft {
   updatedAt: Date
 }
 
-export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image'
+export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image' | 'sketchfab'
 
 export interface UrlHistoryEntry {
   url: string
@@ -42,7 +43,8 @@ export interface UrlHistoryEntry {
   imageBlob?: Blob
   /**
    * Small remote thumbnail URL for the dropdown preview. Used by 'pexels'
-   * (photo.src.tiny). 'youtube' derives its thumbnail from the video id at
+   * (photo.src.tiny) and 'sketchfab' (resized screenshot data URL or model
+   * thumbnail CDN URL). 'youtube' derives its thumbnail from the video id at
    * render time, 'url' uses the entry url itself, and 'image' uses imageBlob.
    */
   thumbnailUrl?: string
@@ -52,6 +54,12 @@ export interface UrlHistoryEntry {
    * "back to search" returns to the originating search context.
    */
   pexelsSearchContext?: PexelsLastSearch
+  /**
+   * For 'sketchfab' entries: the search query + timeFilter + category in
+   * effect when this model was Fix-Angled. Restored when the entry is
+   * re-opened so the searcher returns to the originating context.
+   */
+  sketchfabSearchContext?: SketchfabSearchContext
 }
 
 export interface PexelsSearchHistoryEntry {
@@ -60,6 +68,16 @@ export interface PexelsSearchHistoryEntry {
   /** Display form (preserves the user's original casing). */
   query: string
   orientation: PexelsOrientationFilter
+  lastUsedAt: Date
+}
+
+export interface SketchfabSearchHistoryEntry {
+  /** Dedup key: `${query.trim().toLowerCase()}|${category ?? ''}`. */
+  key: string
+  /** Display form (preserves the user's original casing). */
+  query: string
+  category?: SketchfabCategorySlug
+  timeFilter: SketchfabTimeFilter
   lastUsedAt: Date
 }
 
@@ -76,6 +94,7 @@ const db = new Dexie(dbName) as Dexie & {
   session: EntityTable<SessionDraft, 'id'>
   urlHistory: EntityTable<UrlHistoryEntry, 'url'>
   pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>
+  sketchfabSearchHistory: EntityTable<SketchfabSearchHistoryEntry, 'key'>
 }
 
 db.version(1).stores({
@@ -128,6 +147,17 @@ db.version(8).stores({
   session: 'id',
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
+})
+
+// v9: adds the sketchfabSearchHistory table (same shape as pexels) and anchors
+// the additive UrlHistoryEntry.sketchfabSearchContext field for sketchfab URL
+// history entries.
+db.version(9).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
 })
 
 export { db }

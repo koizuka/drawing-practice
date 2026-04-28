@@ -59,6 +59,8 @@ const messages = {
     'furniture': 'Furniture',
     'plants': 'Plants',
     'technology': 'Technology',
+    'allCategories': 'All',
+    'sketchfabSearchHistoryDelete': 'Delete from history',
 
     // Gallery
     'galleryTitle': 'Gallery',
@@ -185,6 +187,8 @@ const messages = {
     'furniture': '家具',
     'plants': '植物',
     'technology': 'テクノロジー',
+    'allCategories': '全カテゴリ',
+    'sketchfabSearchHistoryDelete': '履歴から削除',
 
     // Gallery
     'galleryTitle': 'ギャラリー',

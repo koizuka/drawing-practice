@@ -1,21 +1,57 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, IconButton, InputAdornment, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
-import { X } from 'lucide-react'
+import { Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
+import { Trash2 } from 'lucide-react'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../types'
+import {
+  SKETCHFAB_CATEGORIES,
+  getSketchfabModel,
+  setSketchfabLastSearch,
+  type SketchfabCategorySlug,
+  type SketchfabSearchContext,
+  type SketchfabTimeFilter,
+} from '../utils/sketchfab'
+import {
+  addSketchfabSearchHistory,
+  deleteSketchfabSearchHistory,
+  getSketchfabSearchHistory,
+  type SketchfabSearchHistoryEntry,
+} from '../storage'
+import { ToolbarTooltip } from './ToolbarTooltip'
+
+export interface SketchfabFixAngleExtras {
+  searchContext: SketchfabSearchContext | null
+  modelThumbnailUrl: string | null
+}
 
 interface SketchfabViewerProps {
-  onFixAngle: (screenshotUrl: string, info: ReferenceInfo) => void
+  onFixAngle: (screenshotUrl: string, info: ReferenceInfo, extras: SketchfabFixAngleExtras) => void
   /** Called when viewer state changes so parent can update toolbar */
   onStateChange?: (state: { showViewer: boolean; isReady: boolean }) => void
   /** Ref for imperative actions from parent */
   actionsRef?: React.RefObject<SketchfabActions | null>
+  /** Initial search restoration from URL history sketchfabSearchContext. */
+  initialQuery?: string
+  initialTimeFilter?: SketchfabTimeFilter
+  initialCategory?: SketchfabCategorySlug
+}
+
+/** Lightweight model identity used by SketchfabViewer.selectedModel. */
+export interface SketchfabModelMeta {
+  name: string
+  author: string
+  thumbnailUrl?: string
 }
 
 export interface SketchfabActions {
   fixAngle: () => void
   back: () => void
-  loadModelByUid: (uid: string) => void
+  /**
+   * Loads a model into the iframe by UID. When `meta` is omitted (URL paste,
+   * gallery legacy records), the viewer fetches model metadata via the
+   * Sketchfab Data API so Fix Angle has a non-empty title/author.
+   */
+  loadModelByUid: (uid: string, meta?: SketchfabModelMeta) => void
 }
 
 // Sketchfab Viewer API type (simplified)
@@ -52,16 +88,6 @@ interface SearchResult {
   thumbnailUrl: string
 }
 
-const SKETCHFAB_CATEGORIES = [
-  { slug: 'animals-pets', labelKey: 'animals' as const },
-  { slug: 'cars-vehicles', labelKey: 'vehicles' as const },
-  { slug: 'characters-creatures', labelKey: 'characters' as const },
-  { slug: 'food-drink', labelKey: 'food' as const },
-  { slug: 'furniture-home', labelKey: 'furniture' as const },
-  { slug: 'nature-plants', labelKey: 'plants' as const },
-  { slug: 'science-technology', labelKey: 'technology' as const },
-]
-
 interface ThumbnailImage {
   url: string
   width: number
@@ -74,16 +100,14 @@ interface ModelResult {
   thumbnails?: { images?: ThumbnailImage[] }
 }
 
-type TimeFilter = 'all' | 'week' | 'month' | 'year'
-
-const TIME_FILTER_DAYS: Record<TimeFilter, number | null> = {
+const TIME_FILTER_DAYS: Record<SketchfabTimeFilter, number | null> = {
   all: null,
   week: 7,
   month: 30,
   year: 365,
 }
 
-function getPublishedSince(filter: TimeFilter): string | null {
+function getPublishedSince(filter: SketchfabTimeFilter): string | null {
   const days = TIME_FILTER_DAYS[filter]
   if (days == null) return null
   const d = new Date()
@@ -96,6 +120,11 @@ interface SearchResponse {
   next?: string | null
 }
 
+function categoryLabel(slug: SketchfabCategorySlug): string {
+  const cat = SKETCHFAB_CATEGORIES.find(c => c.slug === slug)
+  return cat ? t(cat.labelKey) : slug
+}
+
 function parseSearchResults(data: SearchResponse): SearchResult[] {
   return data.results?.map(m => ({
     uid: m.uid,
@@ -105,7 +134,14 @@ function parseSearchResults(data: SearchResponse): SearchResult[] {
   })) ?? []
 }
 
-export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: SketchfabViewerProps) {
+export function SketchfabViewer({
+  onFixAngle,
+  onStateChange,
+  actionsRef,
+  initialQuery,
+  initialTimeFilter,
+  initialCategory,
+}: SketchfabViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const apiRef = useRef<SketchfabAPI | null>(null)
   const [modelUid, setModelUid] = useState<string>('')
@@ -114,16 +150,26 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [scriptLoaded, setScriptLoaded] = useState(!!window.Sketchfab)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialQuery ?? '')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
-  const [selectedModel, setSelectedModel] = useState<{ name: string; author: string } | null>(null)
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all')
+  const [selectedModel, setSelectedModel] = useState<SketchfabModelMeta | null>(null)
+  const [timeFilter, setTimeFilter] = useState<SketchfabTimeFilter>(initialTimeFilter ?? 'all')
+  const [activeCategory, setActiveCategory] = useState<SketchfabCategorySlug | null>(initialCategory ?? null)
   const [nextPageUrl, setNextPageUrl] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
-  const lastSearchRef = useRef<{ type: 'search'; query: string; category?: string } | { type: 'category'; slug: string } | null>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  const lastSearchRef = useRef<
+    | { type: 'search'; query: string; category?: SketchfabCategorySlug }
+    | { type: 'category'; slug: SketchfabCategorySlug }
+    | null
+  >(null)
   // Pending model UID to load once iframe is mounted
   const pendingLoadRef = useRef<string | null>(null)
+
+  const [searchHistory, setSearchHistory] = useState<SketchfabSearchHistoryEntry[]>([])
+  const reloadHistory = useCallback(() => {
+    getSketchfabSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ })
+  }, [])
+  useEffect(() => { reloadHistory() }, [reloadHistory])
 
   // Load the Sketchfab client script. Initial scriptLoaded covers the case
   // where window.Sketchfab is already present, so the effect only handles the
@@ -182,8 +228,21 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
     }
   }, [showViewer, scriptLoaded, initViewer])
 
-  const loadModel = useCallback((uid: string) => {
+  const loadModel = useCallback((uid: string, meta?: SketchfabModelMeta) => {
     setShowViewer(true)
+    setModelUid(uid)
+    if (meta) {
+      setSelectedModel(meta)
+    } else {
+      // External callers (URL paste, gallery "use this reference") don't fill
+      // selectedModel via the search grid, so Fix Angle would otherwise produce
+      // an empty title/author. Fetch metadata async — best-effort, no error UI.
+      // Clear stale selection first so a slow fetch can't race a later load.
+      setSelectedModel(null)
+      void getSketchfabModel(uid).then(fetched => {
+        setSelectedModel({ name: fetched.title, author: fetched.author, thumbnailUrl: fetched.thumbnailUrl })
+      }).catch(() => { /* metadata is best-effort */ })
+    }
     // If iframe already mounted, init immediately; otherwise defer
     if (iframeRef.current && window.Sketchfab) {
       initViewer(uid)
@@ -201,18 +260,49 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
         setError(t('failedScreenshot'))
         return
       }
-      onFixAngle(result, {
-        title: selectedModel?.name ?? '',
-        author: selectedModel?.author ?? '',
-        source: 'sketchfab',
-        sketchfabUid: modelUid,
-        imageUrl: result,
-      })
+      const last = lastSearchRef.current
+      let searchContext: SketchfabSearchContext | null = null
+      if (last) {
+        if (last.type === 'search' && last.query.trim()) {
+          searchContext = { query: last.query, timeFilter }
+          if (last.category) searchContext.category = last.category
+        } else if (last.type === 'category') {
+          searchContext = { query: '', category: last.slug, timeFilter }
+        }
+      }
+      onFixAngle(
+        result,
+        {
+          title: selectedModel?.name ?? '',
+          author: selectedModel?.author ?? '',
+          source: 'sketchfab',
+          sketchfabUid: modelUid,
+          imageUrl: result,
+        },
+        {
+          searchContext,
+          modelThumbnailUrl: selectedModel?.thumbnailUrl ?? null,
+        },
+      )
     })
-  }, [onFixAngle, selectedModel, modelUid])
+  }, [onFixAngle, selectedModel, modelUid, timeFilter])
 
-  const handleSearch = useCallback(async (query: string, category?: string, filter?: TimeFilter) => {
+  // Persist a successful search into history + last-search snapshot. Both
+  // keyword searches and category browses are recorded so the dropdown shows
+  // the user's full Sketchfab activity. Empty-query + no-category combos
+  // (which can't actually happen via the UI) are skipped.
+  const recordSearch = useCallback((ctx: SketchfabSearchContext) => {
+    setSketchfabLastSearch(ctx)
+    if (!ctx.query.trim() && !ctx.category) return
+    void addSketchfabSearchHistory(ctx.query, ctx.timeFilter, ctx.category)
+      .then(reloadHistory)
+      .catch(() => { /* ignore */ })
+  }, [reloadHistory])
+
+  const handleSearch = useCallback(async (query: string, category?: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
+    const effectiveFilter = filter ?? timeFilter
     lastSearchRef.current = { type: 'search', query, category }
+    setActiveCategory(category ?? null)
     setError(null)
     try {
       // /v3/search supports keyword search but ignores published_since
@@ -225,7 +315,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       if (query) params.set('q', query)
       if (category) params.set('categories', category)
       if (!useSearchEndpoint) {
-        const publishedSince = getPublishedSince(filter ?? timeFilter)
+        const publishedSince = getPublishedSince(effectiveFilter)
         if (publishedSince) params.set('published_since', publishedSince)
       }
 
@@ -238,13 +328,16 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       const data: SearchResponse = await res.json()
       setSearchResults(parseSearchResults(data))
       setNextPageUrl(data.next ?? null)
+      recordSearch({ query, timeFilter: effectiveFilter, ...(category ? { category } : {}) })
     } catch {
       setError(t('searchFailed'))
     }
-  }, [timeFilter])
+  }, [timeFilter, recordSearch])
 
-  const handleRandomFromCategory = useCallback((categorySlug: string, filter?: TimeFilter) => {
+  const handleRandomFromCategory = useCallback((categorySlug: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
+    const effectiveFilter = filter ?? timeFilter
     lastSearchRef.current = { type: 'category', slug: categorySlug }
+    setActiveCategory(categorySlug)
     const offset = Math.floor(Math.random() * 50)
     const params = new URLSearchParams({
       categories: categorySlug,
@@ -252,7 +345,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       sort_by: '-likeCount',
       offset: String(offset),
     })
-    const publishedSince = getPublishedSince(filter ?? timeFilter)
+    const publishedSince = getPublishedSince(effectiveFilter)
     if (publishedSince) params.set('published_since', publishedSince)
 
     fetch(`https://api.sketchfab.com/v3/models?${params}`)
@@ -260,9 +353,35 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       .then((data: SearchResponse) => {
         setSearchResults(parseSearchResults(data))
         setNextPageUrl(data.next ?? null)
+        recordSearch({ query: '', category: categorySlug, timeFilter: effectiveFilter })
       })
       .catch(() => setError(t('failedFetchModels')))
-  }, [timeFilter])
+  }, [timeFilter, recordSearch])
+
+  // Clear the active category and fetch the unfiltered "all works" view —
+  // the only escape hatch from a sticky category once the user has clicked
+  // one. handleSearch with empty query + no category bypasses the search-
+  // history record (recordSearch returns early on the empty-empty case).
+  const handleClearCategory = useCallback(() => {
+    setActiveCategory(null)
+    setSearchQuery('')
+    void handleSearch('', undefined, timeFilter)
+  }, [handleSearch, timeFilter])
+
+  // Mount-only auto-restore: when initial* props are provided (URL history
+  // entry restoration), re-run the saved search so the user lands on results.
+  useEffect(() => {
+    const hasQuery = !!initialQuery && initialQuery.trim().length > 0
+    if (!hasQuery && !initialCategory) return
+    queueMicrotask(() => {
+      if (hasQuery) {
+        void handleSearch(initialQuery, initialCategory, initialTimeFilter ?? 'all')
+      } else if (initialCategory) {
+        handleRandomFromCategory(initialCategory, initialTimeFilter ?? 'all')
+      }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
+  }, [])
 
   const handleLoadMore = useCallback(async () => {
     if (!nextPageUrl || isLoadingMore) return
@@ -281,9 +400,7 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
   }, [nextPageUrl, isLoadingMore])
 
   const handleSelectModel = useCallback((model: SearchResult) => {
-    setModelUid(model.uid)
-    setSelectedModel({ name: model.name, author: model.author })
-    loadModel(model.uid)
+    loadModel(model.uid, { name: model.name, author: model.author, thumbnailUrl: model.thumbnailUrl })
   }, [loadModel])
 
   const handleBack = useCallback(() => {
@@ -291,6 +408,20 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
     setIsReady(false)
     apiRef.current = null
   }, [])
+
+  const handleSelectHistory = useCallback((entry: SketchfabSearchHistoryEntry) => {
+    setSearchQuery(entry.query)
+    setTimeFilter(entry.timeFilter)
+    if (!entry.query.trim() && entry.category) {
+      handleRandomFromCategory(entry.category, entry.timeFilter)
+    } else {
+      void handleSearch(entry.query, entry.category, entry.timeFilter)
+    }
+  }, [handleSearch, handleRandomFromCategory])
+
+  const handleDeleteHistory = useCallback((key: string) => {
+    void deleteSketchfabSearchHistory(key).then(reloadHistory).catch(() => { /* ignore */ })
+  }, [reloadHistory])
 
   // Notify parent of state changes
   useEffect(() => {
@@ -330,41 +461,84 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
       {/* Browse/search UI */}
       {!showViewer && (
         <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
-          {/* Search */}
+          {/* Search row — Autocomplete shows the past-searches dropdown. */}
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <TextField
+            <Autocomplete<SketchfabSearchHistoryEntry, false, false, true>
+              freeSolo
+              openOnFocus
               size="small"
-              placeholder={t('searchModels')}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') {
-                  handleSearch(searchQuery)
-                  searchInputRef.current?.blur()
+              sx={{ flex: 1 }}
+              fullWidth
+              options={searchHistory}
+              filterOptions={x => x}
+              getOptionLabel={option => {
+                if (typeof option === 'string') return option
+                // Category-only entries have an empty query; returning '' here
+                // would collide with an empty input field and cause MUI to
+                // suppress the dropdown + spuriously fire onChange on blur.
+                // Returning the translated category name keeps each entry
+                // distinct without affecting the input text — handleSelectHistory
+                // separately resets searchQuery to the entry's actual query
+                // (empty for category-only), matching the category-button UX.
+                if (!option.query.trim() && option.category) return categoryLabel(option.category)
+                return option.query
+              }}
+              isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.key === b.key}
+              inputValue={searchQuery}
+              onInputChange={(_, value, reason) => {
+                if (reason === 'input' || reason === 'clear') setSearchQuery(value)
+              }}
+              onChange={(_, value, reason) => {
+                if (reason === 'selectOption' && value && typeof value !== 'string') {
+                  handleSelectHistory(value)
                 }
               }}
-              inputRef={searchInputRef}
-              slotProps={{
-                input: {
-                  endAdornment: searchQuery ? (
-                    <InputAdornment position="end">
+              renderOption={(props, option) => {
+                const { key, ...rest } = props as typeof props & { key: string }
+                const hasQuery = !!option.query.trim()
+                return (
+                  <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {hasQuery ? option.query : (
+                        <Typography variant="body2" component="span" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                          {option.category ? categoryLabel(option.category) : ''}
+                        </Typography>
+                      )}
+                    </Box>
+                    {hasQuery && option.category && (
+                      <Chip size="small" variant="outlined" label={categoryLabel(option.category)} />
+                    )}
+                    <ToolbarTooltip title={t('sketchfabSearchHistoryDelete')}>
                       <IconButton
                         size="small"
-                        aria-label={t('clearSearch')}
-                        onClick={() => {
-                          setSearchQuery('')
-                          searchInputRef.current?.focus()
-                        }}
+                        aria-label={t('sketchfabSearchHistoryDelete')}
+                        // Touch devices commit option selection on pointerdown
+                        // (before click), so stop propagation there too.
+                        onPointerDown={e => { e.stopPropagation(); e.preventDefault() }}
+                        onClick={e => { e.stopPropagation(); handleDeleteHistory(option.key) }}
                       >
-                        <X size={16} />
+                        <Trash2 size={14} />
                       </IconButton>
-                    </InputAdornment>
-                  ) : null,
-                },
+                    </ToolbarTooltip>
+                  </li>
+                )
               }}
-              sx={{ flex: 1 }}
+              renderInput={params => (
+                <TextField
+                  {...params}
+                  size="small"
+                  placeholder={t('searchModels')}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && searchQuery.trim()) {
+                      e.preventDefault()
+                      void handleSearch(searchQuery)
+                      ;(e.target as HTMLInputElement).blur()
+                    }
+                  }}
+                />
+              )}
             />
-            <Button size="small" variant="contained" onClick={() => handleSearch(searchQuery)}>
+            <Button size="small" variant="contained" onClick={() => void handleSearch(searchQuery)}>
               {t('search')}
             </Button>
           </Box>
@@ -375,12 +549,12 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
             exclusive
             onChange={(_e, val) => {
               if (val === null) return
-              const newFilter = val as TimeFilter
+              const newFilter = val as SketchfabTimeFilter
               setTimeFilter(newFilter)
               const last = lastSearchRef.current
               if (last) {
                 if (last.type === 'search') {
-                  handleSearch(last.query, last.category, newFilter)
+                  void handleSearch(last.query, last.category, newFilter)
                 } else {
                   handleRandomFromCategory(last.slug, newFilter)
                 }
@@ -395,10 +569,24 @@ export function SketchfabViewer({ onFixAngle, onStateChange, actionsRef }: Sketc
             <ToggleButton value="year">{t('thisYear')}</ToggleButton>
           </ToggleButtonGroup>
 
-          {/* Categories */}
+          {/* Categories — "All" clears the active category so the user can
+              return to the unfiltered view; otherwise the category buttons
+              would have no escape hatch once one is clicked. */}
           <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
+            <Button
+              size="small"
+              variant={activeCategory === null ? 'contained' : 'outlined'}
+              onClick={handleClearCategory}
+            >
+              {t('allCategories')}
+            </Button>
             {SKETCHFAB_CATEGORIES.map(cat => (
-              <Button key={cat.slug} size="small" variant="outlined" onClick={() => { setSearchQuery(''); handleRandomFromCategory(cat.slug) }}>
+              <Button
+                key={cat.slug}
+                size="small"
+                variant={activeCategory === cat.slug ? 'contained' : 'outlined'}
+                onClick={() => { setSearchQuery(''); handleRandomFromCategory(cat.slug) }}
+              >
                 {t(cat.labelKey)}
               </Button>
             ))}
