@@ -156,4 +156,16 @@ describe('ImageViewer pinch gesture', () => {
     expect(focalX).toBeCloseTo(90)
     expect(focalY).toBeCloseTo(80)
   })
+
+  it('applies scaleX(-1) inline transform on the container when isFlipped is true', () => {
+    const { container } = render(<ImageViewer {...baseProps} guideMode="none" isFlipped />)
+    const outer = container.firstChild as HTMLElement
+    expect(outer.style.transform).toBe('scaleX(-1)')
+  })
+
+  it('does not apply a transform when isFlipped is false', () => {
+    const { container } = render(<ImageViewer {...baseProps} guideMode="none" />)
+    const outer = container.firstChild as HTMLElement
+    expect(outer.style.transform).toBe('')
+  })
 })

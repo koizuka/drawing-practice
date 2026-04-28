@@ -893,7 +893,7 @@ export function ReferencePanel({
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, minHeight: 0, position: 'relative', transform: (isFlipped && !isYouTube) ? 'scaleX(-1)' : undefined }}>
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
           <Box sx={{ height: '100%', overflowY: 'auto' }}>
