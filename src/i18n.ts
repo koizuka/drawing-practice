@@ -116,6 +116,7 @@ const messages = {
     'pexelsPhotoBy': 'Photo by',
     'pexelsViaPexels': 'via Pexels',
     'pexelsBackToSearch': 'Back to search',
+    'pexelsSearchHistoryDelete': 'Delete from history',
     'collapseReferenceInfo': 'Collapse info',
     'expandReferenceInfo': 'Show info',
 
@@ -241,6 +242,7 @@ const messages = {
     'pexelsPhotoBy': '撮影:',
     'pexelsViaPexels': 'via Pexels',
     'pexelsBackToSearch': '検索に戻る',
+    'pexelsSearchHistoryDelete': '履歴から削除',
     'collapseReferenceInfo': '情報を畳む',
     'expandReferenceInfo': '情報を表示',
 
