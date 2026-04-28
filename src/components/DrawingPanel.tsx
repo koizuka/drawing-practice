@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
-import { Box, IconButton, Button, Typography } from '@mui/material'
+import { Box, IconButton, Typography } from '@mui/material'
 import { ToolbarTooltip } from './ToolbarTooltip'
-import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
+import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import type { ViewTransform } from '../drawing/ViewTransform'
 import { StrokeManager } from '../drawing/StrokeManager'
@@ -294,40 +294,55 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <ToolbarTooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
-          <span>
-            <IconButton
-              size="small"
-              onClick={handleSave}
-              disabled={strokeCount === 0 || saving}
-              sx={{
-                bgcolor: saved ? 'success.main' : 'transparent',
-                color: saved ? 'white' : 'inherit',
-                '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
-                transition: 'background-color 0.3s, color 0.3s',
-              }}
-            >
-              {saved ? <Check size={20} /> : <Save size={20} />}
-            </IconButton>
-          </span>
-        </ToolbarTooltip>
+        {highlightedStrokeIndex === null && (
+          <>
+            <ToolbarTooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleSave}
+                  disabled={strokeCount === 0 || saving}
+                  sx={{
+                    bgcolor: saved ? 'success.main' : 'transparent',
+                    color: saved ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
+                    transition: 'background-color 0.3s, color 0.3s',
+                  }}
+                >
+                  {saved ? <Check size={20} /> : <Save size={20} />}
+                </IconButton>
+              </span>
+            </ToolbarTooltip>
 
-        <ToolbarTooltip title={t('gallery')}>
-          <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
-            <Images size={20} />
-          </IconButton>
-        </ToolbarTooltip>
+            <ToolbarTooltip title={t('gallery')}>
+              <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
+                <Images size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+          </>
+        )}
 
-        {/* Eraser confirmation */}
+        {/* Eraser confirmation (replaces save/gallery in-place to keep the timer position stable) */}
         {highlightedStrokeIndex !== null && (
           <>
-            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
-              {t('delete')}
-            </Button>
-            <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
-              {t('cancel')}
-            </Button>
+            <ToolbarTooltip title={t('delete')}>
+              <IconButton
+                size="small"
+                onClick={handleDeleteHighlighted}
+                sx={{
+                  bgcolor: 'error.main',
+                  color: 'white',
+                  '&:hover': { bgcolor: 'error.dark' },
+                }}
+              >
+                <Trash2 size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+            <ToolbarTooltip title={t('cancel')}>
+              <IconButton size="small" onClick={handleCancelHighlight}>
+                <X size={20} />
+              </IconButton>
+            </ToolbarTooltip>
           </>
         )}
       </Box>

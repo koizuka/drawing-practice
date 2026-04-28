@@ -799,12 +799,24 @@ export function ReferencePanel({
         {highlightedGuideId && !inYouTubeVideoMode && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
-              {t('delete')}
-            </Button>
-            <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
-              {t('cancel')}
-            </Button>
+            <ToolbarTooltip title={t('delete')}>
+              <IconButton
+                size="small"
+                onClick={handleDeleteHighlighted}
+                sx={{
+                  bgcolor: 'error.main',
+                  color: 'white',
+                  '&:hover': { bgcolor: 'error.dark' },
+                }}
+              >
+                <Trash2 size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+            <ToolbarTooltip title={t('cancel')}>
+              <IconButton size="small" onClick={handleCancelHighlight}>
+                <X size={20} />
+              </IconButton>
+            </ToolbarTooltip>
           </>
         )}
 
