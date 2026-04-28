@@ -1,5 +1,6 @@
 import { db, type UrlHistoryEntry, type UrlHistoryType } from './db'
 import { buildYouTubeCanonicalUrl, parseYouTubeVideoId } from '../utils/youtube'
+import type { PexelsLastSearch } from '../utils/pexels'
 
 export const URL_HISTORY_LIMIT = 50
 // Images are stored with their Blob, so each entry can be 200KB–1.5MB.
@@ -12,6 +13,7 @@ export interface AddUrlHistoryOptions {
   fileName?: string
   imageBlob?: Blob
   thumbnailUrl?: string
+  pexelsSearchContext?: PexelsLastSearch
 }
 
 /**
@@ -51,13 +53,16 @@ export async function addUrlHistory(
   let finalFileName = opts.fileName
   let finalBlob = opts.imageBlob
   let finalThumbnailUrl = opts.thumbnailUrl
+  let finalSearchContext = opts.pexelsSearchContext
   // Only fall back to the stored thumbnailUrl for types that actually persist
   // it (currently just 'pexels'); for url/youtube the dropdown derives the
   // thumbnail at render time, so a lookup here would just cost a DB read.
   const needsThumbnailLookup = type === 'pexels' && !finalThumbnailUrl
+  const needsSearchContextLookup = type === 'pexels' && !finalSearchContext
   if (
     !finalTitle ||
     needsThumbnailLookup ||
+    needsSearchContextLookup ||
     (type === 'image' && (!finalFileName || !finalBlob))
   ) {
     const existing = await db.urlHistory.get(key)
@@ -65,6 +70,7 @@ export async function addUrlHistory(
     if (!finalFileName) finalFileName = existing?.fileName
     if (!finalBlob) finalBlob = existing?.imageBlob
     if (!finalThumbnailUrl) finalThumbnailUrl = existing?.thumbnailUrl
+    if (!finalSearchContext) finalSearchContext = existing?.pexelsSearchContext
   }
 
   const entry: UrlHistoryEntry = { url: key, type, lastUsedAt: new Date() }
@@ -72,6 +78,7 @@ export async function addUrlHistory(
   if (finalFileName) entry.fileName = finalFileName
   if (finalBlob) entry.imageBlob = finalBlob
   if (finalThumbnailUrl) entry.thumbnailUrl = finalThumbnailUrl
+  if (finalSearchContext) entry.pexelsSearchContext = finalSearchContext
   await db.urlHistory.put(entry)
 
   const all = await db.urlHistory.toArray()

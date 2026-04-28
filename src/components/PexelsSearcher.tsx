@@ -31,6 +31,7 @@ interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void
   onOpenApiKeySettings: () => void
   initialQuery?: string
+  initialOrientation?: Orientation
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
   apiKeyVersion?: number
 }
@@ -48,13 +49,14 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ]
 
-export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQuery = '', apiKeyVersion = 0 }: PexelsSearcherProps) {
-  // Restore last search so navigating back to the searcher (incl. via
-  // URL-history fixed → "back to search") shows the prior intent rather
-  // than an empty grid. initialQuery prop overrides the saved value.
+export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
+  // Restore the prior search so navigating back to the searcher shows results
+  // rather than an empty grid. initial* props (passed by the parent when
+  // loading from URL history with per-photo context) take precedence over the
+  // global last-search snapshot in localStorage.
   const lastSearch = useMemo(() => getPexelsLastSearch(), [])
-  const [query, setQuery] = useState(initialQuery || lastSearch?.query || '')
-  const [orientation, setOrientation] = useState<Orientation>(lastSearch?.orientation ?? 'all')
+  const [query, setQuery] = useState(initialQuery ?? lastSearch?.query ?? '')
+  const [orientation, setOrientation] = useState<Orientation>(initialOrientation ?? lastSearch?.orientation ?? 'all')
   const [photos, setPhotos] = useState<PexelsPhoto[]>([])
   const [activeQuery, setActiveQuery] = useState('')
   const [activeOrientation, setActiveOrientation] = useState<Orientation>('all')

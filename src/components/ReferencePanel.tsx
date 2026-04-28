@@ -12,9 +12,11 @@ import { GitHubIcon } from './GitHubIcon'
 import { parseYouTubeVideoId, fetchYouTubeTitle } from '../utils/youtube'
 import {
   buildPexelsReferenceInfo,
+  getPexelsLastSearch,
   getPhoto,
   mapPexelsErrorKey,
   parsePexelsPhotoUrl,
+  type PexelsOrientationFilter,
 } from '../utils/pexels'
 import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
 import { resizeImageForHistory, sha256Hex } from '../utils/imageResize'
@@ -332,6 +334,16 @@ export function ReferencePanel({
   const [pexelsKeyDialogOpen, setPexelsKeyDialogOpen] = useState(false)
   const [pexelsKeyVersion, setPexelsKeyVersion] = useState(0)
 
+  // Per-URL-history-entry Pexels search context restore. Bumping `token`
+  // remounts PexelsSearcher with the entry's saved query+orientation so
+  // "back to search" returns to the search that originally produced this
+  // photo, not the most recent global search.
+  const [pexelsRestore, setPexelsRestore] = useState<{
+    token: number
+    query: string
+    orientation: PexelsOrientationFilter
+  } | null>(null)
+
   // videoInteractMode: overlay steps aside so the iframe receives clicks.
   // Entered automatically on single-tap, exited via the toolbar button.
   // playing: mirrors the iframe's own player state for the toolbar icon.
@@ -452,7 +464,7 @@ export function ReferencePanel({
       return
     }
 
-    // Pexels photo URL: resolve via API to fetch the CDN URL + photographer
+    // Pexels photo URL: resolve via API to fetch the CDN URL + photographer.
     const pexelsMatch = parsePexelsPhotoUrl(url)
     if (pexelsMatch) {
       getPhoto(pexelsMatch.id)
@@ -466,10 +478,25 @@ export function ReferencePanel({
             s.setReferenceInfo(info)
           })
           setUrlInput('')
+          // Don't pass pexelsSearchContext — addUrlHistory's preservation
+          // semantics keep the original context attached to this entry.
           void addAndReloadHistory(url, 'pexels', {
             title: info.title,
             thumbnailUrl: photo.src.tiny,
           })
+          // Restore the per-entry search context fire-and-forget so a slow /
+          // failing urlHistory read doesn't gate the reference state update.
+          getUrlHistoryEntry(url)
+            .then(entry => {
+              const ctx = entry?.pexelsSearchContext
+              if (!ctx) return
+              setPexelsRestore(prev => ({
+                token: (prev?.token ?? 0) + 1,
+                query: ctx.query,
+                orientation: ctx.orientation,
+              }))
+            })
+            .catch(() => { /* best-effort */ })
         })
         .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
         .finally(() => setUrlLoading(false))
@@ -572,7 +599,15 @@ export function ReferencePanel({
       s.setReferenceInfo(info)
     })
     if (info.pexelsPageUrl) {
-      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', { title: info.title, thumbnailUrl })
+      // runSearch saves to localStorage right before yielding the result list,
+      // so getPexelsLastSearch() here reflects the search that produced this
+      // photo. Persisting it per-entry lets URL-history loads restore the
+      // originating search context independently of the global last search.
+      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', {
+        title: info.title,
+        thumbnailUrl,
+        pexelsSearchContext: getPexelsLastSearch() ?? undefined,
+      })
     }
   }, [onReferenceChange, addAndReloadHistory])
 
@@ -1155,13 +1190,18 @@ export function ReferencePanel({
 
         {/* Pexels searcher — kept mounted while source is 'pexels' so the
             search state (query, results, pagination, scroll) persists across
-            browse ↔ fixed transitions. Hidden when a photo is being viewed. */}
+            browse ↔ fixed transitions. Hidden when a photo is being viewed.
+            Bumping pexelsRestore.token via key remounts with the per-photo
+            search context restored from the URL-history entry. */}
         {source === 'pexels' && (
           <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
             <PexelsSearcher
+              key={pexelsRestore?.token ?? 0}
               onSelectPhoto={handleSelectPexelsPhoto}
               onOpenApiKeySettings={() => setPexelsKeyDialogOpen(true)}
               apiKeyVersion={pexelsKeyVersion}
+              initialQuery={pexelsRestore?.query}
+              initialOrientation={pexelsRestore?.orientation}
             />
           </Box>
         )}

@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Stroke } from '../drawing/types'
 import type { GuideLine, GridSettings } from '../guides/types'
 import type { ReferenceInfo, ReferenceSource } from '../types'
+import type { PexelsLastSearch } from '../utils/pexels'
 
 export interface DrawingRecord {
   id?: number
@@ -45,6 +46,12 @@ export interface UrlHistoryEntry {
    * render time, 'url' uses the entry url itself, and 'image' uses imageBlob.
    */
   thumbnailUrl?: string
+  /**
+   * For 'pexels' entries: the search query + orientation that produced this
+   * photo when it was selected. Restored when the entry is re-opened so
+   * "back to search" returns to the originating search context.
+   */
+  pexelsSearchContext?: PexelsLastSearch
 }
 
 // Scope database name by deploy path so PR previews don't share data.
@@ -91,6 +98,14 @@ db.version(5).stores({
 // v6: no index change — anchors the additive thumbnailUrl field on
 // UrlHistoryEntry (used for the dropdown preview thumbnail).
 db.version(6).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+})
+
+// v7: no index change — anchors the additive pexelsSearchContext field on
+// UrlHistoryEntry (per-photo Pexels search context restoration).
+db.version(7).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
