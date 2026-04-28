@@ -183,6 +183,34 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     expect(refreshed.querySelector('.lucide-image')).not.toBeNull()
   })
 
+  it('does not flip the source-selection screen even when flip mode is on', async () => {
+    // Regression: the outer reference-content Box used to apply scaleX(-1)
+    // unconditionally, which made the source-selection / search UI text
+    // unreadable. Flip should now apply only to the ImageViewer container,
+    // not to the source-selection screen.
+    getUrlHistoryMock.mockResolvedValue([])
+
+    const { container } = render(<SplitLayout />)
+    await vi.waitFor(() => {
+      expect(screen.getByText('Sketchfab')).toBeInTheDocument()
+    })
+
+    // Toggle flip mode via the toolbar's lucide-icon button (no aria-label,
+    // so we locate it by its icon class).
+    const flipIcon = container.querySelector('.lucide-flip-horizontal-2')
+    expect(flipIcon).not.toBeNull()
+    const flipBtn = flipIcon!.closest('button') as HTMLButtonElement
+    fireEvent.click(flipBtn)
+
+    // Walk up from the "Sketchfab" source-selection button: no ancestor
+    // should carry an inline scaleX(-1) transform.
+    const sketchfabBtn = screen.getByText('Sketchfab').closest('button') as HTMLButtonElement
+    expect(sketchfabBtn).not.toBeNull()
+    for (let el: HTMLElement | null = sketchfabBtn; el; el = el.parentElement) {
+      expect(el.style.transform).not.toContain('scaleX(-1)')
+    }
+  })
+
   it('only creates ObjectURLs for image entries, not for url/youtube/pexels', async () => {
     // url/youtube/pexels resolve their thumbnails without holding a Blob, so
     // they must not contribute to the ObjectURL Map. Otherwise we'd be paying

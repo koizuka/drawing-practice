@@ -481,7 +481,11 @@ export function ImageViewer({
   const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default'
 
   return (
-    <Box ref={containerRef} sx={{ width: '100%', height: '100%' }}>
+    <Box
+      ref={containerRef}
+      sx={{ width: '100%', height: '100%' }}
+      style={isFlipped ? { transform: 'scaleX(-1)' } : undefined}
+    >
       <canvas
         ref={canvasRef}
         onMouseDown={handleMouseDown}
