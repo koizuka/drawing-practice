@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Box,
@@ -16,20 +16,22 @@ import { X } from 'lucide-react'
 import {
   buildPexelsReferenceInfo,
   getPexelsApiKey,
+  getPexelsLastSearch,
   isAbortError,
   mapPexelsErrorKey,
   searchPhotos,
+  setPexelsLastSearch,
+  type PexelsOrientationFilter as Orientation,
   type PexelsPhoto,
 } from '../utils/pexels'
 import type { ReferenceInfo } from '../types'
 import { t } from '../i18n'
 
-type Orientation = 'all' | 'landscape' | 'portrait' | 'square'
-
 interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void
   onOpenApiKeySettings: () => void
   initialQuery?: string
+  initialOrientation?: Orientation
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
   apiKeyVersion?: number
 }
@@ -47,9 +49,14 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ]
 
-export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQuery = '', apiKeyVersion = 0 }: PexelsSearcherProps) {
-  const [query, setQuery] = useState(initialQuery)
-  const [orientation, setOrientation] = useState<Orientation>('all')
+export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
+  // Restore the prior search so navigating back to the searcher shows results
+  // rather than an empty grid. initial* props (passed by the parent when
+  // loading from URL history with per-photo context) take precedence over the
+  // global last-search snapshot in localStorage.
+  const lastSearch = useMemo(() => getPexelsLastSearch(), [])
+  const [query, setQuery] = useState(initialQuery ?? lastSearch?.query ?? '')
+  const [orientation, setOrientation] = useState<Orientation>(initialOrientation ?? lastSearch?.orientation ?? 'all')
   const [photos, setPhotos] = useState<PexelsPhoto[]>([])
   const [activeQuery, setActiveQuery] = useState('')
   const [activeOrientation, setActiveOrientation] = useState<Orientation>('all')
@@ -106,6 +113,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       setActiveOrientation(orientation)
       setCurrentPage(1)
       setHasMore(!!res.next_page && res.photos.length > 0)
+      setPexelsLastSearch(trimmed, orientation)
     } catch (e) {
       if (isAbortError(e)) return
       setError(handleError(e))
@@ -118,6 +126,16 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       }
     }
   }, [orientation, handleError])
+
+  // On first mount, if a saved query was restored (and the API key is set),
+  // re-run that search so "back to search" from a URL-history-loaded fixed
+  // photo lands on results instead of an empty grid. Deferred to a microtask
+  // so runSearch's setLoading() doesn't fire synchronously inside the effect.
+  useEffect(() => {
+    if (!query.trim() || needsKey) return
+    queueMicrotask(() => { void runSearch(query) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only auto-restore
+  }, [])
 
   const handleLoadMore = useCallback(async () => {
     if (!hasMore || loadingMore || !activeQuery) return
