@@ -1,7 +1,7 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
-import { Box, IconButton, Button, Typography } from '@mui/material'
+import { Box, IconButton, Typography } from '@mui/material'
 import { ToolbarTooltip } from './ToolbarTooltip'
-import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images } from 'lucide-react'
+import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X } from 'lucide-react'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import type { ViewTransform } from '../drawing/ViewTransform'
 import { StrokeManager } from '../drawing/StrokeManager'
@@ -322,12 +322,24 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         {highlightedStrokeIndex !== null && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <Button size="small" color="error" variant="contained" onClick={handleDeleteHighlighted}>
-              {t('delete')}
-            </Button>
-            <Button size="small" variant="outlined" onClick={handleCancelHighlight}>
-              {t('cancel')}
-            </Button>
+            <ToolbarTooltip title={t('delete')}>
+              <IconButton
+                size="small"
+                onClick={handleDeleteHighlighted}
+                sx={{
+                  bgcolor: 'error.main',
+                  color: 'white',
+                  '&:hover': { bgcolor: 'error.dark' },
+                }}
+              >
+                <Trash2 size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+            <ToolbarTooltip title={t('cancel')}>
+              <IconButton size="small" onClick={handleCancelHighlight}>
+                <X size={20} />
+              </IconButton>
+            </ToolbarTooltip>
           </>
         )}
       </Box>
