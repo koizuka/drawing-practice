@@ -1,4 +1,5 @@
 import { db, type UrlHistoryEntry, type UrlHistoryType } from './db'
+import { selectKeysToEvict } from './historyEviction'
 import { buildYouTubeCanonicalUrl, parseYouTubeVideoId } from '../utils/youtube'
 import type { PexelsLastSearch } from '../utils/pexels'
 
@@ -81,22 +82,17 @@ export async function addUrlHistory(
   if (finalSearchContext) entry.pexelsSearchContext = finalSearchContext
   await db.urlHistory.put(entry)
 
+  // Image entries have a smaller cap so a burst of image opens can't evict
+  // url/youtube/pexels history. Each bucket evicts independently.
   const all = await db.urlHistory.toArray()
-  const images: UrlHistoryEntry[] = []
-  const others: UrlHistoryEntry[] = []
-  for (const e of all) {
-    if (e.type === 'image') images.push(e)
-    else others.push(e)
-  }
-  const toDelete: string[] = []
-  if (images.length > URL_HISTORY_IMAGE_LIMIT) {
-    const sorted = [...images].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
-    for (const e of sorted.slice(0, images.length - URL_HISTORY_IMAGE_LIMIT)) toDelete.push(e.url)
-  }
-  if (others.length > URL_HISTORY_LIMIT) {
-    const sorted = [...others].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
-    for (const e of sorted.slice(0, others.length - URL_HISTORY_LIMIT)) toDelete.push(e.url)
-  }
+  const images = all.filter(e => e.type === 'image')
+  const others = all.filter(e => e.type !== 'image')
+  const getKey = (e: UrlHistoryEntry) => e.url
+  const getTime = (e: UrlHistoryEntry) => e.lastUsedAt.getTime()
+  const toDelete = [
+    ...selectKeysToEvict(images, URL_HISTORY_IMAGE_LIMIT, getKey, getTime),
+    ...selectKeysToEvict(others, URL_HISTORY_LIMIT, getKey, getTime),
+  ]
   if (toDelete.length > 0) {
     await db.urlHistory.bulkDelete(toDelete)
   }

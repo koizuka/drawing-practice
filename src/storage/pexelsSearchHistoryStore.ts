@@ -1,11 +1,8 @@
 import { db, type PexelsSearchHistoryEntry } from './db'
+import { selectKeysToEvict } from './historyEviction'
 import type { PexelsOrientationFilter } from '../utils/pexels'
 
 export const PEXELS_SEARCH_HISTORY_LIMIT = 50
-
-function makeKey(query: string): string {
-  return query.trim().toLowerCase()
-}
 
 /**
  * Upsert a search history entry. Deduped by lowercased trimmed query so
@@ -19,7 +16,7 @@ export async function addPexelsSearchHistory(
   const trimmed = query.trim()
   if (!trimmed) return
   const entry: PexelsSearchHistoryEntry = {
-    key: makeKey(trimmed),
+    key: trimmed.toLowerCase(),
     query: trimmed,
     orientation,
     lastUsedAt: new Date(),
@@ -27,13 +24,8 @@ export async function addPexelsSearchHistory(
   await db.pexelsSearchHistory.put(entry)
 
   const all = await db.pexelsSearchHistory.toArray()
-  if (all.length > PEXELS_SEARCH_HISTORY_LIMIT) {
-    const sorted = [...all].sort((a, b) => a.lastUsedAt.getTime() - b.lastUsedAt.getTime())
-    const toDelete = sorted
-      .slice(0, all.length - PEXELS_SEARCH_HISTORY_LIMIT)
-      .map(e => e.key)
-    await db.pexelsSearchHistory.bulkDelete(toDelete)
-  }
+  const toDelete = selectKeysToEvict(all, PEXELS_SEARCH_HISTORY_LIMIT, e => e.key, e => e.lastUsedAt.getTime())
+  if (toDelete.length > 0) await db.pexelsSearchHistory.bulkDelete(toDelete)
 }
 
 export async function getPexelsSearchHistory(): Promise<PexelsSearchHistoryEntry[]> {
