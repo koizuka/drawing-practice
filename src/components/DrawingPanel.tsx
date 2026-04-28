@@ -294,34 +294,37 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           {formatTime(timer.elapsedMs)}
         </Typography>
 
-        <ToolbarTooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
-          <span>
-            <IconButton
-              size="small"
-              onClick={handleSave}
-              disabled={strokeCount === 0 || saving}
-              sx={{
-                bgcolor: saved ? 'success.main' : 'transparent',
-                color: saved ? 'white' : 'inherit',
-                '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
-                transition: 'background-color 0.3s, color 0.3s',
-              }}
-            >
-              {saved ? <Check size={20} /> : <Save size={20} />}
-            </IconButton>
-          </span>
-        </ToolbarTooltip>
+        {highlightedStrokeIndex === null && (
+          <>
+            <ToolbarTooltip title={saved ? t('saved') : `${t('saveDrawing')} (${mod}S)`}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={handleSave}
+                  disabled={strokeCount === 0 || saving}
+                  sx={{
+                    bgcolor: saved ? 'success.main' : 'transparent',
+                    color: saved ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
+                    transition: 'background-color 0.3s, color 0.3s',
+                  }}
+                >
+                  {saved ? <Check size={20} /> : <Save size={20} />}
+                </IconButton>
+              </span>
+            </ToolbarTooltip>
 
-        <ToolbarTooltip title={t('gallery')}>
-          <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
-            <Images size={20} />
-          </IconButton>
-        </ToolbarTooltip>
+            <ToolbarTooltip title={t('gallery')}>
+              <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true) }}>
+                <Images size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+          </>
+        )}
 
-        {/* Eraser confirmation */}
+        {/* Eraser confirmation (replaces save/gallery in-place to keep the timer position stable) */}
         {highlightedStrokeIndex !== null && (
           <>
-            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
             <ToolbarTooltip title={t('delete')}>
               <IconButton
                 size="small"
