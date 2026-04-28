@@ -487,7 +487,7 @@ function SplitLayoutInner() {
           onStrokeManagerReady={handleStrokeManagerReady}
           onStrokesChanged={handleStrokesChanged}
           onCurrentStrokeChange={handleCurrentStrokeChange}
-          onOverlayClear={() => { setOverlayActive(false); setOverlayStrokes(null) }}
+          onOverlayClear={() => { setOverlayStrokes(null) }}
           onLoadReference={handleLoadReference}
           captureReferenceSnapshot={captureReferenceSnapshot}
           timer={timer}
