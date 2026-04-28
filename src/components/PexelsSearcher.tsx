@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Chip,
   CircularProgress,
   IconButton,
-  InputAdornment,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
 } from '@mui/material'
-import { X } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import {
   buildPexelsReferenceInfo,
   getPexelsApiKey,
@@ -24,8 +24,15 @@ import {
   type PexelsOrientationFilter as Orientation,
   type PexelsPhoto,
 } from '../utils/pexels'
+import {
+  addPexelsSearchHistory,
+  deletePexelsSearchHistory,
+  getPexelsSearchHistory,
+  type PexelsSearchHistoryEntry,
+} from '../storage'
 import type { ReferenceInfo } from '../types'
 import { t } from '../i18n'
+import { ToolbarTooltip } from './ToolbarTooltip'
 
 interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void
@@ -34,6 +41,15 @@ interface PexelsSearcherProps {
   initialOrientation?: Orientation
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
   apiKeyVersion?: number
+}
+
+function orientationLabel(o: Orientation): string {
+  switch (o) {
+    case 'landscape': return t('pexelsOrientationLandscape')
+    case 'portrait': return t('pexelsOrientationPortrait')
+    case 'square': return t('pexelsOrientationSquare')
+    case 'all': return t('pexelsOrientationAll')
+  }
 }
 
 const SUGGESTED_QUERIES: { label: string; query: string }[] = [
@@ -78,8 +94,13 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   // Abort the in-flight search when a new one starts or when unmounting, so
   // a slow earlier response can't overwrite a faster later one.
   const inflightRef = useRef<AbortController | null>(null)
-  const searchInputRef = useRef<HTMLInputElement>(null)
   useEffect(() => () => inflightRef.current?.abort(), [])
+
+  const [searchHistory, setSearchHistory] = useState<PexelsSearchHistoryEntry[]>([])
+  const reloadHistory = useCallback(() => {
+    getPexelsSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ })
+  }, [])
+  useEffect(() => { reloadHistory() }, [reloadHistory])
 
   /** Map a Pexels error to (user-visible error text, banner flag). Returns null
    *  for errors already communicated via the API-key banner. */
@@ -93,7 +114,10 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
     return t(key)
   }, [])
 
-  const runSearch = useCallback(async (q: string) => {
+  // orientation is taken as an explicit argument so history-row selection can
+  // search with the saved orientation in the same tick, instead of waiting
+  // for setOrientation's render before the closure picks it up.
+  const runSearch = useCallback(async (q: string, o: Orientation) => {
     const trimmed = q.trim()
     if (!trimmed) return
     inflightRef.current?.abort()
@@ -106,14 +130,15 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       const res = await searchPhotos({
         query: trimmed,
         page: 1,
-        orientation: orientation === 'all' ? undefined : orientation,
+        orientation: o === 'all' ? undefined : o,
       }, ctrl.signal)
       setPhotos(res.photos)
       setActiveQuery(trimmed)
-      setActiveOrientation(orientation)
+      setActiveOrientation(o)
       setCurrentPage(1)
       setHasMore(!!res.next_page && res.photos.length > 0)
-      setPexelsLastSearch(trimmed, orientation)
+      setPexelsLastSearch(trimmed, o)
+      void addPexelsSearchHistory(trimmed, o).then(reloadHistory).catch(() => { /* ignore */ })
     } catch (e) {
       if (isAbortError(e)) return
       setError(handleError(e))
@@ -125,7 +150,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
         setLoading(false)
       }
     }
-  }, [orientation, handleError])
+  }, [handleError, reloadHistory])
 
   // On first mount, if a saved query was restored (and the API key is set),
   // re-run that search so "back to search" from a URL-history-loaded fixed
@@ -133,7 +158,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   // so runSearch's setLoading() doesn't fire synchronously inside the effect.
   useEffect(() => {
     if (!query.trim() || needsKey) return
-    queueMicrotask(() => { void runSearch(query) })
+    queueMicrotask(() => { void runSearch(query, orientation) })
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only auto-restore
   }, [])
 
@@ -171,8 +196,18 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
 
   const handleChip = useCallback((preset: string) => {
     setQuery(preset)
-    void runSearch(preset)
+    void runSearch(preset, orientation)
+  }, [runSearch, orientation])
+
+  const handleSelectHistory = useCallback((entry: PexelsSearchHistoryEntry) => {
+    setQuery(entry.query)
+    setOrientation(entry.orientation)
+    void runSearch(entry.query, entry.orientation)
   }, [runSearch])
+
+  const handleDeleteHistory = useCallback((key: string) => {
+    void deletePexelsSearchHistory(key).then(reloadHistory).catch(() => { /* ignore */ })
+  }, [reloadHistory])
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', p: 1 }}>
@@ -186,46 +221,70 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
         </Alert>
       )}
 
-      {/* Search row */}
+      {/* Search row — Autocomplete shows the past-searches dropdown. */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-        <TextField
+        <Autocomplete<PexelsSearchHistoryEntry, false, false, true>
+          freeSolo
           size="small"
-          placeholder={t('pexelsSearchPlaceholder')}
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') {
-              void runSearch(query)
-              searchInputRef.current?.blur()
+          sx={{ flex: 1 }}
+          fullWidth
+          options={searchHistory}
+          filterOptions={x => x}
+          getOptionLabel={option => typeof option === 'string' ? option : option.query}
+          isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.key === b.key}
+          inputValue={query}
+          onInputChange={(_, value, reason) => {
+            if (reason === 'input' || reason === 'clear') setQuery(value)
+          }}
+          onChange={(_, value, reason) => {
+            if (reason === 'selectOption' && value && typeof value !== 'string') {
+              handleSelectHistory(value)
             }
           }}
-          inputRef={searchInputRef}
-          slotProps={{
-            input: {
-              endAdornment: query ? (
-                <InputAdornment position="end">
+          disabled={needsKey}
+          renderOption={(props, option) => {
+            const { key, ...rest } = props as typeof props & { key: string }
+            return (
+              <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {option.query}
+                </Box>
+                {option.orientation !== 'all' && (
+                  <Chip size="small" variant="outlined" label={orientationLabel(option.orientation)} />
+                )}
+                <ToolbarTooltip title={t('pexelsSearchHistoryDelete')}>
                   <IconButton
                     size="small"
-                    aria-label={t('clearSearch')}
-                    onClick={() => {
-                      setQuery('')
-                      searchInputRef.current?.focus()
-                    }}
-                    disabled={needsKey}
+                    aria-label={t('pexelsSearchHistoryDelete')}
+                    // Touch devices commit option selection on pointerdown
+                    // (before click), so stop propagation there too.
+                    onPointerDown={e => { e.stopPropagation(); e.preventDefault() }}
+                    onClick={e => { e.stopPropagation(); handleDeleteHistory(option.key) }}
                   >
-                    <X size={16} />
+                    <Trash2 size={14} />
                   </IconButton>
-                </InputAdornment>
-              ) : null,
-            },
+                </ToolbarTooltip>
+              </li>
+            )
           }}
-          sx={{ flex: 1 }}
-          disabled={needsKey}
+          renderInput={params => (
+            <TextField
+              {...params}
+              size="small"
+              placeholder={t('pexelsSearchPlaceholder')}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && query.trim()) {
+                  e.preventDefault()
+                  void runSearch(query, orientation)
+                }
+              }}
+            />
+          )}
         />
         <Button
           size="small"
           variant="contained"
-          onClick={() => void runSearch(query)}
+          onClick={() => void runSearch(query, orientation)}
           disabled={needsKey || !query.trim() || loading}
         >
           {t('search')}

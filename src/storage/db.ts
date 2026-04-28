@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type { Stroke } from '../drawing/types'
 import type { GuideLine, GridSettings } from '../guides/types'
 import type { ReferenceInfo, ReferenceSource } from '../types'
-import type { PexelsLastSearch } from '../utils/pexels'
+import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels'
 
 export interface DrawingRecord {
   id?: number
@@ -54,6 +54,15 @@ export interface UrlHistoryEntry {
   pexelsSearchContext?: PexelsLastSearch
 }
 
+export interface PexelsSearchHistoryEntry {
+  /** Dedup key: query.trim().toLowerCase(). */
+  key: string
+  /** Display form (preserves the user's original casing). */
+  query: string
+  orientation: PexelsOrientationFilter
+  lastUsedAt: Date
+}
+
 // Scope database name by deploy path so PR previews don't share data.
 // Keep the original name for the main deployment to preserve existing data.
 const DB_BASE_NAME = 'DrawingPracticeDB'
@@ -66,6 +75,7 @@ const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>
   session: EntityTable<SessionDraft, 'id'>
   urlHistory: EntityTable<UrlHistoryEntry, 'url'>
+  pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>
 }
 
 db.version(1).stores({
@@ -109,6 +119,15 @@ db.version(7).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
+})
+
+// v8: adds the pexelsSearchHistory table for the multi-entry search history
+// dropdown (deduped by lowercased query, ordered by lastUsedAt desc).
+db.version(8).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
 })
 
 export { db }
