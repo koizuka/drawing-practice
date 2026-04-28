@@ -2,7 +2,7 @@ import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Box, Button, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material'
 import { ToolbarTooltip } from './ToolbarTooltip'
 import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound } from 'lucide-react'
-import { SketchfabViewer, type SketchfabActions } from './SketchfabViewer'
+import { SketchfabViewer, type SketchfabActions, type SketchfabFixAngleExtras, type SketchfabModelMeta } from './SketchfabViewer'
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer'
 import type { ViewTransform } from '../drawing/ViewTransform'
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer'
@@ -19,8 +19,14 @@ import {
   type PexelsOrientationFilter,
 } from '../utils/pexels'
 import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
-import { resizeImageForHistory, sha256Hex } from '../utils/imageResize'
+import { resizeImageForHistory, dataUrlToJpegBlob, blobToDataUrl, sha256Hex } from '../utils/imageResize'
 import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
+import {
+  canonicalSketchfabUrl,
+  parseSketchfabModelUrl,
+  type SketchfabCategorySlug,
+  type SketchfabTimeFilter,
+} from '../utils/sketchfab'
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
   if (entry.type === 'image') {
@@ -43,6 +49,10 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
     const slug = photoIndex >= 0 ? segments[photoIndex + 1] : undefined
     return { primary: slug ? `Pexels · ${slug}` : entry.url, secondary: entry.url }
   }
+  if (entry.type === 'sketchfab') {
+    const parsed = parseSketchfabModelUrl(entry.url)
+    return { primary: parsed ? `Sketchfab · ${parsed.uid.slice(0, 8)}` : entry.url, secondary: entry.url }
+  }
   const filename = segments.pop()
   return { primary: filename || parsed.hostname, secondary: parsed.hostname }
 }
@@ -50,6 +60,7 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
 function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
   if (type === 'youtube') return <Film size={14} />
   if (type === 'pexels') return <Camera size={14} />
+  if (type === 'sketchfab') return <Boxes size={14} />
   // 'image' and 'url' both render with the generic image glyph.
   return <ImageIcon size={14} />
 }
@@ -226,7 +237,7 @@ interface ReferencePanelProps {
   onReferenceChange: (mutate: (setters: ReferenceSetters) => void) => void
   /** Non-undoable reset used when an image fails to load. */
   onReferenceResetOnError: () => void
-  onRegisterLoadSketchfabModel?: (fn: (uid: string) => void) => void
+  onRegisterLoadSketchfabModel?: (fn: (uid: string, meta?: SketchfabModelMeta) => void) => void
   /**
    * Allows the parent to trigger a refresh of the URL history dropdown after
    * it adds an entry itself (e.g. Gallery "use this reference" reload).
@@ -283,10 +294,10 @@ export function ReferencePanel({
     }).catch(() => { /* ignore storage errors */ })
   }, [])
 
-  const imageThumbUrls = useMemo(() => {
+  const blobThumbUrls = useMemo(() => {
     const map = new Map<string, string>()
     for (const e of urlHistory) {
-      if (e.type === 'image' && e.imageBlob) {
+      if ((e.type === 'image' || e.type === 'sketchfab') && e.imageBlob) {
         map.set(e.url, URL.createObjectURL(e.imageBlob))
       }
     }
@@ -294,9 +305,9 @@ export function ReferencePanel({
   }, [urlHistory])
   useEffect(() => {
     return () => {
-      for (const u of imageThumbUrls.values()) URL.revokeObjectURL(u)
+      for (const u of blobThumbUrls.values()) URL.revokeObjectURL(u)
     }
-  }, [imageThumbUrls])
+  }, [blobThumbUrls])
 
   const addAndReloadHistory = useCallback((
     url: string,
@@ -343,6 +354,35 @@ export function ReferencePanel({
     query: string
     orientation: PexelsOrientationFilter
   } | null>(null)
+
+  // Sketchfab equivalent — bumping `token` remounts SketchfabViewer with the
+  // saved query/category/timeFilter so URL-history loads land on the search
+  // that originally produced the model.
+  const [sketchfabRestore, setSketchfabRestore] = useState<{
+    token: number
+    query: string
+    category?: SketchfabCategorySlug
+    timeFilter: SketchfabTimeFilter
+  } | null>(null)
+
+  const applySketchfabRestore = useCallback((ctx: {
+    query: string
+    category?: SketchfabCategorySlug
+    timeFilter: SketchfabTimeFilter
+  }) => {
+    setSketchfabRestore(prev => {
+      // Skip the remount when the user re-selects an entry with the exact same
+      // search context — bumping token would dump the iframe + searchResults
+      // for nothing.
+      if (
+        prev
+        && prev.query === ctx.query
+        && prev.category === ctx.category
+        && prev.timeFilter === ctx.timeFilter
+      ) return prev
+      return { token: (prev?.token ?? 0) + 1, ...ctx }
+    })
+  }, [])
 
   // videoInteractMode: overlay steps aside so the iframe receives clicks.
   // Entered automatically on single-tap, exited via the toolbar button.
@@ -436,6 +476,51 @@ export function ReferencePanel({
     } catch {
       setUrlError(t('urlLoadFailed'))
       setUrlLoading(false)
+      return
+    }
+
+    // Sketchfab URL: extract UID and route to the SketchfabViewer in browse
+    // mode. The viewer iframe takes over loading; URL-history is added when
+    // the user "Fix Angle"s the model so the entry carries a screenshot.
+    const sketchfabMatch = parseSketchfabModelUrl(url)
+    if (sketchfabMatch) {
+      const uid = sketchfabMatch.uid
+      onReferenceChange(s => {
+        s.setSource('sketchfab')
+        s.setReferenceMode('browse')
+        s.setFixedImageUrl(null)
+        s.setLocalImageUrl(null)
+        s.setReferenceInfo({ title: '', author: '', source: 'sketchfab', sketchfabUid: uid })
+      })
+      setUrlInput('')
+      setUrlLoading(false)
+      // Resolve the URL-history entry once: it carries both the search context
+      // (for "Back to search" restoration) and the title (so the viewer can
+      // skip the redundant Sketchfab Data API call inside loadModel).
+      getUrlHistoryEntry(canonicalSketchfabUrl(uid))
+        .then(entry => {
+          const ctx = entry?.sketchfabSearchContext
+          if (ctx) {
+            applySketchfabRestore({
+              query: ctx.query,
+              category: ctx.category,
+              timeFilter: ctx.timeFilter,
+            })
+          }
+          const meta: SketchfabModelMeta | undefined = entry?.title
+            ? { name: entry.title, author: '' }
+            : undefined
+          requestAnimationFrame(() => {
+            sfActionsRef.current?.loadModelByUid(uid, meta)
+          })
+        })
+        .catch(() => {
+          // History lookup failed — still load the model; the viewer will
+          // fetch metadata itself.
+          requestAnimationFrame(() => {
+            sfActionsRef.current?.loadModelByUid(uid)
+          })
+        })
       return
     }
 
@@ -538,15 +623,32 @@ export function ReferencePanel({
       retry.src = url
     }
     img.src = url
-  }, [onReferenceChange, addAndReloadHistory])
+  }, [onReferenceChange, addAndReloadHistory, applySketchfabRestore])
 
-  const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo) => {
+  const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo, extras: SketchfabFixAngleExtras) => {
     onReferenceChange(s => {
       s.setFixedImageUrl(screenshotUrl)
       s.setReferenceInfo(info)
       s.setReferenceMode('fixed')
     })
-  }, [onReferenceChange])
+    if (info.source !== 'sketchfab' || !info.sketchfabUid) return
+    const historyKey = canonicalSketchfabUrl(info.sketchfabUid)
+    const titleForHistory = info.title || undefined
+    const sketchfabSearchContext = extras.searchContext ?? undefined
+    // Convert the 1024x1024 PNG screenshot to a ~200KB JPEG Blob so URL-
+    // history sketchfab selection can restore directly into fixed mode (the
+    // same UX as gallery "Use this reference"). Falls back to the model CDN
+    // thumbnail URL if the encode fails — at least the dropdown still shows
+    // something.
+    void dataUrlToJpegBlob(screenshotUrl).then(blob => {
+      void addAndReloadHistory(historyKey, 'sketchfab', {
+        title: titleForHistory,
+        ...(blob ? { imageBlob: blob } : {}),
+        ...(blob ? {} : { thumbnailUrl: extras.modelThumbnailUrl ?? undefined }),
+        sketchfabSearchContext,
+      })
+    }).catch(() => { /* best-effort */ })
+  }, [onReferenceChange, addAndReloadHistory])
 
   const handleChangeAngle = useCallback(() => {
     onReferenceChange(s => {
@@ -568,6 +670,11 @@ export function ReferencePanel({
   }, [onReferenceChange])
 
   const handleOpenSketchfab = useCallback(() => {
+    // Clear any leftover URL-history restoration so re-entering Sketchfab
+    // from the top screen starts with no category preselected — otherwise
+    // the SketchfabViewer would remount with stale initialCategory and the
+    // user can't get back to "all works" browsing.
+    setSketchfabRestore(null)
     onReferenceChange(s => {
       s.setSource('sketchfab')
       s.setReferenceMode('browse')
@@ -625,9 +732,9 @@ export function ReferencePanel({
   }, [onSketchfabViewerStateChange])
 
   // Load a Sketchfab model by UID (called from parent for gallery "load reference")
-  const loadSketchfabModel = useCallback((uid: string) => {
+  const loadSketchfabModel = useCallback((uid: string, meta?: SketchfabModelMeta) => {
     requestAnimationFrame(() => {
-      sfActionsRef.current?.loadModelByUid(uid)
+      sfActionsRef.current?.loadModelByUid(uid, meta)
     })
   }, [])
 
@@ -1055,6 +1162,64 @@ export function ReferencePanel({
                       reader.readAsDataURL(blob)
                       return
                     }
+                    if (value.type === 'sketchfab' && value.imageBlob) {
+                      // Mirror the gallery "Use this reference" UX: jump
+                      // straight to fixed mode with the saved screenshot, and
+                      // load the iframe in the background so "Change angle"
+                      // still works.
+                      const sketchfabUid = parseSketchfabModelUrl(value.url)?.uid
+                      if (!sketchfabUid) {
+                        // Malformed history key — fall through to URL flow
+                        setUrlInput(value.url)
+                        handleLoadFromUrl(value.url)
+                        return
+                      }
+                      const blob = value.imageBlob
+                      const historyKey = value.url
+                      const title = value.title ?? ''
+                      const ctx = value.sketchfabSearchContext
+                      void blobToDataUrl(blob).then(dataUrl => {
+                        if (!dataUrl) return
+                        const info: ReferenceInfo = {
+                          title,
+                          author: '',
+                          source: 'sketchfab',
+                          sketchfabUid,
+                          imageUrl: dataUrl,
+                        }
+                        onReferenceChange(s => {
+                          s.setSource('sketchfab')
+                          s.setReferenceMode('fixed')
+                          s.setFixedImageUrl(dataUrl)
+                          s.setLocalImageUrl(null)
+                          s.setReferenceInfo(info)
+                        })
+                        setUrlInput('')
+                        if (ctx) {
+                          applySketchfabRestore({
+                            query: ctx.query,
+                            category: ctx.category,
+                            timeFilter: ctx.timeFilter,
+                          })
+                        }
+                        // Load the iframe in the background so "Change Angle"
+                        // can transition to browse with the model already
+                        // ready, just like the gallery path.
+                        requestAnimationFrame(() => {
+                          sfActionsRef.current?.loadModelByUid(
+                            sketchfabUid,
+                            title ? { name: title, author: '' } : undefined,
+                          )
+                        })
+                        // Bump lastUsedAt with the Blob in hand so the upsert
+                        // is self-contained.
+                        void addAndReloadHistory(historyKey, 'sketchfab', {
+                          title: title || undefined,
+                          imageBlob: blob,
+                        })
+                      })
+                      return
+                    }
                     setUrlInput(value.url)
                     handleLoadFromUrl(value.url)
                   }
@@ -1062,7 +1227,7 @@ export function ReferencePanel({
                 renderOption={(props, option) => {
                   const { key, ...rest } = props as typeof props & { key: string }
                   const { primary, secondary } = describeHistoryUrl(option)
-                  const thumbSrc = resolveHistoryThumbnailSrc(option, imageThumbUrls)
+                  const thumbSrc = resolveHistoryThumbnailSrc(option, blobThumbUrls)
                   const showThumb = thumbSrc !== null && !thumbErrors.has(option.url)
                   return (
                     <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1177,13 +1342,19 @@ export function ReferencePanel({
           </Box>
         )}
 
-        {/* Sketchfab viewer (kept mounted when source is sketchfab) */}
+        {/* Sketchfab viewer (kept mounted when source is sketchfab).
+            Bumping sketchfabRestore.token via key remounts with the per-entry
+            search context restored from the URL-history entry. */}
         {source === 'sketchfab' && (
           <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
             <SketchfabViewer
+              key={sketchfabRestore?.token ?? 0}
               onFixAngle={handleFixAngle}
               onStateChange={handleSfStateChange}
               actionsRef={sfActionsRef}
+              initialQuery={sketchfabRestore?.query}
+              initialTimeFilter={sketchfabRestore?.timeFilter}
+              initialCategory={sketchfabRestore?.category}
             />
           </Box>
         )}

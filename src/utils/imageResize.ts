@@ -81,6 +81,49 @@ export async function resizeImageForHistory(file: File): Promise<Blob> {
 }
 
 /**
+ * Re-encode a data URL as a JPEG Blob, optionally fitting it within `maxEdge`
+ * on the longest side. Used to convert the 1024x1024 PNG Sketchfab screenshot
+ * (~1MB+) into a ~200KB JPEG Blob for URL-history storage. Storing as Blob
+ * (instead of base64 data URL) avoids the ~33% expansion from base64 and the
+ * UTF-16 doubling IndexedDB applies to strings.
+ *
+ * Returns null on decode/encode failure so the caller can fall back gracefully.
+ */
+export async function dataUrlToJpegBlob(
+  dataUrl: string,
+  maxEdge = 1024,
+  quality = 0.85,
+): Promise<Blob | null> {
+  try {
+    const img = await loadImage(dataUrl)
+    const { width, height } = computeFitDimensions(img.naturalWidth, img.naturalHeight, maxEdge)
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0, width, height)
+    return await canvasToBlob(canvas, 'image/jpeg', quality)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Read a Blob into a data URL. Used when restoring an image from URL history
+ * back into reference state — drawing/autosave paths consume data URLs, not
+ * Blob ObjectURLs (data URLs survive page reload via the autosave draft).
+ */
+export function blobToDataUrl(blob: Blob): Promise<string | null> {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+    reader.onerror = () => resolve(null)
+    reader.readAsDataURL(blob)
+  })
+}
+
+/**
  * SHA-256 content hash as a lowercase hex string. Used as the URL history key
  * for local-image entries so byte-identical files dedupe across paths,
  * renames, and re-downloads with different mtimes.

@@ -15,5 +15,11 @@ export function resolveHistoryThumbnailSrc(
     return id ? buildYouTubeThumbnailUrl(id) : null
   }
   if (entry.type === 'pexels') return entry.thumbnailUrl ?? null
+  if (entry.type === 'sketchfab') {
+    // Prefer the Blob ObjectURL (the full Fix-Angle screenshot) so the
+    // dropdown reflects the exact angle the user fixed; fall back to the
+    // model CDN thumbnail when no screenshot exists yet.
+    return imageObjectUrls.get(entry.url) ?? entry.thumbnailUrl ?? null
+  }
   return entry.url
 }

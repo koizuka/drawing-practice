@@ -2,6 +2,7 @@ import { db, type UrlHistoryEntry, type UrlHistoryType } from './db'
 import { selectKeysToEvict } from './historyEviction'
 import { buildYouTubeCanonicalUrl, parseYouTubeVideoId } from '../utils/youtube'
 import type { PexelsLastSearch } from '../utils/pexels'
+import type { SketchfabSearchContext } from '../utils/sketchfab'
 
 export const URL_HISTORY_LIMIT = 50
 // Images are stored with their Blob, so each entry can be 200KB–1.5MB.
@@ -15,6 +16,7 @@ export interface AddUrlHistoryOptions {
   imageBlob?: Blob
   thumbnailUrl?: string
   pexelsSearchContext?: PexelsLastSearch
+  sketchfabSearchContext?: SketchfabSearchContext
 }
 
 /**
@@ -54,16 +56,24 @@ export async function addUrlHistory(
   let finalFileName = opts.fileName
   let finalBlob = opts.imageBlob
   let finalThumbnailUrl = opts.thumbnailUrl
-  let finalSearchContext = opts.pexelsSearchContext
+  let finalPexelsSearchContext = opts.pexelsSearchContext
+  let finalSketchfabSearchContext = opts.sketchfabSearchContext
   // Only fall back to the stored thumbnailUrl for types that actually persist
-  // it (currently just 'pexels'); for url/youtube the dropdown derives the
+  // it (pexels and sketchfab); for url/youtube the dropdown derives the
   // thumbnail at render time, so a lookup here would just cost a DB read.
-  const needsThumbnailLookup = type === 'pexels' && !finalThumbnailUrl
-  const needsSearchContextLookup = type === 'pexels' && !finalSearchContext
+  const needsThumbnailLookup = (type === 'pexels' || type === 'sketchfab') && !finalThumbnailUrl
+  const needsPexelsSearchContextLookup = type === 'pexels' && !finalPexelsSearchContext
+  const needsSketchfabSearchContextLookup = type === 'sketchfab' && !finalSketchfabSearchContext
+  // Sketchfab entries also persist a Blob (the Fix-Angle screenshot used for
+  // dropdown thumbnail and fixed-mode restoration), so a partial re-touch
+  // (lastUsedAt bump) must not lose the Blob.
+  const needsBlobLookup = (type === 'sketchfab' && !finalBlob)
   if (
     !finalTitle ||
     needsThumbnailLookup ||
-    needsSearchContextLookup ||
+    needsPexelsSearchContextLookup ||
+    needsSketchfabSearchContextLookup ||
+    needsBlobLookup ||
     (type === 'image' && (!finalFileName || !finalBlob))
   ) {
     const existing = await db.urlHistory.get(key)
@@ -71,7 +81,8 @@ export async function addUrlHistory(
     if (!finalFileName) finalFileName = existing?.fileName
     if (!finalBlob) finalBlob = existing?.imageBlob
     if (!finalThumbnailUrl) finalThumbnailUrl = existing?.thumbnailUrl
-    if (!finalSearchContext) finalSearchContext = existing?.pexelsSearchContext
+    if (!finalPexelsSearchContext) finalPexelsSearchContext = existing?.pexelsSearchContext
+    if (!finalSketchfabSearchContext) finalSketchfabSearchContext = existing?.sketchfabSearchContext
   }
 
   const entry: UrlHistoryEntry = { url: key, type, lastUsedAt: new Date() }
@@ -79,7 +90,8 @@ export async function addUrlHistory(
   if (finalFileName) entry.fileName = finalFileName
   if (finalBlob) entry.imageBlob = finalBlob
   if (finalThumbnailUrl) entry.thumbnailUrl = finalThumbnailUrl
-  if (finalSearchContext) entry.pexelsSearchContext = finalSearchContext
+  if (finalPexelsSearchContext) entry.pexelsSearchContext = finalPexelsSearchContext
+  if (finalSketchfabSearchContext) entry.sketchfabSearchContext = finalSketchfabSearchContext
   await db.urlHistory.put(entry)
 
   // Image entries have a smaller cap so a burst of image opens can't evict

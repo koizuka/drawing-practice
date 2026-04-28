@@ -14,6 +14,9 @@ import { loadDraft } from '../storage/sessionStore'
 import { cleanupStalePrDatabases } from '../storage/db'
 import { addUrlHistory, getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { buildYouTubeCanonicalUrl } from '../utils/youtube'
+import { canonicalSketchfabUrl } from '../utils/sketchfab'
+import { dataUrlToJpegBlob } from '../utils/imageResize'
+import type { SketchfabModelMeta } from './SketchfabViewer'
 import { t } from '../i18n'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types'
@@ -95,7 +98,7 @@ function SplitLayoutInner() {
   const { grid, lines, version: guideVersion, restoreGuides } = useGuides()
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
-  const loadSketchfabModelFnRef = useRef<((uid: string) => void) | null>(null)
+  const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null)
   // Ref for refreshing the URL history dropdown after parent-initiated adds
   // (e.g. Gallery "use this reference" reload).
   const reloadUrlHistoryFnRef = useRef<(() => void) | null>(null)
@@ -242,7 +245,7 @@ function SplitLayoutInner() {
     overlayRedrawFnRef.current = fn
   }, [])
 
-  const handleRegisterLoadSketchfabModel = useCallback((fn: (uid: string) => void) => {
+  const handleRegisterLoadSketchfabModel = useCallback((fn: (uid: string, meta?: SketchfabModelMeta) => void) => {
     loadSketchfabModelFnRef.current = fn
   }, [])
 
@@ -314,7 +317,12 @@ function SplitLayoutInner() {
           s.setFixedImageUrl(null)
           s.setReferenceInfo(null)
         }
-        loadSketchfabModelFnRef.current?.(info.sketchfabUid)
+        // Pass title/author to the viewer so Fix Angle from "Change angle"
+        // produces a non-empty ReferenceInfo even on legacy records.
+        const sfMeta: SketchfabModelMeta | undefined = (info.title || info.author)
+          ? { name: info.title, author: info.author }
+          : undefined
+        loadSketchfabModelFnRef.current?.(info.sketchfabUid, sfMeta)
       } else if (info.source === 'url' && info.imageUrl) {
         s.setSource('url')
         s.setReferenceMode('fixed')
@@ -343,6 +351,24 @@ function SplitLayoutInner() {
       historyAdd = addUrlHistory(buildYouTubeCanonicalUrl(info.youtubeVideoId), 'youtube', info.title)
     } else if (info.source === 'pexels' && info.pexelsPageUrl) {
       historyAdd = addUrlHistory(info.pexelsPageUrl, 'pexels', info.title)
+    } else if (info.source === 'sketchfab' && info.sketchfabUid) {
+      // Bump lastUsedAt so reopening the same Sketchfab reference from the
+      // gallery surfaces it at the top of the URL-history dropdown. If the
+      // gallery record has a screenshot, convert it to a Blob and persist
+      // — this lets a later URL-history selection restore directly into
+      // fixed mode (matching the gallery "Use this reference" UX) even for
+      // entries that were never opened via Fix Angle in this device's
+      // history.
+      const sketchfabKey = canonicalSketchfabUrl(info.sketchfabUid)
+      const galleryImageUrl = info.imageUrl
+      historyAdd = (galleryImageUrl
+        ? dataUrlToJpegBlob(galleryImageUrl).then(blob => addUrlHistory(
+            sketchfabKey,
+            'sketchfab',
+            { title: info.title, ...(blob ? { imageBlob: blob } : {}) },
+          ))
+        : addUrlHistory(sketchfabKey, 'sketchfab', info.title)
+      )
     }
     if (historyAdd) {
       historyAdd.then(() => reloadUrlHistoryFnRef.current?.()).catch(() => { /* ignore */ })
