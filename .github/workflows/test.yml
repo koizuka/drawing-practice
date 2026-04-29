@@ -115,7 +115,7 @@ jobs:
         run: npm run build -- --base=/drawing-practice/pr/${{ github.event.pull_request.number }}/
 
       - name: Deploy PR Preview
-        uses: koizuka/pr-preview-action@942966838e8175992f5fa468d7f6a640479c3c85 # v1
+        uses: koizuka/pr-preview-action@b03654e20a3e1a9c84309ac9a864e6ba3c4d078b # v1.1.1
         with:
           action: deploy
           source-dir: dist
