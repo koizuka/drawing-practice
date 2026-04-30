@@ -54,3 +54,4 @@ Path-scoped rules in `.claude/rules/` load automatically when you read matching 
 - `reference-sources.md` — reference panel + viewers + utils (URL auto-routing, Sketchfab Fix-Angle triple persistence, YouTube overlay modes, Pexels attribution)
 - `timer-autosave.md` — `useTimer.ts`, `useAutosave.ts`, `SplitLayout.tsx` (start/pause/reset triggers, autosave debounce/suppression)
 - `gallery.md` — `Gallery.tsx`, `exportDrawing.ts`, `storageUsage.ts` (3 grouping modes, thumbnail resolution, "Use this reference" paths, export)
+- `ui-design-principles.md` — `src/components/**` (layout skeleton, three-tier button model, stateful vs stateless choice, error/loading treatment, access symmetry)

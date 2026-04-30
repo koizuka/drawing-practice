@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
+import { Alert, Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
 import { Trash2 } from 'lucide-react'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../types'
@@ -172,6 +172,7 @@ export function SketchfabViewer({
   const [activeCategory, setActiveCategory] = useState<SketchfabCategorySlug | null>(initialCategory ?? null)
   const [nextPageUrl, setNextPageUrl] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
   const lastSearchRef = useRef<
     | { type: 'search'; query: string; category?: SketchfabCategorySlug }
     | { type: 'category'; slug: SketchfabCategorySlug }
@@ -333,6 +334,7 @@ export function SketchfabViewer({
     lastSearchRef.current = { type: 'search', query: trimmedQuery, category }
     setActiveCategory(category ?? null)
     setError(null)
+    setIsSearching(true)
     try {
       // /v3/search supports keyword search but ignores published_since
       // /v3/models supports published_since but has poor keyword search
@@ -360,6 +362,8 @@ export function SketchfabViewer({
       recordSearch({ query: trimmedQuery, timeFilter: effectiveFilter, ...(category ? { category } : {}) })
     } catch {
       setError(t('searchFailed'))
+    } finally {
+      setIsSearching(false)
     }
   }, [timeFilter, recordSearch])
 
@@ -377,6 +381,7 @@ export function SketchfabViewer({
     const publishedSince = getPublishedSince(effectiveFilter)
     if (publishedSince) params.set('published_since', publishedSince)
 
+    setIsSearching(true)
     fetch(`https://api.sketchfab.com/v3/models?${params}`)
       .then(r => {
         if (!r.ok) throw new Error('Fetch failed')
@@ -388,6 +393,7 @@ export function SketchfabViewer({
         recordSearch({ query: '', category: categorySlug, timeFilter: effectiveFilter })
       })
       .catch(() => setError(t('failedFetchModels')))
+      .finally(() => setIsSearching(false))
   }, [timeFilter, recordSearch])
 
   // Clear the active category and fetch the unfiltered "all works" view —
@@ -642,7 +648,12 @@ export function SketchfabViewer({
           </Box>
 
           {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('loadingApi')}</Typography>}
-          {error && <Typography variant="body2" color="error" sx={{ mb: 1 }}>{error}</Typography>}
+          {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+          {isSearching && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
 
           {/* Search results grid */}
           {searchResults.length > 0 && (

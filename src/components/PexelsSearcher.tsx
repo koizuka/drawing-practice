@@ -225,6 +225,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
         <Autocomplete<PexelsSearchHistoryEntry, false, false, true>
           freeSolo
+          openOnFocus
           size="small"
           sx={{ flex: 1 }}
           fullWidth
@@ -323,7 +324,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       </Box>
 
       {error && (
-        <Typography variant="body2" color="error" sx={{ mb: 1 }}>{error}</Typography>
+        <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>
       )}
 
       {loading && (
