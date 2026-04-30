@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
+import { Alert, Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material'
 import { Trash2 } from 'lucide-react'
 import { t } from '../i18n'
 import type { ReferenceInfo } from '../types'
@@ -172,6 +172,12 @@ export function SketchfabViewer({
   const [activeCategory, setActiveCategory] = useState<SketchfabCategorySlug | null>(initialCategory ?? null)
   const [nextPageUrl, setNextPageUrl] = useState<string | null>(null)
   const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  // Aborts the in-flight search/category fetch when a newer one starts so a
+  // slow earlier response can't overwrite faster newer results, and so
+  // isSearching/error state belongs to the latest request only.
+  const inflightSearchRef = useRef<AbortController | null>(null)
+  useEffect(() => () => inflightSearchRef.current?.abort(), [])
   const lastSearchRef = useRef<
     | { type: 'search'; query: string; category?: SketchfabCategorySlug }
     | { type: 'category'; slug: SketchfabCategorySlug }
@@ -333,6 +339,10 @@ export function SketchfabViewer({
     lastSearchRef.current = { type: 'search', query: trimmedQuery, category }
     setActiveCategory(category ?? null)
     setError(null)
+    inflightSearchRef.current?.abort()
+    const ctrl = new AbortController()
+    inflightSearchRef.current = ctrl
+    setIsSearching(true)
     try {
       // /v3/search supports keyword search but ignores published_since
       // /v3/models supports published_since but has poor keyword search
@@ -351,15 +361,21 @@ export function SketchfabViewer({
       const endpoint = useSearchEndpoint
         ? `https://api.sketchfab.com/v3/search?${params}`
         : `https://api.sketchfab.com/v3/models?${params}`
-      const res = await fetch(endpoint)
+      const res = await fetch(endpoint, { signal: ctrl.signal })
       if (!res.ok) throw new Error('Search failed')
 
       const data: SearchResponse = await res.json()
       setSearchResults(parseSearchResults(data))
       setNextPageUrl(data.next ?? null)
       recordSearch({ query: trimmedQuery, timeFilter: effectiveFilter, ...(category ? { category } : {}) })
-    } catch {
+    } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') return
       setError(t('searchFailed'))
+    } finally {
+      if (inflightSearchRef.current === ctrl) {
+        inflightSearchRef.current = null
+        setIsSearching(false)
+      }
     }
   }, [timeFilter, recordSearch])
 
@@ -367,6 +383,7 @@ export function SketchfabViewer({
     const effectiveFilter = filter ?? timeFilter
     lastSearchRef.current = { type: 'category', slug: categorySlug }
     setActiveCategory(categorySlug)
+    setError(null)
     const offset = Math.floor(Math.random() * 50)
     const params = new URLSearchParams({
       categories: categorySlug,
@@ -377,7 +394,11 @@ export function SketchfabViewer({
     const publishedSince = getPublishedSince(effectiveFilter)
     if (publishedSince) params.set('published_since', publishedSince)
 
-    fetch(`https://api.sketchfab.com/v3/models?${params}`)
+    inflightSearchRef.current?.abort()
+    const ctrl = new AbortController()
+    inflightSearchRef.current = ctrl
+    setIsSearching(true)
+    fetch(`https://api.sketchfab.com/v3/models?${params}`, { signal: ctrl.signal })
       .then(r => {
         if (!r.ok) throw new Error('Fetch failed')
         return r.json()
@@ -387,7 +408,16 @@ export function SketchfabViewer({
         setNextPageUrl(data.next ?? null)
         recordSearch({ query: '', category: categorySlug, timeFilter: effectiveFilter })
       })
-      .catch(() => setError(t('failedFetchModels')))
+      .catch((e: unknown) => {
+        if (e instanceof DOMException && e.name === 'AbortError') return
+        setError(t('failedFetchModels'))
+      })
+      .finally(() => {
+        if (inflightSearchRef.current === ctrl) {
+          inflightSearchRef.current = null
+          setIsSearching(false)
+        }
+      })
   }, [timeFilter, recordSearch])
 
   // Clear the active category and fetch the unfiltered "all works" view —
@@ -642,7 +672,12 @@ export function SketchfabViewer({
           </Box>
 
           {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('loadingApi')}</Typography>}
-          {error && <Typography variant="body2" color="error" sx={{ mb: 1 }}>{error}</Typography>}
+          {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+          {isSearching && (
+            <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+              <CircularProgress size={28} />
+            </Box>
+          )}
 
           {/* Search results grid */}
           {searchResults.length > 0 && (
