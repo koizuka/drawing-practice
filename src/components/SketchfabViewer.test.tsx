@@ -315,3 +315,63 @@ describe('SketchfabViewer unified search/UID input', () => {
     fetchSpy.mockRestore()
   })
 })
+
+describe('SketchfabViewer search loading and error feedback', () => {
+  it('shows a spinner while the search is in flight and hides it after the response resolves', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    let resolveFetch: ((value: Response) => void) | undefined
+    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
+      () => new Promise<Response>(resolve => { resolveFetch = resolve }),
+    )
+
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: 'tree' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // While the fetch is pending, MUI CircularProgress renders role="progressbar".
+    await waitFor(() => expect(screen.getByRole('progressbar')).toBeInTheDocument())
+
+    // Resolve the fetch — the spinner should disappear.
+    resolveFetch?.(new Response(JSON.stringify({ results: [], next: null })))
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+    fetchSpy.mockRestore()
+  })
+
+  it('shows an error Alert when the keyword search fetch rejects', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'))
+
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: 'tree' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    // role="alert" is what MUI Alert renders by default — assert via role rather
+    // than text so a localized message change doesn't break the test.
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/search failed/i)
+    // Spinner must not be left behind after the failure.
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    fetchSpy.mockRestore()
+  })
+
+  it('shows an error Alert when a category browse fetch rejects', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'))
+
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/(failed|fetch)/i)
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+    fetchSpy.mockRestore()
+  })
+})
