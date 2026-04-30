@@ -360,6 +360,75 @@ describe('SketchfabViewer search loading and error feedback', () => {
     fetchSpy.mockRestore()
   })
 
+  it('clears a previous error when a category browse starts', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    // First call rejects (produces an error), second call resolves cleanly.
+    const fetchSpy = vi.spyOn(window, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Network down'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], next: null })))
+
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    // Trigger an error first
+    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
+    await screen.findByRole('alert')
+
+    // Now click Vehicles — the error Alert should disappear because the new
+    // fetch starts with cleared error state.
+    fireEvent.click(screen.getByRole('button', { name: 'Vehicles' }))
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
+    fetchSpy.mockRestore()
+  })
+
+  it('aborts a stale search when a newer one starts so the spinner reflects the latest request only', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    // Track abort signals so we can verify the first request is canceled.
+    const signals: AbortSignal[] = []
+    let resolveSecond: ((value: Response) => void) | undefined
+    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
+      (_input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.signal) signals.push(init.signal)
+        // First call: never resolves on its own; will be aborted.
+        if (signals.length === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              reject(new DOMException('Aborted', 'AbortError'))
+            })
+          })
+        }
+        // Second call: resolves when test triggers it.
+        return new Promise<Response>(resolve => { resolveSecond = resolve })
+      },
+    )
+
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: 'tree' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(signals).toHaveLength(1))
+
+    // Start a second search while the first is still in flight.
+    fireEvent.change(input, { target: { value: 'castle' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    await waitFor(() => expect(signals).toHaveLength(2))
+
+    // First signal should now be aborted; second remains active.
+    expect(signals[0].aborted).toBe(true)
+    expect(signals[1].aborted).toBe(false)
+    // Spinner is still on (second request running).
+    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    // No error from the aborted first request.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+    // Resolve the second request — spinner should clear.
+    resolveSecond?.(new Response(JSON.stringify({ results: [], next: null })))
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
+    fetchSpy.mockRestore()
+  })
+
   it('shows an error Alert when a category browse fetch rejects', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([])
     const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'))
