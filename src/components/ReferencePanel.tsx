@@ -815,6 +815,19 @@ export function ReferencePanel({
           </ToolbarTooltip>
         )}
 
+        {/* Search-screen title — only on Sketchfab/Pexels browse screens, where
+            the bare search UI doesn't otherwise reveal which service it is. */}
+        {isSfBrowse && !sfShowViewer && (
+          <Typography variant="subtitle2" color="text.secondary" noWrap sx={{ ml: 0.5 }}>
+            {t('sketchfab')}
+          </Typography>
+        )}
+        {source === 'pexels' && referenceMode === 'browse' && (
+          <Typography variant="subtitle2" color="text.secondary" noWrap sx={{ ml: 0.5 }}>
+            {t('pexels')}
+          </Typography>
+        )}
+
         {/* Sketchfab model viewer: Back to search results */}
         {isSfBrowse && sfShowViewer && (
           <Button size="small" variant="outlined" onClick={() => sfActionsRef.current?.back()}>

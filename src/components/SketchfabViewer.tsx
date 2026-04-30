@@ -6,6 +6,8 @@ import type { ReferenceInfo } from '../types'
 import {
   SKETCHFAB_CATEGORIES,
   getSketchfabModel,
+  isValidUid,
+  parseSketchfabModelUrl,
   setSketchfabLastSearch,
   type SketchfabCategorySlug,
   type SketchfabSearchContext,
@@ -132,6 +134,19 @@ function parseSearchResults(data: SearchResponse): SearchResult[] {
     author: m.user?.displayName ?? m.user?.username ?? '',
     thumbnailUrl: m.thumbnails?.images?.find(t => t.width >= 200)?.url ?? '',
   })) ?? []
+}
+
+// Classify the unified search-box input. UID-form (32-char alphanumeric) or
+// a Sketchfab model URL routes to direct model load; anything else is treated
+// as a keyword search. Centralized so the Enter key, the submit button, and
+// the button-label all stay in sync.
+function classifySketchfabQuery(raw: string): { kind: 'uid'; uid: string } | { kind: 'search' } {
+  const trimmed = raw.trim()
+  if (!trimmed) return { kind: 'search' }
+  if (isValidUid(trimmed)) return { kind: 'uid', uid: trimmed }
+  const parsed = parseSketchfabModelUrl(trimmed)
+  if (parsed) return { kind: 'uid', uid: parsed.uid }
+  return { kind: 'search' }
 }
 
 export function SketchfabViewer({
@@ -546,17 +561,34 @@ export function SketchfabViewer({
                   size="small"
                   placeholder={t('searchModels')}
                   onKeyDown={e => {
-                    if (e.key === 'Enter' && searchQuery.trim()) {
-                      e.preventDefault()
+                    if (e.key !== 'Enter') return
+                    const trimmed = searchQuery.trim()
+                    if (!trimmed) return
+                    e.preventDefault()
+                    const classified = classifySketchfabQuery(searchQuery)
+                    if (classified.kind === 'uid') {
+                      loadModel(classified.uid)
+                    } else {
                       void handleSearch(searchQuery)
-                      ;(e.target as HTMLInputElement).blur()
                     }
+                    ;(e.target as HTMLInputElement).blur()
                   }}
                 />
               )}
             />
-            <Button size="small" variant="contained" onClick={() => void handleSearch(searchQuery)}>
-              {t('search')}
+            <Button
+              size="small"
+              variant="contained"
+              onClick={() => {
+                const classified = classifySketchfabQuery(searchQuery)
+                if (classified.kind === 'uid') {
+                  loadModel(classified.uid)
+                } else {
+                  void handleSearch(searchQuery)
+                }
+              }}
+            >
+              {classifySketchfabQuery(searchQuery).kind === 'uid' ? t('load') : t('search')}
             </Button>
           </Box>
 
@@ -607,20 +639,6 @@ export function SketchfabViewer({
                 {t(cat.labelKey)}
               </Button>
             ))}
-          </Box>
-
-          {/* Direct UID input */}
-          <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-            <TextField
-              size="small"
-              placeholder={t('modelUid')}
-              value={modelUid}
-              onChange={e => setModelUid(e.target.value)}
-              sx={{ flex: 1 }}
-            />
-            <Button size="small" variant="outlined" onClick={() => loadModel(modelUid)} disabled={!modelUid || !scriptLoaded}>
-              {t('load')}
-            </Button>
           </Box>
 
           {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('loadingApi')}</Typography>}
