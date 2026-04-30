@@ -178,7 +178,7 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
                 {refInfo.title}
               </Typography>
             )}
-            {refInfo.author && (
+            {(refInfo.author || (refInfo.source === 'sketchfab' && refInfo.sketchfabUid)) && (
               <Typography variant="caption" sx={{ display: 'block', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
                   <>
@@ -194,6 +194,14 @@ function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
                         </MuiLink>
                       </>
                     )}
+                  </>
+                ) : refInfo.source === 'sketchfab' && refInfo.sketchfabUid ? (
+                  <>
+                    {refInfo.author}
+                    {refInfo.author && ' · '}
+                    <MuiLink href={canonicalSketchfabUrl(refInfo.sketchfabUid)} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
+                      {t('sketchfabViaSketchfab')}
+                    </MuiLink>
                   </>
                 ) : refInfo.author}
               </Typography>
