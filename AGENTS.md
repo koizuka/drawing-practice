@@ -53,6 +53,19 @@ npm run test:watch
 - Timer behavior is user-visible product logic. Reference changes, save, gallery open, backgrounding, and fully undoing strokes all affect timer state.
 - IndexedDB usage matters. Prefer bounded history, quantized persisted stroke data, and reuse of existing storage helpers.
 
+## Detailed Rule Documents
+
+For path-specific behavior and product rules, also check `.claude/rules/`:
+
+- `drawing-undo.md`: `src/drawing/**`, `SplitLayout.tsx`, `DrawingPanel.tsx`
+- `timer-autosave.md`: `useTimer.ts`, `useAutosave.ts`, `SplitLayout.tsx`
+- `reference-sources.md`: reference viewers, searchers, and source utilities
+- `storage.md`: `src/storage/**` and storage accounting / history behavior
+- `gallery.md`: `Gallery.tsx`, export, and restored-reference flows
+- `ui-design-principles.md`: component-level UI structure and interaction patterns
+
+Read the relevant rule document before changing those areas. Keep `AGENTS.md` as the stable high-level map, and treat the rule documents as the detailed source of truth for scoped behavior.
+
 ## Reference Source Notes
 
 - URL input auto-detects YouTube, Pexels, and Sketchfab URLs and routes them into dedicated flows rather than treating everything as a plain image URL.
@@ -74,6 +87,7 @@ npm run test:watch
 - For behavior changes, inspect the owning component and the relevant storage / hook / utility modules together before editing.
 - When touching reference flows, check `SplitLayout`, `ReferencePanel`, `StrokeManager`, and the relevant source utility.
 - When touching persistence, check both the Dexie schema and all read/write call sites.
+- When working in an area covered by `.claude/rules/`, read the matching rule document alongside the code before editing.
 - Run `npm run lint` after meaningful code changes. Run targeted tests when behavior is covered by tests; add tests when the changed logic is isolated enough to justify them.
 
 ## When In Doubt
