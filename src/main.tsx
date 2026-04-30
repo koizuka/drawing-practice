@@ -3,11 +3,18 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
-// Block trackpad / Ctrl+wheel page zoom on UI chrome. Browsers report trackpad
-// pinch as `wheel` with `ctrlKey: true`, and viewport meta cannot constrain it.
-// iOS touch pinch is handled declaratively by the viewport meta `maximum-scale=1.0`.
+// Page-zoom defenses for areas that don't host self-rolled pinch:
+// - iOS Safari: two-finger pinch fires `gesturestart`/`gesturechange`/`gestureend`
+//   independently of `touch-action: none` and `maximum-scale=1.0` in the viewport
+//   meta — large-area UI (Sketchfab/Pexels search grid, URL input screen) still
+//   pinch-zooms unless these gesture events are intercepted at the document level.
+// - Trackpad / Ctrl+wheel: browsers report pinch as `wheel` with `ctrlKey: true`.
 // Self-rolled pinch (ImageViewer, YouTubeViewer, DrawingCanvas) keeps working —
-// each registers its own per-canvas `wheel` listener that still fires here.
+// it's built on TouchEvents plus per-canvas `wheel` listeners that still fire here.
+const preventGesture = (e: Event) => e.preventDefault()
+document.addEventListener('gesturestart', preventGesture)
+document.addEventListener('gesturechange', preventGesture)
+document.addEventListener('gestureend', preventGesture)
 document.addEventListener('wheel', (e) => {
   if (e.ctrlKey) e.preventDefault()
 }, { passive: false })
