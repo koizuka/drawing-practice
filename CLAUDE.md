@@ -30,7 +30,7 @@ Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Lib
   - **Drawing Panel** (right/bottom) — `DrawingPanel` + `DrawingCanvas`.
 - **Shared state** lifted to `SplitLayout`: reference (source/mode/images), timer, autosave, undo. Guide state shared via `GuideContext`.
 - **Single undo stack** in `StrokeManager` covers both strokes AND reference changes — see `.claude/rules/drawing-undo.md`.
-- **Autosave** (`useAutosave`, 2s debounce) persists session draft to IndexedDB `session` table; restored on reload — see `.claude/rules/timer-autosave.md`.
+- **Autosave** (`useAutosave`, 2s debounce; immediate on reference change) persists session draft to IndexedDB `session` table; restored on reload — see `.claude/rules/timer-autosave.md`.
 
 ## Cross-cutting invariants
 
