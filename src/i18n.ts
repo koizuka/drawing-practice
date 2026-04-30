@@ -61,6 +61,7 @@ const messages = {
     'technology': 'Technology',
     'allCategories': 'All',
     'sketchfabSearchHistoryDelete': 'Delete from history',
+    'sketchfabViaSketchfab': 'via Sketchfab',
 
     // Gallery
     'galleryTitle': 'Gallery',
@@ -189,6 +190,7 @@ const messages = {
     'technology': 'テクノロジー',
     'allCategories': '全カテゴリ',
     'sketchfabSearchHistoryDelete': '履歴から削除',
+    'sketchfabViaSketchfab': 'Sketchfabで開く',
 
     // Gallery
     'galleryTitle': 'ギャラリー',
