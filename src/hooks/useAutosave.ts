@@ -75,9 +75,10 @@ export function useAutosave(
     }
   }, [changeVersion, doSave])
 
-  // Immediate-save path. Reference changes bump flushVersion so the draft is
-  // persisted synchronously instead of waiting for the 2s debounce — otherwise
-  // a quick reload after a reference swap would restore the previous reference.
+  // Immediate-save path. Reference changes bump flushVersion so saveDraft fires
+  // immediately (without waiting for the 2s debounce). The IndexedDB write
+  // itself is async, but the call is queued right away — otherwise a quick
+  // reload after a reference swap would restore the previous reference.
   useEffect(() => {
     if (flushVersion === 0) return // Skip initial render
 

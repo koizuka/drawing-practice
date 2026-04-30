@@ -106,8 +106,9 @@ function SplitLayoutInner() {
   // Change version counter for autosave debouncing
   const [changeVersion, setChangeVersion] = useState(0)
   // Flush version: bumped on reference changes to bypass the 2s debounce and
-  // persist the draft synchronously (so a fast reload after a reference swap
-  // doesn't restore the previous reference).
+  // queue saveDraft immediately (so a fast reload after a reference swap
+  // doesn't restore the previous reference). The IndexedDB write is still
+  // async but starts right away.
   const [flushVersion, setFlushVersion] = useState(0)
   // Restore version to notify DrawingPanel after draft restore
   const [restoreVersion, setRestoreVersion] = useState(0)
