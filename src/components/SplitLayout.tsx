@@ -105,6 +105,11 @@ function SplitLayoutInner() {
 
   // Change version counter for autosave debouncing
   const [changeVersion, setChangeVersion] = useState(0)
+  // Flush version: bumped on reference changes to bypass the 2s debounce and
+  // queue saveDraft immediately (so a fast reload after a reference swap
+  // doesn't restore the previous reference). The IndexedDB write is still
+  // async but starts right away.
+  const [flushVersion, setFlushVersion] = useState(0)
   // Restore version to notify DrawingPanel after draft restore
   const [restoreVersion, setRestoreVersion] = useState(0)
   // Explicit refit trigger on rotation — ResizeObservers don't auto-refit so
@@ -124,6 +129,10 @@ function SplitLayoutInner() {
   const [historySyncVersion, setHistorySyncVersion] = useState(0)
   const incrementChangeVersion = useCallback(() => {
     setChangeVersion(v => v + 1)
+  }, [])
+
+  const incrementFlushVersion = useCallback(() => {
+    setFlushVersion(v => v + 1)
   }, [])
 
   // Pause timer whenever the reference changes — the timer should only advance
@@ -163,6 +172,7 @@ function SplitLayoutInner() {
       setLocalImageUrl(snap.localImageUrl)
       setReferenceInfo(snap.referenceInfo)
       pauseAndIncrementVersion()
+      incrementFlushVersion()
     }
   })
 
@@ -184,7 +194,8 @@ function SplitLayoutInner() {
     })
     pauseAndIncrementVersion()
     setHistorySyncVersion(v => v + 1)
-  }, [captureReferenceSnapshot, pauseAndIncrementVersion])
+    incrementFlushVersion()
+  }, [captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion])
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -199,7 +210,8 @@ function SplitLayoutInner() {
     setLocalImageUrl(null)
     setReferenceInfo(null)
     pauseAndIncrementVersion()
-  }, [pauseAndIncrementVersion])
+    incrementFlushVersion()
+  }, [pauseAndIncrementVersion, incrementFlushVersion])
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
@@ -389,7 +401,7 @@ function SplitLayoutInner() {
     lines,
   }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines])
 
-  useAutosave(getAutosaveState, changeVersion, suppressAutosaveRef)
+  useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef)
 
   // Trigger autosave when guide state changes. Use the render-time prev-prop
   // pattern instead of an effect so we don't violate react-hooks/set-state-in-effect.

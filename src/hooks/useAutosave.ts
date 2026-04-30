@@ -21,6 +21,7 @@ interface AutosaveState {
 export function useAutosave(
   getState: () => AutosaveState,
   changeVersion: number,
+  flushVersion: number,
   suppressRef: React.RefObject<boolean>,
 ) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -73,4 +74,18 @@ export function useAutosave(
       }
     }
   }, [changeVersion, doSave])
+
+  // Immediate-save path. Reference changes bump flushVersion so saveDraft fires
+  // immediately (without waiting for the 2s debounce). The IndexedDB write
+  // itself is async, but the call is queued right away — otherwise a quick
+  // reload after a reference swap would restore the previous reference.
+  useEffect(() => {
+    if (flushVersion === 0) return // Skip initial render
+
+    if (timerRef.current) {
+      clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    doSave()
+  }, [flushVersion, doSave])
 }

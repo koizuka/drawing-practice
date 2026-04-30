@@ -36,6 +36,7 @@ Reference-related pausing is wired through `pauseAndIncrementVersion` in `SplitL
 - Tracks changes via a version counter incremented by state setters in `SplitLayout`.
 - **Suppressed during draft restore** to avoid overwriting with partial state.
 - Clears draft when session is empty (no strokes and no reference).
+- **Immediate-save path** for reference changes: `useAutosave` takes a separate `flushVersion` prop. `changeReference`, `resetReferenceOnError`, and the reference snapshot restorer (undo/redo) bump it via `incrementFlushVersion`. The hook observes the bump in a useEffect (so React has already committed the setState updates), cancels any pending debounce timer, and queues `saveDraft` immediately (no debounce — the IndexedDB write itself is still async). **Why:** a reload immediately after a reference swap would otherwise restore the previous reference. Stroke and guide changes still go through the 2s debounce path.
 
 Persisted: strokes, redo stack, reference, guides, timer elapsed.
 **NOT persisted**: reference undo history (kept session-only — see `drawing-undo.md`).

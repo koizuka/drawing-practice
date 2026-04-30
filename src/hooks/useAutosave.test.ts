@@ -33,7 +33,7 @@ describe('useAutosave', () => {
 
   it('does not save on initial render (changeVersion=0)', () => {
     const suppressRef = { current: false }
-    renderHook(() => useAutosave(() => makeState(), 0, suppressRef))
+    renderHook(() => useAutosave(() => makeState(), 0, 0, suppressRef))
 
     vi.advanceTimersByTime(3000)
     expect(saveDraft).not.toHaveBeenCalled()
@@ -42,7 +42,7 @@ describe('useAutosave', () => {
   it('saves after debounce delay when changeVersion > 0', async () => {
     const suppressRef = { current: false }
     const { rerender } = renderHook(
-      ({ version }) => useAutosave(() => makeState(), version, suppressRef),
+      ({ version }) => useAutosave(() => makeState(), version, 0, suppressRef),
       { initialProps: { version: 0 } },
     )
 
@@ -62,7 +62,7 @@ describe('useAutosave', () => {
   it('debounces rapid changes', async () => {
     const suppressRef = { current: false }
     const { rerender } = renderHook(
-      ({ version }) => useAutosave(() => makeState(), version, suppressRef),
+      ({ version }) => useAutosave(() => makeState(), version, 0, suppressRef),
       { initialProps: { version: 0 } },
     )
 
@@ -85,7 +85,7 @@ describe('useAutosave', () => {
   it('clears draft when no strokes and no reference', async () => {
     const suppressRef = { current: false }
     const { rerender } = renderHook(
-      ({ version }) => useAutosave(() => makeState({ strokes: [], source: 'none' }), version, suppressRef),
+      ({ version }) => useAutosave(() => makeState({ strokes: [], source: 'none' }), version, 0, suppressRef),
       { initialProps: { version: 0 } },
     )
 
@@ -101,7 +101,7 @@ describe('useAutosave', () => {
   it('does not save when suppressed', async () => {
     const suppressRef = { current: true }
     const { rerender } = renderHook(
-      ({ version }) => useAutosave(() => makeState(), version, suppressRef),
+      ({ version }) => useAutosave(() => makeState(), version, 0, suppressRef),
       { initialProps: { version: 0 } },
     )
 
@@ -112,5 +112,81 @@ describe('useAutosave', () => {
 
     expect(saveDraft).not.toHaveBeenCalled()
     expect(clearDraft).not.toHaveBeenCalled()
+  })
+
+  it('flushes immediately when flushVersion changes', async () => {
+    const suppressRef = { current: false }
+    const { rerender } = renderHook(
+      ({ flush }) => useAutosave(() => makeState(), 0, flush, suppressRef),
+      { initialProps: { flush: 0 } },
+    )
+
+    await act(async () => {
+      rerender({ flush: 1 })
+    })
+
+    // Saved without advancing the debounce timer.
+    expect(saveDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels pending debounce when flushVersion fires', async () => {
+    const suppressRef = { current: false }
+    const { rerender } = renderHook(
+      ({ version, flush }) => useAutosave(() => makeState(), version, flush, suppressRef),
+      { initialProps: { version: 0, flush: 0 } },
+    )
+
+    // Schedule a debounced save, then before it fires bump flushVersion.
+    rerender({ version: 1, flush: 0 })
+    vi.advanceTimersByTime(1000)
+
+    await act(async () => {
+      rerender({ version: 1, flush: 1 })
+    })
+
+    // Immediate save fired once.
+    expect(saveDraft).toHaveBeenCalledTimes(1)
+
+    // Past the original debounce: still only one save (pending timer was cancelled).
+    await act(async () => {
+      vi.advanceTimersByTime(2100)
+    })
+    expect(saveDraft).toHaveBeenCalledTimes(1)
+  })
+
+  it('respects suppressRef on immediate flush', async () => {
+    const suppressRef = { current: true }
+    const { rerender } = renderHook(
+      ({ flush }) => useAutosave(() => makeState(), 0, flush, suppressRef),
+      { initialProps: { flush: 0 } },
+    )
+
+    await act(async () => {
+      rerender({ flush: 1 })
+    })
+
+    expect(saveDraft).not.toHaveBeenCalled()
+    expect(clearDraft).not.toHaveBeenCalled()
+  })
+
+  it('uses latest state on flush (no stale capture)', async () => {
+    const suppressRef = { current: false }
+    let currentState = makeState({ referenceInfo: { title: 'Old', author: 'A', source: 'sketchfab' as const, sketchfabUid: 'old' } })
+    const { rerender } = renderHook(
+      ({ flush }) => useAutosave(() => currentState, 0, flush, suppressRef),
+      { initialProps: { flush: 0 } },
+    )
+
+    // Update state, then bump flushVersion. The hook captures getState via ref,
+    // so the latest reference data should make it into saveDraft.
+    currentState = makeState({ referenceInfo: { title: 'New', author: 'B', source: 'sketchfab' as const, sketchfabUid: 'new' } })
+
+    await act(async () => {
+      rerender({ flush: 1 })
+    })
+
+    expect(saveDraft).toHaveBeenCalledTimes(1)
+    const arg = (saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]
+    expect(arg.referenceInfo).toMatchObject({ title: 'New', sketchfabUid: 'new' })
   })
 })
