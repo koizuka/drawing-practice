@@ -32,7 +32,7 @@ export interface SketchfabModelMeta {
 
 const UID_PATTERN = /^[A-Za-z0-9]{32}$/
 
-function isValidUid(value: string | undefined | null): value is string {
+export function isValidUid(value: string | undefined | null): value is string {
   return typeof value === 'string' && UID_PATTERN.test(value)
 }
 

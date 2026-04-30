@@ -34,10 +34,9 @@ const messages = {
     'urlSectionLabel': 'URL (Image / YouTube / Pexels)',
 
     // SketchfabViewer
-    'searchModels': 'Search models...',
+    'searchModels': 'Search models or paste UID / URL...',
     'search': 'Search',
     'clearSearch': 'Clear search',
-    'modelUid': 'Model UID...',
     'load': 'Load',
     'loadingModel': 'Loading model...',
     'loadingApi': 'Loading Sketchfab API...',
@@ -163,10 +162,9 @@ const messages = {
     'urlSectionLabel': 'URL（画像・YouTube・Pexels）',
 
     // SketchfabViewer
-    'searchModels': 'モデルを検索...',
+    'searchModels': 'モデル検索 / UID・URLの貼り付け...',
     'search': '検索',
     'clearSearch': '検索をクリア',
-    'modelUid': 'モデルUID...',
     'load': '読込',
     'loadingModel': 'モデルを読み込み中...',
     'loadingApi': 'Sketchfab APIを読み込み中...',

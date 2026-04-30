@@ -47,7 +47,7 @@ describe('SketchfabViewer search history dropdown', () => {
     // Wait for the async history load to populate state
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
 
-    const input = screen.getByPlaceholderText('Search models...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
     fireEvent.mouseDown(input)
     fireEvent.focus(input)
 
@@ -66,7 +66,7 @@ describe('SketchfabViewer search history dropdown', () => {
 
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
 
-    const input = screen.getByPlaceholderText('Search models...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
     fireEvent.mouseDown(input)
     fireEvent.focus(input)
 
@@ -90,7 +90,7 @@ describe('SketchfabViewer search history dropdown', () => {
     render(<SketchfabViewer onFixAngle={vi.fn()} />)
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
 
-    const input = screen.getByPlaceholderText('Search models...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
     fireEvent.mouseDown(input)
     fireEvent.focus(input)
     // Click outside to blur — this is what was wrongly selecting the option.
@@ -114,7 +114,7 @@ describe('SketchfabViewer search history dropdown', () => {
     render(<SketchfabViewer onFixAngle={vi.fn()} />)
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
 
-    const input = screen.getByPlaceholderText('Search models...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
     fireEvent.mouseDown(input)
     fireEvent.focus(input)
 
@@ -225,13 +225,93 @@ describe('SketchfabViewer search history dropdown', () => {
 
     // Now focus the search input — the dropdown should open with the saved
     // category-only entry visible.
-    const input = screen.getByPlaceholderText('Search models...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
     fireEvent.mouseDown(input)
     fireEvent.focus(input)
 
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /Animals/ })).toBeInTheDocument()
     })
+    fetchSpy.mockRestore()
+  })
+})
+
+describe('SketchfabViewer unified search/UID input', () => {
+  // Stubs the Sketchfab client so loadModel doesn't throw when the iframe path
+  // would normally instantiate a viewer.
+  function stubSketchfabClient() {
+    const init = vi.fn()
+    ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }))
+    return { init }
+  }
+
+  const VALID_UID = 'a1b2c3d4e5f6789012345678abcdef99' // 32 alphanumeric
+
+  it('button label switches to "Load" when input matches a 32-char UID', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    // Default: keyword mode → button is "Search"
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+
+    fireEvent.change(input, { target: { value: VALID_UID } })
+    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
+  })
+
+  it('button label switches to "Load" when input matches a Sketchfab URL', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: `https://sketchfab.com/3d-models/some-model-${VALID_UID}` } })
+    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument()
+  })
+
+  it('clicking Load with a UID input does not trigger a search fetch and does not save to history', async () => {
+    stubSketchfabClient()
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
+      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+    )
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: VALID_UID } })
+    const loadButton = await screen.findByRole('button', { name: 'Load' })
+    fireEvent.click(loadButton)
+
+    // loadModel triggers an async getSketchfabModel fetch for metadata; let it
+    // resolve, then assert no /v3/search or /v3/models endpoint was hit.
+    await waitFor(() => {
+      const calls = fetchSpy.mock.calls.map(c => c[0] as string)
+      const searchOrModelsCalls = calls.filter(u => u.includes('/v3/search') || u.match(/\/v3\/models\?/))
+      expect(searchOrModelsCalls).toHaveLength(0)
+    })
+    expect(addSketchfabSearchHistoryMock).not.toHaveBeenCalled()
+    fetchSpy.mockRestore()
+  })
+
+  it('pressing Enter with a keyword still runs a search', async () => {
+    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
+      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+    )
+    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    fireEvent.change(input, { target: { value: 'tree' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
+    const url = fetchSpy.mock.calls[0]?.[0] as string
+    expect(url).toContain('/v3/search')
+    expect(url).toContain('q=tree')
     fetchSpy.mockRestore()
   })
 })
