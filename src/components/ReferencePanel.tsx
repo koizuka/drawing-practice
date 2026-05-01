@@ -20,6 +20,7 @@ import {
 } from '../utils/pexels'
 import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage'
 import { resizeImageForHistory, dataUrlToJpegBlob, blobToDataUrl, sha256Hex } from '../utils/imageResize'
+import { resetPageZoom } from '../utils/resetPageZoom'
 import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail'
 import {
   canonicalSketchfabUrl,
@@ -666,6 +667,7 @@ export function ReferencePanel({
   }, [onReferenceChange])
 
   const handleClose = useCallback(() => {
+    resetPageZoom()
     onReferenceChange(s => {
       s.setSource('none')
       s.setReferenceMode('browse')

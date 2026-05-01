@@ -33,6 +33,7 @@ import {
 import type { ReferenceInfo } from '../types'
 import { t } from '../i18n'
 import { ToolbarTooltip } from './ToolbarTooltip'
+import { resetPageZoom } from '../utils/resetPageZoom'
 
 interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void
@@ -191,6 +192,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   }, [hasMore, loadingMore, activeQuery, activeOrientation, currentPage, handleError])
 
   const handleSelect = useCallback((photo: PexelsPhoto) => {
+    resetPageZoom()
     onSelectPhoto(buildPexelsReferenceInfo(photo), photo.src.tiny)
   }, [onSelectPhoto])
 
@@ -210,7 +212,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   }, [reloadHistory])
 
   return (
-    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', p: 1 }}>
+    <Box data-allow-page-zoom="true" sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}>
       {needsKey && (
         <Alert severity="info" sx={{ mb: 1 }} action={
           <Button color="inherit" size="small" onClick={onOpenApiKeySettings}>

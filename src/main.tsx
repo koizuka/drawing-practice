@@ -11,8 +11,19 @@ import App from './App.tsx'
 // iOS touch pinch and browser zoom (Cmd +/-, accessibility zoom) are intentionally
 // left available — viewport meta no longer locks scale, so users who need to zoom
 // can still do so.
+// Search screens (Sketchfab/Pexels result lists) opt back IN to page-zoom by
+// marking their scroll container with `data-allow-page-zoom="true"` so users can
+// peek at small thumbnails; `resetPageZoom()` restores 1.0 on screen transition.
+// Touch-device only: on macOS desktop, ctrl+wheel updates the BROWSER page-zoom
+// (same level as Cmd +/-) which has no JS reset API — leaving the user stuck if
+// we let it through. Use DevTools touch emulation to test the iOS path on Mac.
 const preventCtrlWheelZoom = (e: WheelEvent) => {
-  if (e.ctrlKey) e.preventDefault()
+  if (!e.ctrlKey) return
+  if (navigator.maxTouchPoints > 0) {
+    const target = e.target as Element | null
+    if (target?.closest?.('[data-allow-page-zoom="true"]')) return
+  }
+  e.preventDefault()
 }
 document.addEventListener('wheel', preventCtrlWheelZoom, { passive: false })
 
