@@ -20,6 +20,7 @@ import {
   type SketchfabSearchHistoryEntry,
 } from '../storage'
 import { ToolbarTooltip } from './ToolbarTooltip'
+import { resetPageZoom } from '../utils/resetPageZoom'
 
 export interface SketchfabFixAngleExtras {
   searchContext: SketchfabSearchContext | null
@@ -254,6 +255,7 @@ export function SketchfabViewer({
   }, [showViewer, scriptLoaded, initViewer])
 
   const loadModel = useCallback((uid: string, meta?: SketchfabModelMeta) => {
+    resetPageZoom()
     setShowViewer(true)
     setModelUid(uid)
     if (meta) {
@@ -522,7 +524,7 @@ export function SketchfabViewer({
 
       {/* Browse/search UI */}
       {!showViewer && (
-        <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+        <Box data-allow-page-zoom="true" sx={{ flex: 1, overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}>
           {/* Search row — Autocomplete shows the past-searches dropdown. */}
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <Autocomplete<SketchfabSearchHistoryEntry, false, false, true>
