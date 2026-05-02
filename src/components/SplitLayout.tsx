@@ -133,8 +133,11 @@ function SplitLayoutInner() {
 
   const handleToggleReferenceCollapsed = useCallback(() => {
     setReferenceCollapsed(v => !v)
-    incrementChangeVersion()
-  }, [incrementChangeVersion])
+    // Immediate flush: a fast reload after toggling shouldn't lose the layout
+    // intent. Same rationale as reference changes — the user explicitly asked
+    // for a layout state and expects it to survive a reload.
+    incrementFlushVersion()
+  }, [incrementFlushVersion])
 
   // Pause timer whenever the reference changes — the timer should only advance
   // during active drawing. The next stroke will resume it via handleStrokeCountChange.
@@ -217,6 +220,12 @@ function SplitLayoutInner() {
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
   }, [])
+
+  // When the user closes the reference, the stored `referenceSize` is stale.
+  // Pass null in that case so DrawingCanvas falls back to free-drawing
+  // semantics (baseScale=1, home + grid centered at world origin) instead of
+  // staying anchored to the previous image's dimensions.
+  const drawingFitSize = source === 'none' ? null : referenceSize
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped(prev => !prev)
@@ -498,7 +507,10 @@ function SplitLayoutInner() {
         </Alert>
       )}
       <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen) ? 'none' : 'block' }}>
+      {/* Hide for free-drawing collapse, but keep visible while the Sketchfab
+          3D viewer is mounted — its captured-screenshot framing must match what
+          the user sees on Fix Angle, which requires the panel at half-screen. */}
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !sketchfabViewerActive) ? 'none' : 'block' }}>
         <ReferencePanel
           overlayStrokes={overlayStrokes}
           overlayCurrentStrokeRef={currentStrokeRef}
@@ -524,7 +536,7 @@ function SplitLayoutInner() {
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
         <DrawingPanel
-          referenceSize={referenceSize}
+          referenceSize={drawingFitSize}
           referenceInfo={referenceInfo}
           onStrokeManagerReady={handleStrokeManagerReady}
           onStrokesChanged={handleStrokesChanged}
