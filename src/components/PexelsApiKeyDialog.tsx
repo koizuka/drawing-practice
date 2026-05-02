@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState } from 'react';
 import {
   Button,
   Dialog,
@@ -8,44 +8,45 @@ import {
   DialogTitle,
   Link,
   TextField,
-} from '@mui/material'
-import { getPexelsApiKey, setPexelsApiKey } from '../utils/pexels'
-import { t } from '../i18n'
+} from '@mui/material';
+import { getPexelsApiKey, setPexelsApiKey } from '../utils/pexels';
+import { t } from '../i18n';
 
 interface PexelsApiKeyDialogProps {
-  open: boolean
-  onClose: () => void
+  open: boolean;
+  onClose: () => void;
   /** Called after a key change (save or clear) so parents can re-check state. */
-  onKeyChanged?: () => void
+  onKeyChanged?: () => void;
 }
 
 interface PexelsApiKeyDialogContentProps {
-  onClose: () => void
-  onKeyChanged?: () => void
+  onClose: () => void;
+  onKeyChanged?: () => void;
 }
 
 function PexelsApiKeyDialogBody({ onClose, onKeyChanged }: PexelsApiKeyDialogContentProps) {
-  const [value, setValue] = useState(() => getPexelsApiKey())
+  const [value, setValue] = useState(() => getPexelsApiKey());
 
   const handleSave = () => {
-    setPexelsApiKey(value.trim())
-    onKeyChanged?.()
-    onClose()
-  }
+    setPexelsApiKey(value.trim());
+    onKeyChanged?.();
+    onClose();
+  };
 
   const handleClear = () => {
-    setPexelsApiKey('')
-    setValue('')
-    onKeyChanged?.()
-    onClose()
-  }
+    setPexelsApiKey('');
+    setValue('');
+    onKeyChanged?.();
+    onClose();
+  };
 
   return (
     <>
       <DialogTitle>{t('pexelsApiKeyTitle')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
-          {t('pexelsApiKeyDescription')}{' '}
+          {t('pexelsApiKeyDescription')}
+          {' '}
           <Link href="https://www.pexels.com/api/" target="_blank" rel="noreferrer noopener">
             pexels.com/api
           </Link>
@@ -57,7 +58,7 @@ function PexelsApiKeyDialogBody({ onClose, onKeyChanged }: PexelsApiKeyDialogCon
           label={t('pexelsApiKeyInput')}
           value={value}
           onChange={e => setValue(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           size="small"
         />
       </DialogContent>
@@ -69,7 +70,7 @@ function PexelsApiKeyDialogBody({ onClose, onKeyChanged }: PexelsApiKeyDialogCon
         </Button>
       </DialogActions>
     </>
-  )
+  );
 }
 
 export function PexelsApiKeyDialog({ open, onClose, onKeyChanged }: PexelsApiKeyDialogProps) {
@@ -77,5 +78,5 @@ export function PexelsApiKeyDialog({ open, onClose, onKeyChanged }: PexelsApiKey
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm">
       {open && <PexelsApiKeyDialogBody onClose={onClose} onKeyChanged={onKeyChanged} />}
     </Dialog>
-  )
+  );
 }

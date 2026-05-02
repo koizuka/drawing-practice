@@ -9,9 +9,9 @@ export function selectKeysToEvict<T, K>(
   getKey: (row: T) => K,
   getTime: (row: T) => number,
 ): K[] {
-  if (rows.length <= limit) return []
+  if (rows.length <= limit) return [];
   return [...rows]
     .sort((a, b) => getTime(a) - getTime(b))
     .slice(0, rows.length - limit)
-    .map(getKey)
+    .map(getKey);
 }

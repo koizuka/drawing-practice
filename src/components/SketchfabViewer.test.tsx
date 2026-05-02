@@ -1,22 +1,22 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { vi } from 'vitest'
-import type { SketchfabSearchHistoryEntry } from '../storage/db'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { vi } from 'vitest';
+import type { SketchfabSearchHistoryEntry } from '../storage/db';
 
 // Mock the storage layer so we can inject deterministic search history
 // without touching IndexedDB. Use type-safe mocks per call.
-const getSketchfabSearchHistoryMock = vi.fn<() => Promise<SketchfabSearchHistoryEntry[]>>()
-const addSketchfabSearchHistoryMock = vi.fn().mockResolvedValue(undefined)
-const deleteSketchfabSearchHistoryMock = vi.fn().mockResolvedValue(undefined)
+const getSketchfabSearchHistoryMock = vi.fn<() => Promise<SketchfabSearchHistoryEntry[]>>();
+const addSketchfabSearchHistoryMock = vi.fn().mockResolvedValue(undefined);
+const deleteSketchfabSearchHistoryMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../storage', () => ({
   getSketchfabSearchHistory: () => getSketchfabSearchHistoryMock(),
   addSketchfabSearchHistory: (...args: unknown[]) => addSketchfabSearchHistoryMock(...args),
   deleteSketchfabSearchHistory: (...args: unknown[]) => deleteSketchfabSearchHistoryMock(...args),
-}))
+}));
 
-import { SketchfabViewer } from './SketchfabViewer'
+import { SketchfabViewer } from './SketchfabViewer';
 
-const NOW = new Date()
+const NOW = new Date();
 
 function makeEntry(overrides: Partial<SketchfabSearchHistoryEntry> = {}): SketchfabSearchHistoryEntry {
   return {
@@ -25,113 +25,113 @@ function makeEntry(overrides: Partial<SketchfabSearchHistoryEntry> = {}): Sketch
     timeFilter: 'all',
     lastUsedAt: NOW,
     ...overrides,
-  }
+  };
 }
 
 beforeEach(() => {
-  getSketchfabSearchHistoryMock.mockReset()
-  addSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined)
+  getSketchfabSearchHistoryMock.mockReset();
+  addSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined);
   deleteSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined)
   // Default: no Sketchfab API loaded — keeps the viewer in browse mode.
-  ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = undefined
-})
+  ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = undefined;
+});
 
 describe('SketchfabViewer search history dropdown', () => {
   it('opens the dropdown when the search input is focused, listing keyword entries', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: 'tree|', query: 'tree' }),
       makeEntry({ key: 'castle|', query: 'castle' }),
-    ])
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    ]);
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
 
     // Wait for the async history load to populate state
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.mouseDown(input)
-    fireEvent.focus(input)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.mouseDown(input);
+    fireEvent.focus(input);
 
     // Both history queries should appear in the dropdown listbox
     await waitFor(() => {
-      expect(screen.getByRole('option', { name: /tree/ })).toBeInTheDocument()
-    })
-    expect(screen.getByRole('option', { name: /castle/ })).toBeInTheDocument()
-  })
+      expect(screen.getByRole('option', { name: /tree/ })).toBeInTheDocument();
+    });
+    expect(screen.getByRole('option', { name: /castle/ })).toBeInTheDocument();
+  });
 
   it('opens the dropdown showing category-only entries by their translated label', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
-    ])
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
+    ]);
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
 
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.mouseDown(input)
-    fireEvent.focus(input)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.mouseDown(input);
+    fireEvent.focus(input);
 
     await waitFor(() => {
       // Category-only entry is labeled by the translated category name.
       // English locale renders 'animals-pets' as 'Animals'.
-      expect(screen.getByRole('option', { name: /Animals/ })).toBeInTheDocument()
-    })
-  })
+      expect(screen.getByRole('option', { name: /Animals/ })).toBeInTheDocument();
+    });
+  });
 
   it('does NOT spuriously fire onChange-driven selection when the input is focused with empty value and only category-only history exists', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
-    ])
+    ]);
     // The viewer reads window.fetch for the actual category browse — block it
     // so a spurious selection would surface as an unexpected fetch call.
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.mouseDown(input)
-    fireEvent.focus(input)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.mouseDown(input);
+    fireEvent.focus(input);
     // Click outside to blur — this is what was wrongly selecting the option.
-    fireEvent.blur(input)
+    fireEvent.blur(input);
 
     // After mount + focus + blur with no explicit option click, no search
     // fetch should have been triggered (mount-only auto-restore is also not
     // active because no initial* props were passed).
-    expect(fetchSpy).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
-  })
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
 
   it('triggers a category-only search when a category-only history entry is clicked', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
-    ])
+    ]);
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.mouseDown(input)
-    fireEvent.focus(input)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.mouseDown(input);
+    fireEvent.focus(input);
 
-    const animalsOption = await screen.findByRole('option', { name: /Animals/ })
-    fireEvent.click(animalsOption)
+    const animalsOption = await screen.findByRole('option', { name: /Animals/ });
+    fireEvent.click(animalsOption);
 
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    const calledUrl = (fetchSpy.mock.calls[0]?.[0] as string) ?? ''
-    expect(calledUrl).toContain('categories=animals-pets')
-    fetchSpy.mockRestore()
-  })
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    const calledUrl = (fetchSpy.mock.calls[0]?.[0] as string) ?? '';
+    expect(calledUrl).toContain('categories=animals-pets');
+    fetchSpy.mockRestore();
+  });
 
   it('restores search context when initialQuery/initialCategory props are provided (URL-history reopen flow)', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
+    );
 
     // Simulate the parent passing the saved searchContext after a URL-history
     // sketchfab entry was selected — this is what makes the "Animals" button
@@ -143,304 +143,304 @@ describe('SketchfabViewer search history dropdown', () => {
         initialCategory="animals-pets"
         initialTimeFilter="all"
       />,
-    )
+    );
 
     // The mount-only auto-restore should fire a category fetch
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    const firstCallUrl = (fetchSpy.mock.calls[0]?.[0] as string) ?? ''
-    expect(firstCallUrl).toContain('categories=animals-pets')
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    const firstCallUrl = (fetchSpy.mock.calls[0]?.[0] as string) ?? '';
+    expect(firstCallUrl).toContain('categories=animals-pets');
 
     // The Animals category button reflects activeCategory via 'contained' variant.
     // MUI renders the variant as a CSS class — assert via the button's class list.
-    const animalsButton = screen.getByRole('button', { name: 'Animals' })
+    const animalsButton = screen.getByRole('button', { name: 'Animals' });
     await waitFor(() => {
-      expect(animalsButton.className).toMatch(/MuiButton-contained/)
-    })
-    fetchSpy.mockRestore()
-  })
+      expect(animalsButton.className).toMatch(/MuiButton-contained/);
+    });
+    fetchSpy.mockRestore();
+  });
 
   it('clicking the All button after a category click clears the active category and fetches /v3/models without category filter', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
     // First click Animals → activeCategory becomes 'animals-pets'
-    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    expect(screen.getByRole('button', { name: 'Animals' }).className).toMatch(/MuiButton-contained/)
+    fireEvent.click(screen.getByRole('button', { name: 'Animals' }));
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'Animals' }).className).toMatch(/MuiButton-contained/);
 
     // Then click All → activeCategory cleared, All becomes contained
-    fireEvent.click(screen.getByRole('button', { name: 'All' }))
+    fireEvent.click(screen.getByRole('button', { name: 'All' }));
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'All' }).className).toMatch(/MuiButton-contained/)
-    })
-    expect(screen.getByRole('button', { name: 'Animals' }).className).not.toMatch(/MuiButton-contained/)
+      expect(screen.getByRole('button', { name: 'All' }).className).toMatch(/MuiButton-contained/);
+    });
+    expect(screen.getByRole('button', { name: 'Animals' }).className).not.toMatch(/MuiButton-contained/);
 
     // The most recent fetch should be /v3/models WITHOUT a `categories=` param
-    const lastUrl = fetchSpy.mock.calls.at(-1)?.[0] as string
-    expect(lastUrl).not.toContain('categories=')
-    fetchSpy.mockRestore()
-  })
+    const lastUrl = fetchSpy.mock.calls.at(-1)?.[0] as string;
+    expect(lastUrl).not.toContain('categories=');
+    fetchSpy.mockRestore();
+  });
 
   it('All button is initially highlighted when no category is active and no search has run', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
-    expect(screen.getByRole('button', { name: 'All' }).className).toMatch(/MuiButton-contained/)
-  })
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
+    expect(screen.getByRole('button', { name: 'All' }).className).toMatch(/MuiButton-contained/);
+  });
 
   it('full flow: clicking the Animals category button saves to history and the dropdown shows it on next focus', async () => {
     // No history initially
-    getSketchfabSearchHistoryMock.mockResolvedValueOnce([])
+    getSketchfabSearchHistoryMock.mockResolvedValueOnce([]);
     // After the category click triggers reloadHistory, return the new entry
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
-    ])
+    ]);
 
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalledTimes(1))
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalledTimes(1));
 
     // Click the Animals category button — this is the "category-only browse"
     // path that previously was not being saved.
-    const animalsButton = screen.getByRole('button', { name: 'Animals' })
-    fireEvent.click(animalsButton)
+    const animalsButton = screen.getByRole('button', { name: 'Animals' });
+    fireEvent.click(animalsButton);
 
     // Wait for the fetch to complete and recordSearch → addSketchfabSearchHistory
     // → reloadHistory chain to fire.
-    await waitFor(() => expect(addSketchfabSearchHistoryMock).toHaveBeenCalled())
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(addSketchfabSearchHistoryMock).toHaveBeenCalled());
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalledTimes(2));
 
     // addSketchfabSearchHistory should be called with empty query + the category
-    const callArgs = addSketchfabSearchHistoryMock.mock.calls[0]
-    expect(callArgs[0]).toBe('') // query
-    expect(callArgs[2]).toBe('animals-pets') // category
+    const callArgs = addSketchfabSearchHistoryMock.mock.calls[0];
+    expect(callArgs[0]).toBe(''); // query
+    expect(callArgs[2]).toBe('animals-pets'); // category
 
     // Now focus the search input — the dropdown should open with the saved
     // category-only entry visible.
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.mouseDown(input)
-    fireEvent.focus(input)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.mouseDown(input);
+    fireEvent.focus(input);
 
     await waitFor(() => {
-      expect(screen.getByRole('option', { name: /Animals/ })).toBeInTheDocument()
-    })
-    fetchSpy.mockRestore()
-  })
-})
+      expect(screen.getByRole('option', { name: /Animals/ })).toBeInTheDocument();
+    });
+    fetchSpy.mockRestore();
+  });
+});
 
 describe('SketchfabViewer unified search/UID input', () => {
   // Stubs the Sketchfab client so loadModel doesn't throw when the iframe path
   // would normally instantiate a viewer.
   function stubSketchfabClient() {
     const init = vi.fn()
-    ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }))
-    return { init }
+    ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }));
+    return { init };
   }
 
-  const VALID_UID = 'a1b2c3d4e5f6789012345678abcdef99' // 32 alphanumeric
+  const VALID_UID = 'a1b2c3d4e5f6789012345678abcdef99'; // 32 alphanumeric
 
   it('button label switches to "Load" when input matches a 32-char UID', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
     // Default: keyword mode → button is "Search"
-    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
 
-    fireEvent.change(input, { target: { value: VALID_UID } })
-    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument()
-  })
+    fireEvent.change(input, { target: { value: VALID_UID } });
+    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Search' })).not.toBeInTheDocument();
+  });
 
   it('button label switches to "Load" when input matches a Sketchfab URL', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: `https://sketchfab.com/3d-models/some-model-${VALID_UID}` } })
-    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument()
-  })
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: `https://sketchfab.com/3d-models/some-model-${VALID_UID}` } });
+    expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument();
+  });
 
   it('clicking Load with a UID input does not trigger a search fetch and does not save to history', async () => {
-    stubSketchfabClient()
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    stubSketchfabClient();
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    );
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: VALID_UID } })
-    const loadButton = await screen.findByRole('button', { name: 'Load' })
-    fireEvent.click(loadButton)
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: VALID_UID } });
+    const loadButton = await screen.findByRole('button', { name: 'Load' });
+    fireEvent.click(loadButton);
 
     // loadModel triggers an async getSketchfabModel fetch for metadata; let it
     // resolve, then assert no /v3/search or /v3/models endpoint was hit.
     await waitFor(() => {
-      const calls = fetchSpy.mock.calls.map(c => c[0] as string)
-      const searchOrModelsCalls = calls.filter(u => u.includes('/v3/search') || u.match(/\/v3\/models\?/))
-      expect(searchOrModelsCalls).toHaveLength(0)
-    })
-    expect(addSketchfabSearchHistoryMock).not.toHaveBeenCalled()
-    fetchSpy.mockRestore()
-  })
+      const calls = fetchSpy.mock.calls.map(c => c[0] as string);
+      const searchOrModelsCalls = calls.filter(u => u.includes('/v3/search') || u.match(/\/v3\/models\?/));
+      expect(searchOrModelsCalls).toHaveLength(0);
+    });
+    expect(addSketchfabSearchHistoryMock).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
 
   it('pressing Enter with a keyword still runs a search', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    )
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    );
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: 'tree' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: 'tree' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalled())
-    const url = fetchSpy.mock.calls[0]?.[0] as string
-    expect(url).toContain('/v3/search')
-    expect(url).toContain('q=tree')
-    fetchSpy.mockRestore()
-  })
-})
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
+    const url = fetchSpy.mock.calls[0]?.[0] as string;
+    expect(url).toContain('/v3/search');
+    expect(url).toContain('q=tree');
+    fetchSpy.mockRestore();
+  });
+});
 
 describe('SketchfabViewer search loading and error feedback', () => {
   it('shows a spinner while the search is in flight and hides it after the response resolves', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    let resolveFetch: ((value: Response) => void) | undefined
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    let resolveFetch: ((value: Response) => void) | undefined;
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => new Promise<Response>(resolve => { resolveFetch = resolve }),
-    )
+      () => new Promise<Response>((resolve) => { resolveFetch = resolve; }),
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: 'tree' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: 'tree' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     // While the fetch is pending, MUI CircularProgress renders role="progressbar".
-    await waitFor(() => expect(screen.getByRole('progressbar')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('progressbar')).toBeInTheDocument());
 
     // Resolve the fetch — the spinner should disappear.
-    resolveFetch?.(new Response(JSON.stringify({ results: [], next: null })))
-    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
-    fetchSpy.mockRestore()
-  })
+    resolveFetch?.(new Response(JSON.stringify({ results: [], next: null })));
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+    fetchSpy.mockRestore();
+  });
 
   it('shows an error Alert when the keyword search fetch rejects', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'))
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'));
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: 'tree' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: 'tree' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
 
     // role="alert" is what MUI Alert renders by default — assert via role rather
     // than text so a localized message change doesn't break the test.
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/search failed/i)
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/search failed/i);
     // Spinner must not be left behind after the failure.
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    fetchSpy.mockRestore()
-  })
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    fetchSpy.mockRestore();
+  });
 
   it('clears a previous error when a category browse starts', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     // First call rejects (produces an error), second call resolves cleanly.
     const fetchSpy = vi.spyOn(window, 'fetch')
       .mockRejectedValueOnce(new TypeError('Network down'))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], next: null })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], next: null })));
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
     // Trigger an error first
-    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
-    await screen.findByRole('alert')
+    fireEvent.click(screen.getByRole('button', { name: 'Animals' }));
+    await screen.findByRole('alert');
 
     // Now click Vehicles — the error Alert should disappear because the new
     // fetch starts with cleared error state.
-    fireEvent.click(screen.getByRole('button', { name: 'Vehicles' }))
-    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument())
-    fetchSpy.mockRestore()
-  })
+    fireEvent.click(screen.getByRole('button', { name: 'Vehicles' }));
+    await waitFor(() => expect(screen.queryByRole('alert')).not.toBeInTheDocument());
+    fetchSpy.mockRestore();
+  });
 
   it('aborts a stale search when a newer one starts so the spinner reflects the latest request only', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
     // Track abort signals so we can verify the first request is canceled.
-    const signals: AbortSignal[] = []
-    let resolveSecond: ((value: Response) => void) | undefined
+    const signals: AbortSignal[] = [];
+    let resolveSecond: ((value: Response) => void) | undefined;
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
       (_input: RequestInfo | URL, init?: RequestInit) => {
-        if (init?.signal) signals.push(init.signal)
+        if (init?.signal) signals.push(init.signal);
         // First call: never resolves on its own; will be aborted.
         if (signals.length === 1) {
           return new Promise<Response>((_resolve, reject) => {
             init?.signal?.addEventListener('abort', () => {
-              reject(new DOMException('Aborted', 'AbortError'))
-            })
-          })
+              reject(new DOMException('Aborted', 'AbortError'));
+            });
+          });
         }
         // Second call: resolves when test triggers it.
-        return new Promise<Response>(resolve => { resolveSecond = resolve })
+        return new Promise<Response>((resolve) => { resolveSecond = resolve; });
       },
-    )
+    );
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    const input = screen.getByPlaceholderText('Search models or paste UID / URL...')
-    fireEvent.change(input, { target: { value: 'tree' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(signals).toHaveLength(1))
+    const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
+    fireEvent.change(input, { target: { value: 'tree' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(signals).toHaveLength(1));
 
     // Start a second search while the first is still in flight.
-    fireEvent.change(input, { target: { value: 'castle' } })
-    fireEvent.keyDown(input, { key: 'Enter' })
-    await waitFor(() => expect(signals).toHaveLength(2))
+    fireEvent.change(input, { target: { value: 'castle' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => expect(signals).toHaveLength(2));
 
     // First signal should now be aborted; second remains active.
-    expect(signals[0].aborted).toBe(true)
-    expect(signals[1].aborted).toBe(false)
+    expect(signals[0].aborted).toBe(true);
+    expect(signals[1].aborted).toBe(false);
     // Spinner is still on (second request running).
-    expect(screen.getByRole('progressbar')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toBeInTheDocument();
     // No error from the aborted first request.
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 
     // Resolve the second request — spinner should clear.
-    resolveSecond?.(new Response(JSON.stringify({ results: [], next: null })))
-    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument())
-    fetchSpy.mockRestore()
-  })
+    resolveSecond?.(new Response(JSON.stringify({ results: [], next: null })));
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+    fetchSpy.mockRestore();
+  });
 
   it('shows an error Alert when a category browse fetch rejects', async () => {
-    getSketchfabSearchHistoryMock.mockResolvedValue([])
-    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'))
+    getSketchfabSearchHistoryMock.mockResolvedValue([]);
+    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'));
 
-    render(<SketchfabViewer onFixAngle={vi.fn()} />)
-    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled())
+    render(<SketchfabViewer onFixAngle={vi.fn()} />);
+    await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Animals' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Animals' }));
 
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/(failed|fetch)/i)
-    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
-    fetchSpy.mockRestore()
-  })
-})
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(/(failed|fetch)/i);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    fetchSpy.mockRestore();
+  });
+});

@@ -1,4 +1,4 @@
-import { Tooltip, type TooltipProps } from '@mui/material'
+import { Tooltip, type TooltipProps } from '@mui/material';
 
 export function ToolbarTooltip(props: TooltipProps) {
   return (
@@ -7,5 +7,5 @@ export function ToolbarTooltip(props: TooltipProps) {
       disableFocusListener
       {...props}
     />
-  )
+  );
 }

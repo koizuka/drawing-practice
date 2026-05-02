@@ -1,18 +1,18 @@
-import type { Point } from './types'
+import type { Point } from './types';
 
 export interface Transform {
-  offsetX: number
-  offsetY: number
-  scale: number
+  offsetX: number;
+  offsetY: number;
+  scale: number;
 }
 
 export interface ContainerSize {
-  width: number
-  height: number
+  width: number;
+  height: number;
 }
 
-const MIN_ZOOM = 0.25
-const MAX_ZOOM = 8
+const MIN_ZOOM = 0.25;
+const MAX_ZOOM = 8;
 
 /**
  * Camera-model view transform. State is stored as a viewing center in world
@@ -28,13 +28,13 @@ const MAX_ZOOM = 8
  * free drawing). Callers wire this via {@link setHome}.
  */
 export class ViewTransform {
-  private viewCenterX = 0
-  private viewCenterY = 0
-  private zoom = 1
-  private homeX = 0
-  private homeY = 0
-  private homeZoom = 1
-  private listeners = new Set<() => void>()
+  private viewCenterX = 0;
+  private viewCenterY = 0;
+  private zoom = 1;
+  private homeX = 0;
+  private homeY = 0;
+  private homeZoom = 1;
+  private listeners = new Set<() => void>();
 
   /**
    * Set the home position (and zoom) the camera resets to and snap the camera
@@ -43,34 +43,34 @@ export class ViewTransform {
    * new content center" — any prior pan/zoom is intentionally cleared.
    */
   setHome(centerX: number, centerY: number, zoom = 1): void {
-    this.homeX = centerX
-    this.homeY = centerY
-    this.homeZoom = zoom
+    this.homeX = centerX;
+    this.homeY = centerY;
+    this.homeZoom = zoom;
     if (this.viewCenterX === centerX && this.viewCenterY === centerY && this.zoom === zoom) {
-      return
+      return;
     }
-    this.viewCenterX = centerX
-    this.viewCenterY = centerY
-    this.zoom = zoom
-    this.notify()
+    this.viewCenterX = centerX;
+    this.viewCenterY = centerY;
+    this.zoom = zoom;
+    this.notify();
   }
 
   reset(): void {
-    if (this.isAtHomeInternal()) return
-    this.viewCenterX = this.homeX
-    this.viewCenterY = this.homeY
-    this.zoom = this.homeZoom
-    this.notify()
+    if (this.isAtHomeInternal()) return;
+    this.viewCenterX = this.homeX;
+    this.viewCenterY = this.homeY;
+    this.zoom = this.homeZoom;
+    this.notify();
   }
 
   isDirty(): boolean {
-    return !this.isAtHomeInternal()
+    return !this.isAtHomeInternal();
   }
 
   private isAtHomeInternal(): boolean {
     return this.viewCenterX === this.homeX
       && this.viewCenterY === this.homeY
-      && this.zoom === this.homeZoom
+      && this.zoom === this.homeZoom;
   }
 
   /**
@@ -79,28 +79,28 @@ export class ViewTransform {
    * free drawing); the absolute scale applied is `baseScale * zoom`.
    */
   project(container: ContainerSize, baseScale: number): Transform {
-    const scale = baseScale * this.zoom
+    const scale = baseScale * this.zoom;
     return {
       offsetX: container.width / 2 - this.viewCenterX * scale,
       offsetY: container.height / 2 - this.viewCenterY * scale,
       scale,
-    }
+    };
   }
 
   screenToCanvas(screenX: number, screenY: number, container: ContainerSize, baseScale: number): Point {
-    const t = this.project(container, baseScale)
+    const t = this.project(container, baseScale);
     return {
       x: (screenX - t.offsetX) / t.scale,
       y: (screenY - t.offsetY) / t.scale,
-    }
+    };
   }
 
   canvasToScreen(canvasX: number, canvasY: number, container: ContainerSize, baseScale: number): Point {
-    const t = this.project(container, baseScale)
+    const t = this.project(container, baseScale);
     return {
       x: canvasX * t.scale + t.offsetX,
       y: canvasY * t.scale + t.offsetY,
-    }
+    };
   }
 
   /**
@@ -118,51 +118,51 @@ export class ViewTransform {
     container: ContainerSize,
     baseScale: number,
   ): void {
-    if (scaleDelta === 1 && panX === 0 && panY === 0) return
-    const oldScale = baseScale * this.zoom
-    if (oldScale <= 0) return
+    if (scaleDelta === 1 && panX === 0 && panY === 0) return;
+    const oldScale = baseScale * this.zoom;
+    if (oldScale <= 0) return;
 
     // World point at the focal screen point before the gesture.
-    const focalWorldX = this.viewCenterX + (focalX - container.width / 2) / oldScale
-    const focalWorldY = this.viewCenterY + (focalY - container.height / 2) / oldScale
+    const focalWorldX = this.viewCenterX + (focalX - container.width / 2) / oldScale;
+    const focalWorldY = this.viewCenterY + (focalY - container.height / 2) / oldScale;
 
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * scaleDelta))
-    const newScale = baseScale * newZoom
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * scaleDelta));
+    const newScale = baseScale * newZoom;
 
     // After the gesture we want the focal world point to land at
     // (focalX + panX, focalY + panY) in screen space — i.e. the gesture's
     // focal point follows the user's fingers.
-    const targetX = focalX + panX
-    const targetY = focalY + panY
-    this.viewCenterX = focalWorldX - (targetX - container.width / 2) / newScale
-    this.viewCenterY = focalWorldY - (targetY - container.height / 2) / newScale
-    this.zoom = newZoom
-    this.notify()
+    const targetX = focalX + panX;
+    const targetY = focalY + panY;
+    this.viewCenterX = focalWorldX - (targetX - container.width / 2) / newScale;
+    this.viewCenterY = focalWorldY - (targetY - container.height / 2) / newScale;
+    this.zoom = newZoom;
+    this.notify();
   }
 
   /** Apply the projected transform to a canvas rendering context. */
   applyToContext(ctx: CanvasRenderingContext2D, container: ContainerSize, baseScale: number): void {
-    const t = this.project(container, baseScale)
-    ctx.setTransform(t.scale, 0, 0, t.scale, t.offsetX, t.offsetY)
+    const t = this.project(container, baseScale);
+    ctx.setTransform(t.scale, 0, 0, t.scale, t.offsetX, t.offsetY);
   }
 
   /** Current effective absolute scale for the given panel (baseScale * zoom). */
   getScale(baseScale: number): number {
-    return baseScale * this.zoom
+    return baseScale * this.zoom;
   }
 
   /** Camera state snapshot — useful for serialization or UI inspection. */
   getCamera(): { viewCenterX: number; viewCenterY: number; zoom: number } {
-    return { viewCenterX: this.viewCenterX, viewCenterY: this.viewCenterY, zoom: this.zoom }
+    return { viewCenterX: this.viewCenterX, viewCenterY: this.viewCenterY, zoom: this.zoom };
   }
 
   /** Subscribe to camera changes. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void {
-    this.listeners.add(listener)
-    return () => { this.listeners.delete(listener) }
+    this.listeners.add(listener);
+    return () => { this.listeners.delete(listener); };
   }
 
   private notify(): void {
-    for (const listener of this.listeners) listener()
+    for (const listener of this.listeners) listener();
   }
 }

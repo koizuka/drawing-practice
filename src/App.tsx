@@ -1,5 +1,5 @@
-import { CssBaseline } from '@mui/material'
-import { SplitLayout } from './components/SplitLayout'
+import { CssBaseline } from '@mui/material';
+import { SplitLayout } from './components/SplitLayout';
 
 function App() {
   return (
@@ -7,7 +7,7 @@ function App() {
       <CssBaseline />
       <SplitLayout />
     </>
-  )
+  );
 }
 
-export default App
+export default App;

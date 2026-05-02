@@ -1,59 +1,59 @@
-import { createContext, useRef, useState, useCallback, type ReactNode } from 'react'
-import { GuideManager } from './GuideManager'
-import type { GuideLine, GridSettings, GuideState } from './types'
-import { DEFAULT_GUIDE_STATE } from './types'
+import { createContext, useRef, useState, useCallback, type ReactNode } from 'react';
+import { GuideManager } from './GuideManager';
+import type { GuideLine, GridSettings, GuideState } from './types';
+import { DEFAULT_GUIDE_STATE } from './types';
 
 interface GuideContextValue {
-  guideManagerRef: React.RefObject<GuideManager>
-  grid: GridSettings
-  lines: readonly GuideLine[]
-  version: number
-  cycleGridMode: () => void
-  addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine
-  removeLine: (id: string) => void
-  clearLines: () => void
-  restoreGuides: (state: GuideState) => void
+  guideManagerRef: React.RefObject<GuideManager>;
+  grid: GridSettings;
+  lines: readonly GuideLine[];
+  version: number;
+  cycleGridMode: () => void;
+  addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine;
+  removeLine: (id: string) => void;
+  clearLines: () => void;
+  restoreGuides: (state: GuideState) => void;
 }
 
-const GuideContext = createContext<GuideContextValue | null>(null)
+const GuideContext = createContext<GuideContextValue | null>(null);
 
 export function GuideProvider({ children }: { children: ReactNode }) {
-  const guideManagerRef = useRef(new GuideManager())
-  const [version, setVersion] = useState(0)
-  const [grid, setGrid] = useState<GridSettings>(DEFAULT_GUIDE_STATE.grid)
-  const [lines, setLines] = useState<readonly GuideLine[]>([])
+  const guideManagerRef = useRef(new GuideManager());
+  const [version, setVersion] = useState(0);
+  const [grid, setGrid] = useState<GridSettings>(DEFAULT_GUIDE_STATE.grid);
+  const [lines, setLines] = useState<readonly GuideLine[]>([]);
 
   const sync = useCallback(() => {
-    setVersion(v => v + 1)
-    setGrid(guideManagerRef.current.getGrid())
-    setLines([...guideManagerRef.current.getLines()])
-  }, [])
+    setVersion(v => v + 1);
+    setGrid(guideManagerRef.current.getGrid());
+    setLines([...guideManagerRef.current.getLines()]);
+  }, []);
 
   const cycleGridMode = useCallback(() => {
-    guideManagerRef.current.cycleGridMode()
-    sync()
-  }, [sync])
+    guideManagerRef.current.cycleGridMode();
+    sync();
+  }, [sync]);
 
   const addLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
-    const line = guideManagerRef.current.addLine(x1, y1, x2, y2)
-    sync()
-    return line
-  }, [sync])
+    const line = guideManagerRef.current.addLine(x1, y1, x2, y2);
+    sync();
+    return line;
+  }, [sync]);
 
   const removeLine = useCallback((id: string) => {
-    guideManagerRef.current.removeLine(id)
-    sync()
-  }, [sync])
+    guideManagerRef.current.removeLine(id);
+    sync();
+  }, [sync]);
 
   const clearLines = useCallback(() => {
-    guideManagerRef.current.clearLines()
-    sync()
-  }, [sync])
+    guideManagerRef.current.clearLines();
+    sync();
+  }, [sync]);
 
   const restoreGuides = useCallback((state: GuideState) => {
-    guideManagerRef.current.importState(state)
-    sync()
-  }, [sync])
+    guideManagerRef.current.importState(state);
+    sync();
+  }, [sync]);
 
   return (
     <GuideContext.Provider value={{
@@ -66,11 +66,12 @@ export function GuideProvider({ children }: { children: ReactNode }) {
       removeLine,
       clearLines,
       restoreGuides,
-    }}>
+    }}
+    >
       {children}
     </GuideContext.Provider>
-  )
+  );
 }
 
-export { GuideContext }
-export type { GuideContextValue }
+export { GuideContext };
+export type { GuideContextValue };

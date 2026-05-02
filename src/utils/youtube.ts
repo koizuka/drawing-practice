@@ -1,41 +1,42 @@
-export const YOUTUBE_ORIGIN = 'https://www.youtube.com'
+export const YOUTUBE_ORIGIN = 'https://www.youtube.com';
 
-const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/
+const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/;
 
 function isValidVideoId(id: string | null | undefined): id is string {
-  return typeof id === 'string' && VIDEO_ID_PATTERN.test(id)
+  return typeof id === 'string' && VIDEO_ID_PATTERN.test(id);
 }
 
 export function parseYouTubeVideoId(rawUrl: string): string | null {
-  if (!rawUrl) return null
+  if (!rawUrl) return null;
 
-  let url: URL
+  let url: URL;
   try {
-    url = new URL(rawUrl.trim())
-  } catch {
-    return null
+    url = new URL(rawUrl.trim());
+  }
+  catch {
+    return null;
   }
 
-  const host = url.hostname.toLowerCase().replace(/^www\./, '')
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
 
   if (host === 'youtu.be') {
-    const id = url.pathname.split('/').filter(Boolean)[0]
-    return isValidVideoId(id) ? id : null
+    const id = url.pathname.split('/').filter(Boolean)[0];
+    return isValidVideoId(id) ? id : null;
   }
 
   if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com') {
     if (url.pathname === '/watch') {
-      const id = url.searchParams.get('v')
-      return isValidVideoId(id) ? id : null
+      const id = url.searchParams.get('v');
+      return isValidVideoId(id) ? id : null;
     }
-    const segments = url.pathname.split('/').filter(Boolean)
+    const segments = url.pathname.split('/').filter(Boolean);
     if (segments.length >= 2 && (segments[0] === 'shorts' || segments[0] === 'embed' || segments[0] === 'live')) {
-      const id = segments[1]
-      return isValidVideoId(id) ? id : null
+      const id = segments[1];
+      return isValidVideoId(id) ? id : null;
     }
   }
 
-  return null
+  return null;
 }
 
 /**
@@ -44,7 +45,7 @@ export function parseYouTubeVideoId(rawUrl: string): string | null {
  * collapse onto this single key.
  */
 export function buildYouTubeCanonicalUrl(videoId: string): string {
-  return `https://youtu.be/${videoId}`
+  return `https://youtu.be/${videoId}`;
 }
 
 /**
@@ -53,7 +54,7 @@ export function buildYouTubeCanonicalUrl(videoId: string): string {
  * thumbnailUrl for YouTube history entries.
  */
 export function buildYouTubeThumbnailUrl(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/default.jpg`
+  return `https://i.ytimg.com/vi/${videoId}/default.jpg`;
 }
 
 /**
@@ -61,7 +62,7 @@ export function buildYouTubeThumbnailUrl(videoId: string): string {
  * 120x90 default is too low-res for ~180px-wide drawing cards.
  */
 export function buildYouTubeGalleryThumbnailUrl(videoId: string): string {
-  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+  return `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 }
 
 export function buildYouTubeEmbedUrl(videoId: string): string {
@@ -72,11 +73,11 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
     // Required for the IFrame Player API to accept postMessage commands
     // (playVideo / pauseVideo) and to emit state-change events back.
     enablejsapi: '1',
-  })
+  });
   if (typeof window !== 'undefined' && window.location?.origin) {
-    params.set('origin', window.location.origin)
+    params.set('origin', window.location.origin);
   }
-  return `${YOUTUBE_ORIGIN}/embed/${videoId}?${params.toString()}`
+  return `${YOUTUBE_ORIGIN}/embed/${videoId}?${params.toString()}`;
 }
 
 /**
@@ -86,15 +87,16 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
  * browser without a proxy.
  */
 export async function fetchYouTubeTitle(videoId: string, signal?: AbortSignal): Promise<string | null> {
-  if (!isValidVideoId(videoId)) return null
-  const target = `${YOUTUBE_ORIGIN}/watch?v=${videoId}`
-  const oembedUrl = `${YOUTUBE_ORIGIN}/oembed?url=${encodeURIComponent(target)}&format=json`
+  if (!isValidVideoId(videoId)) return null;
+  const target = `${YOUTUBE_ORIGIN}/watch?v=${videoId}`;
+  const oembedUrl = `${YOUTUBE_ORIGIN}/oembed?url=${encodeURIComponent(target)}&format=json`;
   try {
-    const res = await fetch(oembedUrl, { signal })
-    if (!res.ok) return null
-    const data = await res.json() as { title?: unknown }
-    return typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null
-  } catch {
-    return null
+    const res = await fetch(oembedUrl, { signal });
+    if (!res.ok) return null;
+    const data = await res.json() as { title?: unknown };
+    return typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null;
+  }
+  catch {
+    return null;
   }
 }
