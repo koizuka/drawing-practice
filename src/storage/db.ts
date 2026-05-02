@@ -190,8 +190,8 @@ db.version(10).stores({
 // v11: no index change — anchors the additive coordVersion field on
 // DrawingRecord and SessionDraft. Tracks the stroke/guide coord-system
 // convention (legacy = image-top-left; v2 = grid-center). Stored records
-// without coordVersion are treated as legacy and lazy-migrated on load — see
-// migrateRecordCoords() in storage/coordMigration.ts.
+// without coordVersion are treated as legacy and lazy-migrated on load —
+// see SplitLayout.handleReferenceImageSize / storage/coordMigration.ts.
 db.version(11).stores({
   drawings: '++id, createdAt',
   session: 'id',

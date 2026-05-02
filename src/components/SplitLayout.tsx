@@ -104,7 +104,7 @@ function SplitLayoutInner() {
   })
 
   // Guide state (from context)
-  const { grid, lines, version: guideVersion, restoreGuides } = useGuides()
+  const { grid, lines, version: guideVersion, restoreGuides, guideManagerRef } = useGuides()
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
   const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null)
@@ -182,6 +182,16 @@ function SplitLayoutInner() {
     }
   })
 
+  // Defers the legacy-draft strokes/guides until the reference's natural size
+  // is known (handleReferenceImageSize), so the (-W/2, -H/2) shift to the new
+  // center-origin convention can be applied in a single step — avoiding a
+  // brief flash of mis-positioned strokes.
+  const pendingMigrationRef = useRef<{
+    strokes: Stroke[]
+    redoStack: Stroke[]
+    guides: GuideState
+  } | null>(null)
+
   /**
    * Record the current reference state as an undoable entry, then apply the
    * mutation. Used for all user-initiated reference changes (Fix Angle, image
@@ -189,6 +199,11 @@ function SplitLayoutInner() {
    * ensures individual setter calls can't bypass history recording.
    */
   const changeReference = useCallback((mutate: (setters: ReferenceSetters) => void) => {
+    // Cancel any pending coord migration: the legacy strokes were sized to
+    // the OUTGOING reference. The next onReferenceImageSize will report the
+    // new reference's dimensions, which would shift the legacy strokes by
+    // the wrong amount.
+    pendingMigrationRef.current = null
     const prev = captureReferenceSnapshot()
     strokeManagerRef.current?.recordReferenceChange(prev)
     mutate({
@@ -202,16 +217,6 @@ function SplitLayoutInner() {
     setHistorySyncVersion(v => v + 1)
     incrementFlushVersion()
   }, [captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion])
-
-  // Defers the legacy-draft strokes/guides until the reference's natural size
-  // is known (handleReferenceImageSize), so the (-W/2, -H/2) shift to the new
-  // center-origin convention can be applied in a single step — avoiding a
-  // brief flash of mis-positioned strokes.
-  const pendingMigrationRef = useRef<{
-    strokes: Stroke[]
-    redoStack: Stroke[]
-    guides: GuideState
-  } | null>(null)
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -242,6 +247,16 @@ function SplitLayoutInner() {
     const pending = pendingMigrationRef.current
     if (pending && width > 0 && height > 0) {
       pendingMigrationRef.current = null
+      // If the user has already started drawing in the gap between draft
+      // restore and the size callback (e.g. image load lagged), abandon the
+      // migration rather than overwrite their work. Their session has
+      // effectively diverged from the legacy draft; the next autosave will
+      // tag the new state with the current coord version. Read via refs so
+      // this callback's identity doesn't churn on every guide update.
+      const userHasStarted =
+        (strokeManagerRef.current?.canUndo() ?? false)
+        || (guideManagerRef.current?.getLines().length ?? 0) > 0
+      if (userHasStarted) return
       const dx = -width / 2
       const dy = -height / 2
       const migratedStrokes = shiftStrokes(pending.strokes, dx, dy)
@@ -256,7 +271,7 @@ function SplitLayoutInner() {
       setRestoreVersion(v => v + 1)
       incrementChangeVersion()
     }
-  }, [restoreGuides, incrementChangeVersion])
+  }, [restoreGuides, incrementChangeVersion, guideManagerRef])
 
   // When the user closes the reference, the stored `referenceSize` is stale.
   // Pass null in that case so DrawingCanvas falls back to free-drawing

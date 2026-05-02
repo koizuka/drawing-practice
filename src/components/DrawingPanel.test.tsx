@@ -51,7 +51,11 @@ type Harness = {
   bumpHistory: () => void
 }
 
-function setup(opts: { captureRef?: () => ReferenceSnapshot } = {}) {
+function setup(opts: {
+  captureRef?: () => ReferenceSnapshot
+  onToggleReferenceCollapsed?: () => void
+  collapseLocked?: boolean
+} = {}) {
   const harness: Harness = {
     timer: null as unknown as TimerHandle,
     sm: null,
@@ -91,6 +95,8 @@ function setup(opts: { captureRef?: () => ReferenceSnapshot } = {}) {
             restoreVersion={restoreVersion}
             historySyncVersion={historySyncVersion}
             captureReferenceSnapshot={opts.captureRef}
+            onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
+            collapseLocked={opts.collapseLocked}
           />
         )}
       </Inner>
@@ -301,5 +307,54 @@ describe('DrawingPanel keyboard shortcuts × Gallery', () => {
       fireKey({ code: 'KeyZ', key: 'z', ctrlKey: true })
     })
     expect(harness.sm!.getStrokes()).toHaveLength(0)
+  })
+})
+
+describe('DrawingPanel collapse toggle', () => {
+  beforeEach(() => {
+    canvasPropsRef.current = null
+  })
+
+  // The collapse toggle has 3 states (no-handler / enabled / disabled-locked).
+  // The icon class is shared between collapsed and expanded variants of the
+  // button (PanelLeftClose vs PanelLeftOpen) and there's no text label, so we
+  // grep by aria-label, which mirrors the tooltip text.
+  function findCollapseButton(container: HTMLElement): HTMLButtonElement | null {
+    return container.querySelector<HTMLButtonElement>('button[aria-label*="reference"i], button[aria-label*="angle"i]')
+  }
+
+  it('omits the collapse button when no toggle handler is provided', () => {
+    const { container } = setup()
+    expect(findCollapseButton(container)).toBeNull()
+  })
+
+  it('renders an enabled collapse button with the expand/collapse tooltip', () => {
+    const onToggle = vi.fn()
+    const { container } = setup({ onToggleReferenceCollapsed: onToggle })
+    const btn = findCollapseButton(container)
+    expect(btn).not.toBeNull()
+    expect(btn).not.toBeDisabled()
+    // Default referenceCollapsed=false -> "collapse" tooltip
+    expect(btn!.getAttribute('aria-label')).toMatch(/Hide reference/i)
+
+    fireEvent.click(btn!)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
+  it('disables the collapse button and shows the locked tooltip when collapseLocked', () => {
+    const onToggle = vi.fn()
+    const { container } = setup({
+      onToggleReferenceCollapsed: onToggle,
+      collapseLocked: true,
+    })
+    const btn = findCollapseButton(container)
+    expect(btn).not.toBeNull()
+    expect(btn).toBeDisabled()
+    expect(btn!.getAttribute('aria-label')).toMatch(/Fix the angle first/i)
+
+    // Disabled buttons should not fire onClick. Use fireEvent — disabled MUI
+    // IconButtons swallow the event natively.
+    fireEvent.click(btn!)
+    expect(onToggle).not.toHaveBeenCalled()
   })
 })
