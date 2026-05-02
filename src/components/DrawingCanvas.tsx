@@ -3,7 +3,7 @@ import { Box } from '@mui/material'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { CanvasRenderer } from '../drawing/CanvasRenderer'
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform'
-import { computeBaseScale, computeContentCenter } from '../drawing/canvasUtils'
+import { computeBaseScale, GRID_CENTER } from '../drawing/canvasUtils'
 import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { Point, Stroke } from '../drawing/types'
@@ -134,8 +134,7 @@ export function DrawingCanvas({
     // Grid + guide lines in canvas (world) coordinate space.
     const topLeft = viewTransformRef.current.screenToCanvas(0, 0, container, baseScale)
     const bottomRight = viewTransformRef.current.screenToCanvas(container.width, container.height, container, baseScale)
-    const gridCenter = computeContentCenter(fitSize)
-    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, gridCenter)
+    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER)
     drawGuideLines(ctx, guideLines, projected.scale)
 
     // Reset to DPR-only transform
@@ -197,13 +196,13 @@ export function DrawingCanvas({
     }
   }, [viewResetVersion])
 
-  // Register the camera "home" — image center for an image reference, world
-  // origin for free drawing. Only the fit leader writes home so the two panels
-  // don't fight over a shared transform.
+  // Register the camera "home". World origin is always the grid center (the
+  // image's geometric center when a reference is loaded, or the panel center
+  // for free drawing), so home is always (0, 0). Only the fit leader writes
+  // home so the two panels don't fight over a shared transform.
   useEffect(() => {
     if (!isFitLeader) return
-    const home = computeContentCenter(fitSize)
-    viewTransformRef.current.setHome(home.x, home.y, 1)
+    viewTransformRef.current.setHome(0, 0, 1)
   }, [fitSize, isFitLeader])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {

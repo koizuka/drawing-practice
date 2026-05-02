@@ -5,6 +5,17 @@ import type { ReferenceInfo, ReferenceSource } from '../types'
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels'
 import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab'
 
+/**
+ * Stroke / guide-line coordinate system version.
+ * - Missing or 1 — legacy: world origin = image top-left for image references
+ *   (or LOGICAL top-left for YouTube). Strokes/guides need a one-time shift to
+ *   the new convention when loaded against a known content size.
+ * - 2 — current: world origin = grid center (image / logical-content center).
+ *   Free-drawing-only records (source === 'none') are version-agnostic — the
+ *   convention is identical for them — but new writes always tag them as v2.
+ */
+export const COORD_VERSION_CURRENT = 2
+
 export interface DrawingRecord {
   id?: number
   strokes: Stroke[]
@@ -13,6 +24,8 @@ export interface DrawingRecord {
   reference?: ReferenceInfo  // structured reference info (v2)
   createdAt: Date
   elapsedMs: number  // drawing time in milliseconds
+  /** See COORD_VERSION_CURRENT. */
+  coordVersion?: number
 }
 
 export interface SessionDraft {
@@ -30,6 +43,8 @@ export interface SessionDraft {
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
   referenceCollapsed?: boolean
   updatedAt: Date
+  /** See COORD_VERSION_CURRENT. */
+  coordVersion?: number
 }
 
 export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image' | 'sketchfab'
@@ -165,6 +180,19 @@ db.version(9).stores({
 // v10: no index change — anchors the additive SessionDraft.referenceCollapsed
 // field (free-drawing layout state).
 db.version(10).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+})
+
+// v11: no index change — anchors the additive coordVersion field on
+// DrawingRecord and SessionDraft. Tracks the stroke/guide coord-system
+// convention (legacy = image-top-left; v2 = grid-center). Stored records
+// without coordVersion are treated as legacy and lazy-migrated on load — see
+// migrateRecordCoords() in storage/coordMigration.ts.
+db.version(11).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',

@@ -3,6 +3,7 @@ import type { DraftData } from './sessionStore'
 
 // Mock the db module before importing sessionStore
 vi.mock('./db', () => ({
+  COORD_VERSION_CURRENT: 2,
   db: {
     session: {
       put: vi.fn().mockResolvedValue(undefined),

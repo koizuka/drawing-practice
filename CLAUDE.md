@@ -21,7 +21,7 @@ npm run test:watch # Run tests in watch mode (prefer `npm run test` in CI/agent 
 
 ## Tech Stack
 
-Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v10), GitHub Pages via GitHub Actions.
+Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v11), GitHub Pages via GitHub Actions.
 
 ## High-level Architecture
 
@@ -36,8 +36,8 @@ Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Lib
 
 These apply codebase-wide. Violating them breaks alignment, persistence, or undo correctness.
 
-- **Shared canvas coordinate space**: grid, guide lines, strokes, and overlay-compare strokes all live in the same coordinate space. `ViewTransform` is a **camera model** (`viewCenter` in world coords + `zoom`); each panel projects the shared camera into its own container size with its own `baseScale` (= fit-to-container ratio for the reference content, or 1 for free drawing). Layout changes (collapse, rotation, window resize) preserve the visual center automatically — no orientation-reset hack needed. Reference load calls `setHome` which both updates the reset target and snaps the camera to the new content center.
-- **Grid is anchored to the center point** (image center, or world origin when no reference). The center grid line is drawn thicker as a visual anchor.
+- **Shared canvas coordinate space**: grid, guide lines, strokes, and overlay-compare strokes all live in the same coordinate space. `ViewTransform` is a **camera model** (`viewCenter` in world coords + `zoom`); each panel projects the shared camera into its own container size with its own `baseScale` (= fit-to-container ratio for the reference content, or 1 for free drawing). Layout changes (collapse, rotation, window resize) preserve the visual center automatically — no orientation-reset hack needed.
+- **World origin ≡ grid center** (`GRID_CENTER = { x: 0, y: 0 }` in `canvasUtils.ts`). Every reference is rendered with its center at world origin (`drawImage(img, -W/2, -H/2)`; YouTube iframe wrapper offset by `(-LOGICAL_HALF_W, -LOGICAL_HALF_H)` × `scale`). `setHome` always registers `(0, 0)` so reference loads don't translate existing strokes off the grid center — only `baseScale` changes. The center grid line is drawn thicker as a visual anchor. Stored strokes / guides carry a `coordVersion` field; legacy records (missing or `< COORD_VERSION_CURRENT`) are lazy-shifted by `(-W/2, -H/2)` in `SplitLayout.handleReferenceImageSize` once the reference reports its size — see `src/storage/coordMigration.ts`.
 - **Overlay comparison passes stroke DATA, not screenshots** — strokes are re-rendered in the reference panel's coordinate space so grid positions align.
 - **DPR**: every canvas operation must multiply by `window.devicePixelRatio`.
 - **Viewport sizing uses `100dvh`, not `100vh`** — required for iPad Safari's dynamic toolbar.

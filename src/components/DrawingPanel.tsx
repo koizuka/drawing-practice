@@ -48,9 +48,16 @@ interface DrawingPanelProps {
   referenceCollapsed?: boolean
   /** Toggle the reference-panel collapsed state. */
   onToggleReferenceCollapsed?: () => void
+  /**
+   * Disable the collapse toggle when collapsing is currently blocked (e.g.
+   * the Sketchfab 3D viewer is being used in browse mode — the panel must
+   * stay at half-screen so the captured-screenshot framing matches what the
+   * user sees on Fix Angle).
+   */
+  collapseLocked?: boolean
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -271,11 +278,20 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
             ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
             : { collapsed: PanelLeftOpen, expanded: PanelLeftClose }
           const Icon = referenceCollapsed ? icons.collapsed : icons.expanded
+          const tooltip = collapseLocked
+            ? t('collapseLockedSketchfabBrowse')
+            : referenceCollapsed ? t('expandReference') : t('collapseReference')
+          // Only wrap in <span> when disabled — MUI suppresses tooltips on
+          // disabled buttons unless wrapped, but adding the span when enabled
+          // breaks the aria-label propagation tests rely on for queryByLabelText.
+          const button = (
+            <IconButton size="small" onClick={onToggleReferenceCollapsed} disabled={collapseLocked} aria-label={tooltip}>
+              <Icon size={20} />
+            </IconButton>
+          )
           return (
-            <ToolbarTooltip title={referenceCollapsed ? t('expandReference') : t('collapseReference')}>
-              <IconButton size="small" onClick={onToggleReferenceCollapsed}>
-                <Icon size={20} />
-              </IconButton>
+            <ToolbarTooltip title={tooltip}>
+              {collapseLocked ? <span>{button}</span> : button}
             </ToolbarTooltip>
           )
         })()}

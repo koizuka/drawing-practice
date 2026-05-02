@@ -16,10 +16,14 @@ export function computeBaseScale(
   return Math.min(container.width / content.width, container.height / content.height)
 }
 
-/** Stroke center for content (image center if present, world origin otherwise). */
-export function computeContentCenter(content?: { width: number; height: number }): Point {
-  return content ? { x: content.width / 2, y: content.height / 2 } : { x: 0, y: 0 }
-}
+/**
+ * The grid-center anchor in world coordinates. Always (0, 0): every reference
+ * (image, YouTube logical canvas, etc.) is rendered with its center at the
+ * world origin, so the grid center never moves when the reference changes.
+ * Strokes drawn at world coord (50, 30) stay 50 right / 30 down of the grid
+ * center across reference loads — only the rendering scale shifts.
+ */
+export const GRID_CENTER: Point = { x: 0, y: 0 }
 
 /** Draw a polyline stroke path in the current ctx transform. No-op for <2 points. */
 export function drawOverlayStrokePath(

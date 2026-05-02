@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import { Box } from '@mui/material'
 import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform'
-import { computeBaseScale, drawOverlayStrokePath } from '../drawing/canvasUtils'
+import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import { pointToSegmentDistance } from '../guides/GuideManager'
 import type { GridSettings, GuideLine } from '../guides/types'
@@ -115,13 +115,14 @@ export function ImageViewer({
       dpr * projected.offsetX, dpr * projected.offsetY,
     )
 
-    ctx.drawImage(img, 0, 0)
+    // Draw the image centered at world origin so the grid/center anchor
+    // (always (0, 0)) sits on the image's geometric center. See GRID_CENTER.
+    ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2)
 
     // Draw grid and guide lines in canvas coordinate space
     const topLeft = viewTransformRef.current.screenToCanvas(0, 0, container, baseScale)
     const bottomRight = viewTransformRef.current.screenToCanvas(container.width, container.height, container, baseScale)
-    const imgCenter = { x: img.naturalWidth / 2, y: img.naturalHeight / 2 }
-    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, imgCenter)
+    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER)
     drawGuideLines(ctx, guideLines, projected.scale, highlightedGuideId)
 
     // Draw in-progress guide line
@@ -221,9 +222,10 @@ export function ImageViewer({
       if (cancelled) return
       imageRef.current = loadedImg
       onImageLoadedRef.current?.(loadedImg.naturalWidth, loadedImg.naturalHeight)
-      // Register the home position so reset / first-load lands on image center.
+      // World origin is the image center, so home is always (0, 0). Reset /
+      // first-load therefore lands on image center regardless of dimensions.
       if (isFitLeader) {
-        viewTransformRef.current.setHome(loadedImg.naturalWidth / 2, loadedImg.naturalHeight / 2, 1)
+        viewTransformRef.current.setHome(0, 0, 1)
       }
       resizeCanvasRef.current()
     }
