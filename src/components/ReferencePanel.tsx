@@ -260,11 +260,6 @@ interface ReferencePanelProps {
   viewTransform?: ViewTransform
   /** Which panel owns the fit calculation. */
   fitLeader?: 'reference' | 'drawing'
-  /**
-   * Incremented by the parent to trigger an external view reset (e.g. on
-   * device orientation change). Bumps the internal viewResetVersion.
-   */
-  externalResetVersion?: number
 }
 
 export function ReferencePanel({
@@ -275,7 +270,7 @@ export function ReferencePanel({
   onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
   onSketchfabViewerStateChange,
   isFlipped, onToggleFlip,
-  viewTransform, fitLeader, externalResetVersion,
+  viewTransform, fitLeader,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides()
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen()
@@ -333,8 +328,6 @@ export function ReferencePanel({
   useEffect(() => {
     onRegisterReloadUrlHistory?.(reloadUrlHistory)
   }, [onRegisterReloadUrlHistory, reloadUrlHistory])
-
-  const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
 
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
@@ -1436,7 +1429,7 @@ export function ReferencePanel({
         {isFixed && displayImageUrl && (
           <ImageViewer
             imageUrl={displayImageUrl}
-            viewResetVersion={combinedResetVersion}
+            viewResetVersion={viewResetVersion}
             grid={grid}
             guideLines={lines}
             guideVersion={guideVersion}

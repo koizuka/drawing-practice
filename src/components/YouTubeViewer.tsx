@@ -5,13 +5,14 @@ import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { GridSettings, GuideLine } from '../guides/types'
 import type { Stroke, Point } from '../drawing/types'
 import type { GuideInteractionMode } from './ImageViewer'
-import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH } from '../drawing/constants'
-import type { ViewTransform } from '../drawing/ViewTransform'
+import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
+import type { ViewTransform, ContainerSize } from '../drawing/ViewTransform'
+import { computeBaseScale, drawOverlayStrokePath } from '../drawing/canvasUtils'
+import { pointToSegmentDistance } from '../guides/GuideManager'
 
 const LOGICAL_WIDTH = 1920
 const LOGICAL_HEIGHT = 1080
-
-const TRACKPAD_ZOOM_SPEED = 0.01
+const LOGICAL_CONTENT = { width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT }
 
 // Tap threshold: release within this radius and duration counts as a tap and
 // switches to video-interact mode.
@@ -71,32 +72,6 @@ interface YouTubeViewerProps {
   onPlayerStateChange?: (isPlaying: boolean) => void
 }
 
-function drawOverlayStrokePath(ctx: CanvasRenderingContext2D, points: readonly Point[]): void {
-  if (points.length < 2) return
-  ctx.beginPath()
-  ctx.moveTo(points[0].x, points[0].y)
-  for (let i = 1; i < points.length; i++) {
-    ctx.lineTo(points[i].x, points[i].y)
-  }
-  ctx.stroke()
-}
-
-function pointToSegmentDist(p: Point, line: GuideLine): number {
-  const dx = line.x2 - line.x1
-  const dy = line.y2 - line.y1
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) {
-    const ex = p.x - line.x1
-    const ey = p.y - line.y1
-    return Math.sqrt(ex * ex + ey * ey)
-  }
-  let t = ((p.x - line.x1) * dx + (p.y - line.y1) * dy) / lenSq
-  t = Math.max(0, Math.min(1, t))
-  const cx = line.x1 + t * dx
-  const cy = line.y1 + t * dy
-  return Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2)
-}
-
 export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>(function YouTubeViewer({
   videoId, grid, guideLines, guideVersion,
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
@@ -130,24 +105,24 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
   const pinchRectRef = useRef<DOMRect | null>(null)
   // Tracks a single-pointer session that might still qualify as a tap.
   const tapCandidateRef = useRef<{ time: number; x: number; y: number } | null>(null)
+  // Latest container size (CSS pixels), refreshed by ResizeObserver. Avoids
+  // a `getBoundingClientRect()` per wheel/pinch event.
+  const containerSizeRef = useRef<ContainerSize>({ width: 0, height: 0 })
 
   useEffect(() => {
     onFitSize?.(LOGICAL_WIDTH, LOGICAL_HEIGHT)
   }, [onFitSize])
 
-  // Resolves logical→container transform, falling back to a center-fit when
-  // no shared ViewTransform is provided (kept in sync with applyPlacement's
-  // fallback branch).
   const getViewTransformState = useCallback((containerRect: DOMRect): { scale: number; offsetX: number; offsetY: number } => {
+    const container: ContainerSize = { width: containerRect.width, height: containerRect.height }
+    const baseScale = computeBaseScale(container, LOGICAL_CONTENT)
     if (viewTransform) {
-      const vt = viewTransform.get()
-      return { scale: vt.scale, offsetX: vt.offsetX, offsetY: vt.offsetY }
+      return viewTransform.project(container, baseScale)
     }
-    const scale = Math.min(containerRect.width / LOGICAL_WIDTH, containerRect.height / LOGICAL_HEIGHT)
     return {
-      scale,
-      offsetX: (containerRect.width - LOGICAL_WIDTH * scale) / 2,
-      offsetY: (containerRect.height - LOGICAL_HEIGHT * scale) / 2,
+      scale: baseScale,
+      offsetX: (containerRect.width - LOGICAL_WIDTH * baseScale) / 2,
+      offsetY: (containerRect.height - LOGICAL_HEIGHT * baseScale) / 2,
     }
   }, [viewTransform])
 
@@ -252,57 +227,48 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     const rect = container.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return
 
-    if (viewTransform) {
-      const vt = viewTransform.get()
-      wrapper.style.left = `${vt.offsetX}px`
-      wrapper.style.top = `${vt.offsetY}px`
-      wrapper.style.width = `${LOGICAL_WIDTH * vt.scale}px`
-      wrapper.style.height = `${LOGICAL_HEIGHT * vt.scale}px`
-    } else {
-      const fit = Math.min(rect.width / LOGICAL_WIDTH, rect.height / LOGICAL_HEIGHT)
-      const w = LOGICAL_WIDTH * fit
-      const h = LOGICAL_HEIGHT * fit
-      wrapper.style.width = `${w}px`
-      wrapper.style.height = `${h}px`
-      wrapper.style.left = `${(rect.width - w) / 2}px`
-      wrapper.style.top = `${(rect.height - h) / 2}px`
-    }
+    const state = getViewTransformState(rect)
+    wrapper.style.left = `${state.offsetX}px`
+    wrapper.style.top = `${state.offsetY}px`
+    wrapper.style.width = `${LOGICAL_WIDTH * state.scale}px`
+    wrapper.style.height = `${LOGICAL_HEIGHT * state.scale}px`
     requestRedraw()
-  }, [requestRedraw, viewTransform])
+  }, [requestRedraw, getViewTransformState])
 
-  // When this viewer owns the initial fit, push it into the shared transform
-  // so the other panel lines up. Subsequent resizes are intentionally not
-  // re-fit — that would clobber a user-driven zoom.
-  const writeFitToTransform = useCallback(() => {
-    const container = containerRef.current
-    if (!container || !viewTransform || !isFitLeader) return
-    const rect = container.getBoundingClientRect()
-    if (rect.width === 0 || rect.height === 0) return
-    viewTransform.fitTo(
-      { width: rect.width, height: rect.height },
-      { width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT },
-    )
-  }, [viewTransform, isFitLeader])
-
+  // When this viewer owns the initial fit, register the camera home so reset
+  // and first-load land on the logical canvas center. The camera projects
+  // against (container, baseScale) on every read so we don't need to re-fit
+  // on resize.
   useEffect(() => {
-    writeFitToTransform()
-  }, [writeFitToTransform])
+    if (!viewTransform || !isFitLeader) return
+    viewTransform.setHome(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2, 1)
+  }, [viewTransform, isFitLeader])
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
     const observer = new ResizeObserver(() => {
+      const rect = container.getBoundingClientRect()
+      containerSizeRef.current = { width: rect.width, height: rect.height }
       applyPlacement()
     })
     observer.observe(container)
+    const initialRect = container.getBoundingClientRect()
+    containerSizeRef.current = { width: initialRect.width, height: initialRect.height }
     applyPlacement()
     return () => observer.disconnect()
   }, [applyPlacement])
 
+  // Subscribe via a ref-stable indirection so the subscription survives
+  // applyPlacement identity changes (which churn whenever viewTransform-
+  // derived deps change downstream).
+  const applyPlacementRef = useRef(applyPlacement)
+  useEffect(() => { applyPlacementRef.current = applyPlacement })
+
   useEffect(() => {
     if (!viewTransform) return
-    return viewTransform.subscribe(applyPlacement)
-  }, [viewTransform, applyPlacement])
+    return viewTransform.subscribe(() => applyPlacementRef.current())
+  }, [viewTransform])
 
   useEffect(() => {
     redraw()
@@ -324,13 +290,15 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       e.preventDefault()
       if (!viewTransform) return
       const rect = canvas.getBoundingClientRect()
+      const container = containerSizeRef.current
+      const baseScale = computeBaseScale(container, LOGICAL_CONTENT)
       const focalX = e.clientX - rect.left
       const focalY = e.clientY - rect.top
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
-        viewTransform.applyPinch(focalX, focalY, scaleDelta, 0, 0)
+        viewTransform.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale)
       } else {
-        viewTransform.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY)
+        viewTransform.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY, container, baseScale)
       }
     }
 
@@ -417,7 +385,7 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       let best: GuideLine | null = null
       let bestDist = threshold
       for (const line of guideLines) {
-        const dist = pointToSegmentDist(point, line)
+        const dist = pointToSegmentDistance(point.x, point.y, line.x1, line.y1, line.x2, line.y2)
         if (dist < bestDist) {
           bestDist = dist
           best = line
@@ -541,6 +509,9 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       e.preventDefault()
 
       if (viewTransform) {
+        const container = containerSizeRef.current
+        const baseScale = computeBaseScale(container, LOGICAL_CONTENT)
+
         const dx = t2.x - t1.x
         const dy = t2.y - t1.y
         const dist = Math.sqrt(dx * dx + dy * dy)
@@ -555,7 +526,7 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
         const translateX = midX - pinchRef.current.lastMidX
         const translateY = midY - pinchRef.current.lastMidY
 
-        viewTransform.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
+        viewTransform.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, container, baseScale)
 
         pinchRef.current.lastDist = dist
         pinchRef.current.lastMidX = midX

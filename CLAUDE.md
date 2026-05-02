@@ -21,14 +21,14 @@ npm run test:watch # Run tests in watch mode (prefer `npm run test` in CI/agent 
 
 ## Tech Stack
 
-Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v9), GitHub Pages via GitHub Actions.
+Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v10), GitHub Pages via GitHub Actions.
 
 ## High-level Architecture
 
-- **Split layout** (`SplitLayout`): two equal panels, landscape (left/right) or portrait (top/bottom), auto-switching on orientation.
+- **Split layout** (`SplitLayout`): two equal panels, landscape (left/right) or portrait (top/bottom), auto-switching on orientation. Reference panel can be collapsed for free-drawing layout (drawing panel takes the full screen); the toggle lives on the drawing toolbar and the collapsed state is autosaved.
   - **Reference Panel** (left/top) — `ReferencePanel` hosts one of: `SketchfabViewer`, `ImageViewer`, `YouTubeViewer`, `PexelsSearcher`.
   - **Drawing Panel** (right/bottom) — `DrawingPanel` + `DrawingCanvas`.
-- **Shared state** lifted to `SplitLayout`: reference (source/mode/images), timer, autosave, undo. Guide state shared via `GuideContext`.
+- **Shared state** lifted to `SplitLayout`: reference (source/mode/images), timer, autosave, undo, panel-collapse. Guide state shared via `GuideContext`.
 - **Single undo stack** in `StrokeManager` covers both strokes AND reference changes — see `.claude/rules/drawing-undo.md`.
 - **Autosave** (`useAutosave`, 2s debounce; immediate on reference change) persists session draft to IndexedDB `session` table; restored on reload — see `.claude/rules/timer-autosave.md`.
 
@@ -36,8 +36,8 @@ Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Lib
 
 These apply codebase-wide. Violating them breaks alignment, persistence, or undo correctness.
 
-- **Shared canvas coordinate space**: grid, guide lines, strokes, and overlay-compare strokes all live in the same coordinate space. Each panel applies its own `ViewTransform` independently. When loading a reference image, its dimensions go to `DrawingCanvas` via `fitSize` so both panels start at the same scale.
-- **Grid is anchored to the center point** (image center, or viewport center when no reference). The center grid line is drawn thicker as a visual anchor.
+- **Shared canvas coordinate space**: grid, guide lines, strokes, and overlay-compare strokes all live in the same coordinate space. `ViewTransform` is a **camera model** (`viewCenter` in world coords + `zoom`); each panel projects the shared camera into its own container size with its own `baseScale` (= fit-to-container ratio for the reference content, or 1 for free drawing). Layout changes (collapse, rotation, window resize) preserve the visual center automatically — no orientation-reset hack needed. Reference load calls `setHome` which both updates the reset target and snaps the camera to the new content center.
+- **Grid is anchored to the center point** (image center, or world origin when no reference). The center grid line is drawn thicker as a visual anchor.
 - **Overlay comparison passes stroke DATA, not screenshots** — strokes are re-rendered in the reference panel's coordinate space so grid positions align.
 - **DPR**: every canvas operation must multiply by `window.devicePixelRatio`.
 - **Viewport sizing uses `100dvh`, not `100vh`** — required for iPad Safari's dynamic toolbar.

@@ -274,6 +274,34 @@ describe('SplitLayout', () => {
     })
   })
 
+  describe('reference panel collapse', () => {
+    it('toggles the reference panel hidden state and swaps the icon', () => {
+      const { container } = render(<SplitLayout />)
+
+      // Initial: reference panel visible, source picker visible.
+      expect(screen.getByText('Image File')).toBeVisible()
+      const collapseBtn = screen.getByLabelText(/Hide reference/) as HTMLButtonElement
+      expect(collapseBtn).toBeInTheDocument()
+
+      // Hide reference. The source picker is still in the DOM but its
+      // wrapping flex panel is display:none.
+      fireEvent.click(collapseBtn)
+      expect(screen.getByText('Image File')).not.toBeVisible()
+
+      // Toggle now reads "Show reference" (icon flipped).
+      const expandBtn = screen.getByLabelText(/Show reference/) as HTMLButtonElement
+      expect(expandBtn).toBeInTheDocument()
+
+      // Restore — source picker should be visible again.
+      fireEvent.click(expandBtn)
+      expect(screen.getByText('Image File')).toBeVisible()
+      expect(screen.getByLabelText(/Hide reference/)).toBeInTheDocument()
+
+      // Drawing canvas remains mounted throughout.
+      expect(container.querySelector('canvas')).not.toBeNull()
+    })
+  })
+
   describe('draft restore', () => {
     const loadDraftMock = vi.mocked(loadDraft)
 
@@ -321,6 +349,31 @@ describe('SplitLayout', () => {
 
       // The source-selection UI should be gone since source is 'url', not 'none'.
       expect(screen.queryByText('Image File')).not.toBeInTheDocument()
+    })
+
+    it('restores referenceCollapsed=true so the reference panel starts hidden', async () => {
+      const draft: SessionDraft = {
+        id: 1,
+        strokes: [],
+        redoStack: [],
+        elapsedMs: 0,
+        source: 'none',
+        referenceInfo: null,
+        referenceImageData: null,
+        guideState: { grid: { mode: 'normal' }, lines: [] },
+        referenceCollapsed: true,
+        updatedAt: new Date(),
+      }
+      loadDraftMock.mockResolvedValueOnce(draft)
+
+      render(<SplitLayout />)
+
+      // After restore, the reference panel's source picker is hidden and the
+      // toggle is in "Show reference" state.
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Show reference/)).toBeInTheDocument()
+      })
+      expect(screen.getByText('Image File')).not.toBeVisible()
     })
 
     it('does nothing when no draft is stored', async () => {

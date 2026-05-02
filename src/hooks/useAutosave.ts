@@ -16,6 +16,7 @@ interface AutosaveState {
   referenceImageData: string | null
   grid: GridSettings
   lines: readonly GuideLine[]
+  referenceCollapsed?: boolean
 }
 
 export function useAutosave(
@@ -37,7 +38,10 @@ export function useAutosave(
     const hasStrokes = state.strokes.length > 0
     const hasReference = state.source !== 'none'
 
-    if (!hasStrokes && !hasReference) {
+    // Persist a draft if the user has any in-progress signal — strokes, an
+    // active reference, or a non-default layout (collapsed = free-drawing mode
+    // they want to keep across reloads even with no strokes yet).
+    if (!hasStrokes && !hasReference && !state.referenceCollapsed) {
       await clearDraft()
       return
     }
@@ -53,6 +57,7 @@ export function useAutosave(
         grid: { ...state.grid },
         lines: [...state.lines],
       },
+      referenceCollapsed: state.referenceCollapsed ?? false,
     }
 
     await saveDraft(data)
