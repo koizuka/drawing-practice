@@ -1,155 +1,164 @@
 import { vi } from 'vitest'
 import { ViewTransform } from './ViewTransform'
 
-describe('ViewTransform', () => {
+const C = { width: 800, height: 600 }
+
+describe('ViewTransform (camera model)', () => {
   let vt: ViewTransform
 
   beforeEach(() => {
     vt = new ViewTransform()
   })
 
-  it('starts with identity transform', () => {
-    const t = vt.get()
-    expect(t.offsetX).toBe(0)
-    expect(t.offsetY).toBe(0)
-    expect(t.scale).toBe(1)
+  it('starts at home (viewCenter=(0,0), zoom=1)', () => {
+    const cam = vt.getCamera()
+    expect(cam.viewCenterX).toBe(0)
+    expect(cam.viewCenterY).toBe(0)
+    expect(cam.zoom).toBe(1)
+    expect(vt.isDirty()).toBe(false)
   })
 
-  it('converts screen to canvas coordinates at identity', () => {
-    const p = vt.screenToCanvas(100, 200)
-    expect(p.x).toBe(100)
-    expect(p.y).toBe(200)
-  })
-
-  it('converts canvas to screen coordinates at identity', () => {
-    const p = vt.canvasToScreen(100, 200)
-    expect(p.x).toBe(100)
-    expect(p.y).toBe(200)
-  })
-
-  it('screenToCanvas and canvasToScreen are inverse operations', () => {
-    vt.applyPinch(50, 50, 2, 10, 20)
-    const screen = { x: 150, y: 250 }
-    const canvas = vt.screenToCanvas(screen.x, screen.y)
-    const back = vt.canvasToScreen(canvas.x, canvas.y)
-    expect(back.x).toBeCloseTo(screen.x)
-    expect(back.y).toBeCloseTo(screen.y)
-  })
-
-  it('applies pinch zoom', () => {
-    vt.applyPinch(100, 100, 2, 0, 0)
-    const t = vt.get()
-    expect(t.scale).toBe(2)
-    // Focal point stays fixed: screenToCanvas(100, 100) should give the same result
-    const p = vt.screenToCanvas(100, 100)
-    expect(p.x).toBeCloseTo(100)
-    expect(p.y).toBeCloseTo(100)
-  })
-
-  it('clamps scale to min/max', () => {
-    vt.applyPinch(0, 0, 0.01, 0, 0)
-    expect(vt.get().scale).toBe(0.25)
-
-    vt.reset()
-    vt.applyPinch(0, 0, 100, 0, 0)
-    expect(vt.get().scale).toBe(8)
-  })
-
-  it('resets to identity', () => {
-    vt.applyPinch(50, 50, 3, 10, 20)
-    vt.reset()
-    const t = vt.get()
-    expect(t.offsetX).toBe(0)
-    expect(t.offsetY).toBe(0)
-    expect(t.scale).toBe(1)
-  })
-
-  it('applies translation via pinch', () => {
-    vt.applyPinch(0, 0, 1, 50, 30)
-    const t = vt.get()
-    expect(t.offsetX).toBe(50)
-    expect(t.offsetY).toBe(30)
-    expect(t.scale).toBe(1)
-  })
-
-  describe('fitTo', () => {
-    it('fits content smaller than container and centers it', () => {
-      vt.fitTo({ width: 400, height: 300 }, { width: 200, height: 100 })
-      const t = vt.get()
-      expect(t.scale).toBe(2)
-      expect(t.offsetX).toBe(0)
-      expect(t.offsetY).toBe(50)
-    })
-
-    it('fits content larger than container, preserving aspect ratio', () => {
-      vt.fitTo({ width: 200, height: 200 }, { width: 400, height: 400 })
-      const t = vt.get()
-      expect(t.scale).toBe(0.5)
-      expect(t.offsetX).toBe(0)
-      expect(t.offsetY).toBe(0)
-    })
-
-    it('overwrites any prior transform', () => {
-      vt.applyPinch(100, 100, 4, 0, 0)
-      vt.fitTo({ width: 200, height: 100 }, { width: 200, height: 100 })
-      const t = vt.get()
+  describe('project', () => {
+    it('puts world (0,0) at the container center when home is (0,0) and baseScale is 1', () => {
+      const t = vt.project(C, 1)
       expect(t.scale).toBe(1)
-      expect(t.offsetX).toBe(0)
-      expect(t.offsetY).toBe(0)
+      expect(t.offsetX).toBe(C.width / 2)
+      expect(t.offsetY).toBe(C.height / 2)
+    })
+
+    it('scales by baseScale * zoom', () => {
+      vt.applyPinch(C.width / 2, C.height / 2, 2, 0, 0, C, 1)
+      const t = vt.project(C, 1)
+      expect(t.scale).toBe(2)
     })
   })
 
-  describe('isDirty', () => {
-    it('starts clean', () => {
-      expect(vt.isDirty()).toBe(false)
+  describe('screenToCanvas / canvasToScreen', () => {
+    it('container center maps to viewCenter', () => {
+      vt.setHome(50, 30, 1)
+      const p = vt.screenToCanvas(C.width / 2, C.height / 2, C, 1)
+      expect(p.x).toBeCloseTo(50)
+      expect(p.y).toBeCloseTo(30)
     })
 
-    it('becomes dirty after applyPinch', () => {
-      vt.applyPinch(0, 0, 2, 0, 0)
+    it('round-trips after a pinch', () => {
+      vt.applyPinch(100, 200, 2.5, 30, -10, C, 1)
+      const sx = 240, sy = 180
+      const w = vt.screenToCanvas(sx, sy, C, 1)
+      const back = vt.canvasToScreen(w.x, w.y, C, 1)
+      expect(back.x).toBeCloseTo(sx)
+      expect(back.y).toBeCloseTo(sy)
+    })
+  })
+
+  describe('applyPinch', () => {
+    it('keeps the focal world point under the focal screen point', () => {
+      const focalX = 250, focalY = 150
+      const before = vt.screenToCanvas(focalX, focalY, C, 1)
+      vt.applyPinch(focalX, focalY, 2, 0, 0, C, 1)
+      const after = vt.screenToCanvas(focalX, focalY, C, 1)
+      expect(after.x).toBeCloseTo(before.x)
+      expect(after.y).toBeCloseTo(before.y)
+    })
+
+    it('clamps zoom to MIN_ZOOM', () => {
+      vt.applyPinch(0, 0, 0.001, 0, 0, C, 1)
+      expect(vt.getCamera().zoom).toBe(0.25)
+    })
+
+    it('clamps zoom to MAX_ZOOM', () => {
+      vt.applyPinch(0, 0, 100, 0, 0, C, 1)
+      expect(vt.getCamera().zoom).toBe(8)
+    })
+
+    it('translates by pan delta when scaleDelta is 1', () => {
+      const focalX = 100, focalY = 100
+      vt.applyPinch(focalX, focalY, 1, 50, 30, C, 1)
+      // After pan, the world point that WAS at (focalX, focalY) is now at
+      // (focalX + 50, focalY + 30) — i.e. pan moves content with the gesture.
+      const w = vt.screenToCanvas(focalX + 50, focalY + 30, C, 1)
+      expect(w.x).toBeCloseTo(0 + (focalX - C.width / 2))
+      expect(w.y).toBeCloseTo(0 + (focalY - C.height / 2))
+    })
+  })
+
+  describe('container-independent state', () => {
+    it('preserves visual center across container resize', () => {
+      // Pinch at the center, then check that the same world point is still
+      // visible at the center of a larger container. The point of the camera
+      // model is that the same camera state projects correctly into any
+      // container size.
+      vt.applyPinch(C.width / 2, C.height / 2, 2, 0, 0, C, 1)
+      const centerWorld = vt.screenToCanvas(C.width / 2, C.height / 2, C, 1)
+
+      const wider = { width: C.width * 2, height: C.height }
+      const stillCenter = vt.screenToCanvas(wider.width / 2, wider.height / 2, wider, 1)
+      expect(stillCenter.x).toBeCloseTo(centerWorld.x)
+      expect(stillCenter.y).toBeCloseTo(centerWorld.y)
+    })
+  })
+
+  describe('home / reset', () => {
+    it('reset returns to home', () => {
+      vt.setHome(100, 200, 1)
+      vt.applyPinch(0, 0, 2, 50, 30, C, 1)
       expect(vt.isDirty()).toBe(true)
+      vt.reset()
+      expect(vt.isDirty()).toBe(false)
+      const cam = vt.getCamera()
+      expect(cam.viewCenterX).toBe(100)
+      expect(cam.viewCenterY).toBe(200)
+      expect(cam.zoom).toBe(1)
     })
 
-    it('becomes clean after reset', () => {
-      vt.applyPinch(0, 0, 2, 0, 0)
-      vt.reset()
+    it('setHome snaps to the new home from a clean camera', () => {
+      vt.setHome(150, 75, 1)
+      const cam = vt.getCamera()
+      expect(cam.viewCenterX).toBe(150)
+      expect(cam.viewCenterY).toBe(75)
       expect(vt.isDirty()).toBe(false)
     })
 
-    it('becomes clean after fitTo', () => {
-      vt.applyPinch(0, 0, 2, 0, 0)
-      vt.fitTo({ width: 100, height: 100 }, { width: 50, height: 50 })
+    it('setHome snaps a dirty camera to the new home (reference-load semantics)', () => {
+      vt.applyPinch(0, 0, 2, 50, 30, C, 1)
+      expect(vt.isDirty()).toBe(true)
+      vt.setHome(500, 500, 1)
+      const cam = vt.getCamera()
+      expect(cam.viewCenterX).toBe(500)
+      expect(cam.viewCenterY).toBe(500)
+      expect(cam.zoom).toBe(1)
       expect(vt.isDirty()).toBe(false)
     })
 
-    it('notifies listeners when dirty flag flips', () => {
-      const states: boolean[] = []
-      vt.subscribe(() => states.push(vt.isDirty()))
-      vt.applyPinch(0, 0, 2, 0, 0)
-      vt.reset()
-      expect(states).toEqual([true, false])
+    it('setHome with same values is a no-op (no notify)', () => {
+      const fn = vi.fn()
+      vt.subscribe(fn)
+      vt.setHome(0, 0, 1) // already at home
+      expect(fn).not.toHaveBeenCalled()
     })
   })
 
   describe('subscribe', () => {
-    it('notifies listener when applyPinch is called', () => {
-      const listener = vi.fn()
-      vt.subscribe(listener)
-      vt.applyPinch(0, 0, 2, 0, 0)
-      expect(listener).toHaveBeenCalledTimes(1)
+    it('notifies on applyPinch', () => {
+      const fn = vi.fn()
+      vt.subscribe(fn)
+      vt.applyPinch(0, 0, 2, 0, 0, C, 1)
+      expect(fn).toHaveBeenCalledTimes(1)
     })
 
-    it('notifies listener when reset is called', () => {
-      const listener = vi.fn()
-      vt.subscribe(listener)
+    it('notifies on reset when dirty', () => {
+      vt.applyPinch(0, 0, 2, 0, 0, C, 1)
+      const fn = vi.fn()
+      vt.subscribe(fn)
       vt.reset()
-      expect(listener).toHaveBeenCalledTimes(1)
+      expect(fn).toHaveBeenCalledTimes(1)
     })
 
-    it('notifies listener once per fitTo call (atomic)', () => {
-      const listener = vi.fn()
-      vt.subscribe(listener)
-      vt.fitTo({ width: 100, height: 100 }, { width: 50, height: 50 })
-      expect(listener).toHaveBeenCalledTimes(1)
+    it('skips notify when reset is called on a clean camera', () => {
+      const fn = vi.fn()
+      vt.subscribe(fn)
+      vt.reset()
+      expect(fn).not.toHaveBeenCalled()
     })
 
     it('notifies multiple listeners', () => {
@@ -157,19 +166,17 @@ describe('ViewTransform', () => {
       const b = vi.fn()
       vt.subscribe(a)
       vt.subscribe(b)
-      vt.applyPinch(0, 0, 2, 0, 0)
+      vt.applyPinch(0, 0, 2, 0, 0, C, 1)
       expect(a).toHaveBeenCalledTimes(1)
       expect(b).toHaveBeenCalledTimes(1)
     })
 
-    it('unsubscribed listener does not fire', () => {
-      const listener = vi.fn()
-      const unsubscribe = vt.subscribe(listener)
-      unsubscribe()
-      vt.applyPinch(0, 0, 2, 0, 0)
-      vt.reset()
-      vt.fitTo({ width: 10, height: 10 }, { width: 5, height: 5 })
-      expect(listener).not.toHaveBeenCalled()
+    it('unsubscribed listeners stop firing', () => {
+      const fn = vi.fn()
+      const off = vt.subscribe(fn)
+      off()
+      vt.applyPinch(0, 0, 2, 0, 0, C, 1)
+      expect(fn).not.toHaveBeenCalled()
     })
   })
 })

@@ -87,6 +87,13 @@ function SplitLayoutInner() {
       source === 'pexels'
     )
 
+  // Free-drawing layout: hide the reference panel so the drawing canvas spans
+  // the full viewport. Independent of isSearchFullscreen (which is the inverse:
+  // hides drawing while browsing on portrait). When both are true (would only
+  // happen on a portrait collapse during search, but isSearchFullscreen wins on
+  // entering browse) we prefer showing reference for the active browse flow.
+  const [referenceCollapsed, setReferenceCollapsed] = useState(false)
+
   // Timer (lifted from DrawingPanel for autosave access)
   const timer = useTimer()
   const timerElapsedRef = useRef(timer.elapsedMs)
@@ -112,17 +119,6 @@ function SplitLayoutInner() {
   const [flushVersion, setFlushVersion] = useState(0)
   // Restore version to notify DrawingPanel after draft restore
   const [restoreVersion, setRestoreVersion] = useState(0)
-  // Explicit refit trigger on rotation — ResizeObservers don't auto-refit so
-  // user zoom survives incidental resizes, but rotation flips the layout hard
-  // enough that a refit is still wanted.
-  const [orientationResetVersion, setOrientationResetVersion] = useState(0)
-  const prevOrientationRef = useRef(orientation)
-  useEffect(() => {
-    if (prevOrientationRef.current !== orientation) {
-      prevOrientationRef.current = orientation
-      setOrientationResetVersion(v => v + 1)
-    }
-  }, [orientation])
   // History sync version: incremented when the StrokeManager's undo/redo
   // stacks change outside DrawingPanel (e.g. SplitLayout records a reference
   // change). DrawingPanel listens to this to refresh its canUndo/canRedo UI.
@@ -134,6 +130,14 @@ function SplitLayoutInner() {
   const incrementFlushVersion = useCallback(() => {
     setFlushVersion(v => v + 1)
   }, [])
+
+  const handleToggleReferenceCollapsed = useCallback(() => {
+    setReferenceCollapsed(v => !v)
+    // Immediate flush: a fast reload after toggling shouldn't lose the layout
+    // intent. Same rationale as reference changes — the user explicitly asked
+    // for a layout state and expects it to survive a reload.
+    incrementFlushVersion()
+  }, [incrementFlushVersion])
 
   // Pause timer whenever the reference changes — the timer should only advance
   // during active drawing. The next stroke will resume it via handleStrokeCountChange.
@@ -216,6 +220,12 @@ function SplitLayoutInner() {
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     setReferenceSize({ width, height })
   }, [])
+
+  // When the user closes the reference, the stored `referenceSize` is stale.
+  // Pass null in that case so DrawingCanvas falls back to free-drawing
+  // semantics (baseScale=1, home + grid centered at world origin) instead of
+  // staying anchored to the previous image's dimensions.
+  const drawingFitSize = source === 'none' ? null : referenceSize
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped(prev => !prev)
@@ -399,7 +409,8 @@ function SplitLayoutInner() {
       : null,
     grid,
     lines,
-  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines])
+    referenceCollapsed,
+  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed])
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef)
 
@@ -445,6 +456,9 @@ function SplitLayoutInner() {
       if (draft.guideState) {
         restoreGuides(draft.guideState)
       }
+
+      // Restore collapsed layout state
+      setReferenceCollapsed(draft.referenceCollapsed ?? false)
 
       // Restore reference state
       if (draft.source !== 'none') {
@@ -493,7 +507,10 @@ function SplitLayoutInner() {
         </Alert>
       )}
       <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0 }}>
+      {/* Hide for free-drawing collapse, but keep visible while the Sketchfab
+          3D viewer is mounted — its captured-screenshot framing must match what
+          the user sees on Fix Angle, which requires the panel at half-screen. */}
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !sketchfabViewerActive) ? 'none' : 'block' }}>
         <ReferencePanel
           overlayStrokes={overlayStrokes}
           overlayCurrentStrokeRef={currentStrokeRef}
@@ -515,12 +532,11 @@ function SplitLayoutInner() {
           onToggleFlip={handleToggleFlip}
           viewTransform={viewTransform}
           fitLeader={fitLeader}
-          externalResetVersion={orientationResetVersion}
         />
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
         <DrawingPanel
-          referenceSize={referenceSize}
+          referenceSize={drawingFitSize}
           referenceInfo={referenceInfo}
           onStrokeManagerReady={handleStrokeManagerReady}
           onStrokesChanged={handleStrokesChanged}
@@ -534,7 +550,9 @@ function SplitLayoutInner() {
           isFlipped={isFlipped}
           viewTransform={viewTransform}
           fitLeader={fitLeader}
-          externalResetVersion={orientationResetVersion}
+          orientation={orientation}
+          referenceCollapsed={referenceCollapsed}
+          onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
         />
       </Box>
       </Box>

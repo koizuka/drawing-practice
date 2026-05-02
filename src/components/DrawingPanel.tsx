@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { Box, IconButton, Typography } from '@mui/material'
 import { ToolbarTooltip } from './ToolbarTooltip'
-import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X } from 'lucide-react'
+import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react'
+import type { Orientation } from '../hooks/useOrientation'
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas'
 import type { ViewTransform } from '../drawing/ViewTransform'
 import { StrokeManager } from '../drawing/StrokeManager'
@@ -41,14 +42,15 @@ interface DrawingPanelProps {
   viewTransform?: ViewTransform
   /** Which panel owns the fit calculation. */
   fitLeader?: 'reference' | 'drawing'
-  /**
-   * Incremented by the parent to trigger an external view reset (e.g. on
-   * device orientation change). Bumps the internal viewResetVersion.
-   */
-  externalResetVersion?: number
+  /** Current viewport orientation, used to pick the collapse-toggle icon. */
+  orientation?: Orientation
+  /** Whether the reference panel is currently hidden (free-drawing layout). */
+  referenceCollapsed?: boolean
+  /** Toggle the reference-panel collapsed state. */
+  onToggleReferenceCollapsed?: () => void
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, externalResetVersion }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager())
   const [mode, setMode] = useState<DrawingMode>('pen')
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null)
@@ -96,8 +98,6 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
       setCanRedo(strokeManagerRef.current.canRedo())
     }
   }, [historySyncVersion])
-
-  const combinedResetVersion = viewResetVersion + (externalResetVersion ?? 0)
 
   const syncUndoRedoState = useCallback(() => {
     setCanUndo(strokeManagerRef.current.canUndo())
@@ -266,6 +266,20 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Box sx={{ flex: 1 }} />
 
         {/* View */}
+        {onToggleReferenceCollapsed && (() => {
+          const icons = orientation === 'portrait'
+            ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
+            : { collapsed: PanelLeftOpen, expanded: PanelLeftClose }
+          const Icon = referenceCollapsed ? icons.collapsed : icons.expanded
+          return (
+            <ToolbarTooltip title={referenceCollapsed ? t('expandReference') : t('collapseReference')}>
+              <IconButton size="small" onClick={onToggleReferenceCollapsed}>
+                <Icon size={20} />
+              </IconButton>
+            </ToolbarTooltip>
+          )
+        })()}
+
         <ToolbarTooltip title={t('resetZoom')}>
           <span>
             <IconButton
@@ -357,7 +371,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           onStrokeCountChange={handleStrokeCountChange}
           strokeManagerRef={strokeManagerRef}
           redrawVersion={redrawVersion}
-          viewResetVersion={combinedResetVersion}
+          viewResetVersion={viewResetVersion}
           grid={grid}
           guideLines={lines}
           guideVersion={guideVersion}

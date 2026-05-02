@@ -14,6 +14,8 @@ const messages = {
     'gallery': 'Gallery',
     'delete': 'Delete',
     'cancel': 'Cancel',
+    'collapseReference': 'Hide reference (free drawing)',
+    'expandReference': 'Show reference',
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
@@ -142,6 +144,8 @@ const messages = {
     'gallery': 'ギャラリー',
     'delete': '削除',
     'cancel': 'キャンセル',
+    'collapseReference': 'お手本を畳む（フリードローイング）',
+    'expandReference': 'お手本を表示',
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',

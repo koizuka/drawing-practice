@@ -27,6 +27,8 @@ export interface SessionDraft {
     grid: GridSettings
     lines: GuideLine[]
   }
+  /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
+  referenceCollapsed?: boolean
   updatedAt: Date
 }
 
@@ -153,6 +155,16 @@ db.version(8).stores({
 // the additive UrlHistoryEntry.sketchfabSearchContext field for sketchfab URL
 // history entries.
 db.version(9).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+})
+
+// v10: no index change — anchors the additive SessionDraft.referenceCollapsed
+// field (free-drawing layout state).
+db.version(10).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',

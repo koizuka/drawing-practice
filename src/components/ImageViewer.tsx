@@ -1,8 +1,10 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { Box } from '@mui/material'
-import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH } from '../drawing/constants'
-import { ViewTransform } from '../drawing/ViewTransform'
+import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
+import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform'
+import { computeBaseScale, drawOverlayStrokePath } from '../drawing/canvasUtils'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
+import { pointToSegmentDistance } from '../guides/GuideManager'
 import type { GridSettings, GuideLine } from '../guides/types'
 import type { Stroke, Point } from '../drawing/types'
 
@@ -29,26 +31,16 @@ interface ImageViewerProps {
   isFlipped?: boolean
   /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with DrawingPanel). */
   viewTransform?: ViewTransform
-  /** When false, skip automatic fit on image load / resize. Defaults to true. */
+  /** When false, this panel doesn't own the home registration (another panel does). */
   isFitLeader?: boolean
 }
 
-const TRACKPAD_ZOOM_SPEED = 0.01
 const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)'
 const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)'
 const GUIDE_HIT_THRESHOLD = 15
 
-function drawOverlayStrokePath(
-  ctx: CanvasRenderingContext2D,
-  points: readonly Point[],
-): void {
-  if (points.length < 2) return
-  ctx.beginPath()
-  ctx.moveTo(points[0].x, points[0].y)
-  for (let i = 1; i < points.length; i++) {
-    ctx.lineTo(points[i].x, points[i].y)
-  }
-  ctx.stroke()
+function imageContent(img: HTMLImageElement | null): { width: number; height: number } | null {
+  return img ? { width: img.naturalWidth, height: img.naturalHeight } : null
 }
 
 export function ImageViewer({
@@ -63,10 +55,15 @@ export function ImageViewer({
 }: ImageViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  // The shared viewTransform (if any) is created once in SplitLayout and stable for the component's lifetime.
-  const viewTransformRef = useRef<ViewTransform>(viewTransform ?? new ViewTransform())
+  // Lazy-init: useRef's argument runs every render, so a plain default would
+  // allocate a throw-away ViewTransform on each render.
+  const viewTransformRef = useRef<ViewTransform>(null!)
+  if (viewTransformRef.current === null) {
+    viewTransformRef.current = viewTransform ?? new ViewTransform()
+  }
   const imageRef = useRef<HTMLImageElement | null>(null)
   const rafIdRef = useRef<number>(0)
+  const containerSizeRef = useRef<ContainerSize>({ width: 0, height: 0 })
 
   // Guide line drawing state
   const [dragStart, setDragStart] = useState<Point | null>(null)
@@ -80,9 +77,10 @@ export function ImageViewer({
     lastMidY: number
   } | null>(null)
   const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map())
-  // Cached canvas rect captured at pinch start; reused each touchmove to avoid
-  // forcing a synchronous layout at 60fps.
   const pinchRectRef = useRef<DOMRect | null>(null)
+
+  const getBaseScale = useCallback(() => computeBaseScale(containerSizeRef.current, imageContent(imageRef.current)), [])
+  const getCurrentScale = useCallback(() => viewTransformRef.current.getScale(getBaseScale()), [getBaseScale])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!
@@ -92,8 +90,8 @@ export function ImageViewer({
     if (isFlipped) {
       screenX = rect.width - screenX
     }
-    return viewTransformRef.current.screenToCanvas(screenX, screenY)
-  }, [isFlipped])
+    return viewTransformRef.current.screenToCanvas(screenX, screenY, containerSizeRef.current, getBaseScale())
+  }, [isFlipped, getBaseScale])
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current
@@ -102,35 +100,35 @@ export function ImageViewer({
 
     const ctx = canvas.getContext('2d')!
     const dpr = window.devicePixelRatio || 1
+    const container = containerSizeRef.current
+    const baseScale = getBaseScale()
 
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     ctx.clearRect(0, 0, canvas.width, canvas.height)
     ctx.fillStyle = '#f5f5f5'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    const vt = viewTransformRef.current.get()
+    const projected = viewTransformRef.current.project(container, baseScale)
     ctx.setTransform(
-      dpr * vt.scale, 0,
-      0, dpr * vt.scale,
-      dpr * vt.offsetX, dpr * vt.offsetY,
+      dpr * projected.scale, 0,
+      0, dpr * projected.scale,
+      dpr * projected.offsetX, dpr * projected.offsetY,
     )
 
     ctx.drawImage(img, 0, 0)
 
     // Draw grid and guide lines in canvas coordinate space
-    const cssWidth = canvas.width / dpr
-    const cssHeight = canvas.height / dpr
-    const topLeft = viewTransformRef.current.screenToCanvas(0, 0)
-    const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
+    const topLeft = viewTransformRef.current.screenToCanvas(0, 0, container, baseScale)
+    const bottomRight = viewTransformRef.current.screenToCanvas(container.width, container.height, container, baseScale)
     const imgCenter = { x: img.naturalWidth / 2, y: img.naturalHeight / 2 }
-    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, imgCenter)
-    drawGuideLines(ctx, guideLines, vt.scale, highlightedGuideId)
+    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, imgCenter)
+    drawGuideLines(ctx, guideLines, projected.scale, highlightedGuideId)
 
     // Draw in-progress guide line
     if (dragStart && dragEnd) {
       ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)'
-      ctx.lineWidth = 1.5 / vt.scale
-      ctx.setLineDash([6 / vt.scale, 4 / vt.scale])
+      ctx.lineWidth = 1.5 / projected.scale
+      ctx.setLineDash([6 / projected.scale, 4 / projected.scale])
       ctx.beginPath()
       ctx.moveTo(dragStart.x, dragStart.y)
       ctx.lineTo(dragEnd.x, dragEnd.y)
@@ -150,8 +148,8 @@ export function ImageViewer({
       ctx.lineCap = 'round'
       ctx.lineJoin = 'round'
       const passes = [
-        { color: OVERLAY_HALO_COLOR, width: (STROKE_WIDTH * OVERLAY_HALO_MULTIPLIER) / vt.scale },
-        { color: OVERLAY_COLOR, width: STROKE_WIDTH / vt.scale },
+        { color: OVERLAY_HALO_COLOR, width: (STROKE_WIDTH * OVERLAY_HALO_MULTIPLIER) / projected.scale },
+        { color: OVERLAY_COLOR, width: STROKE_WIDTH / projected.scale },
       ]
       for (const pass of passes) {
         ctx.strokeStyle = pass.color
@@ -163,7 +161,7 @@ export function ImageViewer({
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd])
+  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd, getBaseScale])
 
   const requestRedraw = useCallback(() => {
     if (rafIdRef.current) return
@@ -173,14 +171,20 @@ export function ImageViewer({
     })
   }, [redraw])
 
-  // When a shared ViewTransform is provided, redraw whenever the other panel mutates it.
+  // Subscribe via a ref-stable indirection so the subscription survives
+  // requestRedraw identity changes; otherwise we'd unsubscribe + resubscribe
+  // on every prop change and miss notifications fired during the swap window.
+  const requestRedrawRef = useRef(requestRedraw)
+  useEffect(() => { requestRedrawRef.current = requestRedraw })
+
   useEffect(() => {
     if (!viewTransform) return
-    return viewTransform.subscribe(requestRedraw)
-  }, [viewTransform, requestRedraw])
+    return viewTransform.subscribe(() => requestRedrawRef.current())
+  }, [viewTransform])
 
-  // Buffer-only resize — leaves the ViewTransform alone so resize events don't
-  // clobber the user's manual zoom/pan.
+  // Buffer-only resize — leaves the camera alone so resize events don't
+  // clobber the user's manual zoom/pan. The camera projects against the new
+  // container size automatically, preserving the visual center.
   const resizeCanvas = useCallback(() => {
     const canvas = canvasRef.current
     const container = containerRef.current
@@ -192,41 +196,18 @@ export function ImageViewer({
     canvas.height = rect.height * dpr
     canvas.style.width = `${rect.width}px`
     canvas.style.height = `${rect.height}px`
+    containerSizeRef.current = { width: rect.width, height: rect.height }
 
     redraw()
   }, [redraw])
 
-  const fitImage = useCallback(() => {
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    const img = imageRef.current
-    if (!canvas || !container || !img) return
-
-    const dpr = window.devicePixelRatio || 1
-    const rect = container.getBoundingClientRect()
-    canvas.width = rect.width * dpr
-    canvas.height = rect.height * dpr
-    canvas.style.width = `${rect.width}px`
-    canvas.style.height = `${rect.height}px`
-
-    if (isFitLeader) {
-      viewTransformRef.current.fitTo(
-        { width: rect.width, height: rect.height },
-        { width: img.naturalWidth, height: img.naturalHeight },
-      )
-    }
-
-    redraw()
-  }, [redraw, isFitLeader])
-
-  // Latest-ref bridge so effects below can read fresh callbacks without
-  // depending on them — fitImage churns whenever grid/guideLines change, and
-  // refiring it would clobber the user's manual zoom.
-  const fitImageRef = useRef(fitImage)
+  // Latest-ref bridge for resizeCanvas / onImageLoaded / onImageError so the
+  // image-load effect doesn't churn whenever grid/guides change.
+  const resizeCanvasRef = useRef(resizeCanvas)
   const onImageLoadedRef = useRef(onImageLoaded)
   const onImageErrorRef = useRef(onImageError)
   useEffect(() => {
-    fitImageRef.current = fitImage
+    resizeCanvasRef.current = resizeCanvas
     onImageLoadedRef.current = onImageLoaded
     onImageErrorRef.current = onImageError
   })
@@ -240,13 +221,16 @@ export function ImageViewer({
       if (cancelled) return
       imageRef.current = loadedImg
       onImageLoadedRef.current?.(loadedImg.naturalWidth, loadedImg.naturalHeight)
-      fitImageRef.current()
+      // Register the home position so reset / first-load lands on image center.
+      if (isFitLeader) {
+        viewTransformRef.current.setHome(loadedImg.naturalWidth / 2, loadedImg.naturalHeight / 2, 1)
+      }
+      resizeCanvasRef.current()
     }
 
     const img = new Image()
     img.onload = () => {
       if (cancelled) return
-      // Try CORS version for untainted canvas
       const corsImg = new Image()
       corsImg.crossOrigin = 'anonymous'
       corsImg.onload = () => applyImage(corsImg)
@@ -259,7 +243,7 @@ export function ImageViewer({
     img.src = imageUrl
 
     return () => { cancelled = true }
-  }, [imageUrl])
+  }, [imageUrl, isFitLeader])
 
   useEffect(() => {
     const container = containerRef.current
@@ -269,10 +253,13 @@ export function ImageViewer({
     return () => observer.disconnect()
   }, [resizeCanvas])
 
-  // Reset view
+  // Reset view (button click in toolbar).
   useEffect(() => {
-    if (viewResetVersion > 0) fitImageRef.current()
-  }, [viewResetVersion])
+    if (viewResetVersion > 0) {
+      viewTransformRef.current.reset()
+      redraw()
+    }
+  }, [viewResetVersion, redraw])
 
   // Redraw when guides or overlay change
   useEffect(() => {
@@ -299,19 +286,22 @@ export function ImageViewer({
         focalX = rect.width - focalX
       }
 
+      const container = containerSizeRef.current
+      const baseScale = getBaseScale()
+
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
-        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0)
+        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale)
       } else {
         const deltaX = isFlipped ? e.deltaX : -e.deltaX
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY)
+        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale)
       }
       requestRedraw()
     }
 
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [requestRedraw, guideMode, isFlipped])
+  }, [requestRedraw, guideMode, isFlipped, getBaseScale])
 
   // Mouse handlers for guide line interaction
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
@@ -323,11 +313,11 @@ export function ImageViewer({
       setDragEnd(point)
     } else if (guideMode === 'delete') {
       // Find nearest guide line
-      const threshold = GUIDE_HIT_THRESHOLD / viewTransformRef.current.get().scale
+      const threshold = GUIDE_HIT_THRESHOLD / getCurrentScale()
       let best: GuideLine | null = null
       let bestDist = threshold
       for (const line of guideLines) {
-        const dist = pointToSegmentDist(point, line)
+        const dist = pointToSegmentDistance(point.x, point.y, line.x1, line.y1, line.x2, line.y2)
         if (dist < bestDist) {
           bestDist = dist
           best = line
@@ -335,7 +325,7 @@ export function ImageViewer({
       }
       onHighlightGuide?.(best?.id ?? null)
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide])
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, getCurrentScale])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (guideMode !== 'add' || !dragStart) return
@@ -347,12 +337,12 @@ export function ImageViewer({
     if (guideMode !== 'add' || !dragStart || !dragEnd) return
     const dx = dragEnd.x - dragStart.x
     const dy = dragEnd.y - dragStart.y
-    if (Math.sqrt(dx * dx + dy * dy) > 5 / viewTransformRef.current.get().scale) {
+    if (Math.sqrt(dx * dx + dy * dy) > 5 / getCurrentScale()) {
       onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y)
     }
     setDragStart(null)
     setDragEnd(null)
-  }, [guideMode, dragStart, dragEnd, onAddGuideLine])
+  }, [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -391,11 +381,11 @@ export function ImageViewer({
       setDragStart(point)
       setDragEnd(point)
     } else if (guideMode === 'delete') {
-      const threshold = GUIDE_HIT_THRESHOLD / viewTransformRef.current.get().scale
+      const threshold = GUIDE_HIT_THRESHOLD / getCurrentScale()
       let best: GuideLine | null = null
       let bestDist = threshold
       for (const line of guideLines) {
-        const dist = pointToSegmentDist(point, line)
+        const dist = pointToSegmentDistance(point.x, point.y, line.x1, line.y1, line.x2, line.y2)
         if (dist < bestDist) {
           bestDist = dist
           best = line
@@ -403,7 +393,7 @@ export function ImageViewer({
       }
       onHighlightGuide?.(best?.id ?? null)
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, dragStart, dragEnd])
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, dragStart, dragEnd, getCurrentScale])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -435,7 +425,7 @@ export function ImageViewer({
       const translateX = isFlipped ? -rawTranslateX : rawTranslateX
       const translateY = midY - pinchRef.current.lastMidY
 
-      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
+      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale())
 
       pinchRef.current.lastDist = dist
       pinchRef.current.lastMidX = midX
@@ -450,7 +440,7 @@ export function ImageViewer({
     const touch = e.changedTouches[0]
     setDragEnd(getCanvasPoint(touch.clientX, touch.clientY))
     requestRedraw()
-  }, [guideMode, dragStart, getCanvasPoint, requestRedraw, isFlipped])
+  }, [guideMode, dragStart, getCanvasPoint, requestRedraw, isFlipped, getBaseScale])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -471,12 +461,12 @@ export function ImageViewer({
     e.preventDefault()
     const dx = dragEnd.x - dragStart.x
     const dy = dragEnd.y - dragStart.y
-    if (Math.sqrt(dx * dx + dy * dy) > 5 / viewTransformRef.current.get().scale) {
+    if (Math.sqrt(dx * dx + dy * dy) > 5 / getCurrentScale()) {
       onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y)
     }
     setDragStart(null)
     setDragEnd(null)
-  }, [guideMode, dragStart, dragEnd, onAddGuideLine])
+  }, [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale])
 
   const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default'
 
@@ -506,20 +496,4 @@ export function ImageViewer({
       />
     </Box>
   )
-}
-
-function pointToSegmentDist(p: Point, line: GuideLine): number {
-  const dx = line.x2 - line.x1
-  const dy = line.y2 - line.y1
-  const lenSq = dx * dx + dy * dy
-  if (lenSq === 0) {
-    const ex = p.x - line.x1
-    const ey = p.y - line.y1
-    return Math.sqrt(ex * ex + ey * ey)
-  }
-  let t = ((p.x - line.x1) * dx + (p.y - line.y1) * dy) / lenSq
-  t = Math.max(0, Math.min(1, t))
-  const cx = line.x1 + t * dx
-  const cy = line.y1 + t * dy
-  return Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2)
 }

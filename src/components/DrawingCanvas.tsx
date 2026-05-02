@@ -2,7 +2,9 @@ import { useRef, useEffect, useCallback } from 'react'
 import { Box } from '@mui/material'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { CanvasRenderer } from '../drawing/CanvasRenderer'
-import { ViewTransform } from '../drawing/ViewTransform'
+import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform'
+import { computeBaseScale, computeContentCenter } from '../drawing/canvasUtils'
+import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
 import { drawGrid, drawGuideLines } from '../guides/drawGuides'
 import type { Point, Stroke } from '../drawing/types'
 import type { GridSettings, GuideLine } from '../guides/types'
@@ -18,24 +20,23 @@ interface DrawingCanvasProps {
   strokeManagerRef: React.RefObject<StrokeManager>
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number
-  /** Increment this to reset zoom/pan to identity. */
+  /** Increment this to reset zoom/pan to home. */
   viewResetVersion: number
   grid: GridSettings
   guideLines: readonly GuideLine[]
   guideVersion: number
-  /** If provided, initialize view transform to fit this size (match reference panel scale) */
+  /** If provided, fit this content size into the container (image reference). */
   fitSize?: { width: number; height: number }
   isFlipped?: boolean
   /** Called with the in-progress stroke during drawing, or null when stroke ends */
   onCurrentStrokeChange?: (stroke: Stroke | null) => void
   /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with ReferencePanel). */
   viewTransform?: ViewTransform
-  /** When false, skip automatic fit on fitSize change (another panel owns the fit in shared-VT mode). Defaults to true. */
+  /** When false, this panel doesn't own the home registration (another panel does). */
   isFitLeader?: boolean
 }
 
 const ERASER_THRESHOLD = 20
-const TRACKPAD_ZOOM_SPEED = 0.01
 
 export function DrawingCanvas({
   mode,
@@ -58,12 +59,25 @@ export function DrawingCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<CanvasRenderer | null>(null)
-  // The shared viewTransform (if any) is created once in SplitLayout and stable for the component's lifetime.
-  const viewTransformRef = useRef<ViewTransform>(viewTransform ?? new ViewTransform())
+  // Lazy-init: useRef's argument runs every render, so a plain default would
+  // allocate a throw-away ViewTransform on each render. The non-null cast is
+  // safe because the if-block always assigns before any read.
+  const viewTransformRef = useRef<ViewTransform>(null!)
+  if (viewTransformRef.current === null) {
+    viewTransformRef.current = viewTransform ?? new ViewTransform()
+  }
   const hasStylusRef = useRef(false)
   const drawingPointCountRef = useRef(0)
   const rafIdRef = useRef<number>(0)
-  const noRefGridCenterRef = useRef<Point>({ x: 0, y: 0 })
+  // Latest container size in CSS pixels — refreshed on every ResizeObserver
+  // tick. The camera transform projects against this on every read so layout
+  // changes (collapse, rotate, window resize) all preserve view center
+  // automatically without ad-hoc compensation.
+  const containerSizeRef = useRef<ContainerSize>({ width: 0, height: 0 })
+  const fitSizeRef = useRef(fitSize)
+  useEffect(() => { fitSizeRef.current = fitSize })
+
+  const getBaseScale = useCallback(() => computeBaseScale(containerSizeRef.current, fitSizeRef.current), [])
 
   // Pinch state
   const pinchRef = useRef<{ id1: number; id2: number; lastDist: number; lastMidX: number; lastMidY: number } | null>(null)
@@ -83,17 +97,22 @@ export function DrawingCanvas({
 
     const ctx = canvas.getContext('2d')!
     const dpr = window.devicePixelRatio || 1
+    const container = containerSizeRef.current
+    // Read fitSize directly from props (not via ref) so a redraw triggered by
+    // a shared-camera notification (e.g. ImageViewer's setHome on image load)
+    // uses the latest fitSize even when the parent's setState hasn't been
+    // observed via the ref-update effect yet.
+    const baseScale = computeBaseScale(container, fitSize)
 
     // Reset to identity and clear
     ctx.setTransform(1, 0, 0, 1, 0, 0)
     renderer.clear()
 
-    // Apply DPR scaling first, then view transform on top
-    const vt = viewTransformRef.current.get()
+    const projected = viewTransformRef.current.project(container, baseScale)
     ctx.setTransform(
-      dpr * vt.scale, 0,
-      0, dpr * vt.scale,
-      dpr * vt.offsetX, dpr * vt.offsetY,
+      dpr * projected.scale, 0,
+      0, dpr * projected.scale,
+      dpr * projected.offsetX, dpr * projected.offsetY,
     )
 
     renderer.drawStrokes(strokeManagerRef.current.getStrokes())
@@ -112,30 +131,16 @@ export function DrawingCanvas({
       renderer.drawStroke(current)
     }
 
-    // Draw grid and guide lines in canvas coordinate space (moves with zoom/pan)
-    const cssWidth = canvas.width / dpr
-    const cssHeight = canvas.height / dpr
-    const topLeft = viewTransformRef.current.screenToCanvas(0, 0)
-    const bottomRight = viewTransformRef.current.screenToCanvas(cssWidth, cssHeight)
-    const gridCenter = fitSize
-      ? { x: fitSize.width / 2, y: fitSize.height / 2 }
-      : noRefGridCenterRef.current
-    drawGrid(ctx, grid, topLeft, bottomRight, vt.scale, gridCenter)
-    drawGuideLines(ctx, guideLines, vt.scale)
+    // Grid + guide lines in canvas (world) coordinate space.
+    const topLeft = viewTransformRef.current.screenToCanvas(0, 0, container, baseScale)
+    const bottomRight = viewTransformRef.current.screenToCanvas(container.width, container.height, container, baseScale)
+    const gridCenter = computeContentCenter(fitSize)
+    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, gridCenter)
+    drawGuideLines(ctx, guideLines, projected.scale)
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   }, [highlightedStrokeIndex, strokeManagerRef, grid, guideLines, fitSize])
-
-  const fitToSize = useCallback(() => {
-    const container = containerRef.current
-    if (!container || !fitSize) return
-    const rect = container.getBoundingClientRect()
-    viewTransformRef.current.fitTo(
-      { width: rect.width, height: rect.height },
-      { width: fitSize.width, height: fitSize.height },
-    )
-  }, [fitSize])
 
   // Setup canvas with DPR
   const setupCanvas = useCallback(() => {
@@ -149,19 +154,16 @@ export function DrawingCanvas({
     canvas.height = rect.height * dpr
     canvas.style.width = `${rect.width}px`
     canvas.style.height = `${rect.height}px`
+    containerSizeRef.current = { width: rect.width, height: rect.height }
 
     const ctx = canvas.getContext('2d')!
     ctx.scale(dpr, dpr)
 
     rendererRef.current = new CanvasRenderer(ctx)
 
-    noRefGridCenterRef.current = viewTransformRef.current.screenToCanvas(
-      rect.width / 2,
-      rect.height / 2,
-    )
-
-    // Resize does not refit — that would clobber the user's manual zoom/pan.
-    // Fit happens only on fitSize change or viewResetVersion bump.
+    // Camera-model: projection is computed against the live container size on
+    // every read, so resizing alone preserves the visual center. No need to
+    // refit or re-anchor the grid.
     redrawAll()
   }, [redrawAll])
 
@@ -182,36 +184,26 @@ export function DrawingCanvas({
     redrawAll()
   }, [highlightedStrokeIndex, redrawVersion, guideVersion, redrawAll])
 
-  // Latest-ref bridge so the effects below can read fresh fit/redraw without
-  // taking a dep on them — their identities churn on unrelated state (e.g.
-  // grid, highlightedStrokeIndex) and refiring fit would clobber the user's
-  // manual zoom.
-  const fitSizeRef = useRef(fitSize)
-  const fitToSizeRef = useRef(fitToSize)
+  // Latest-ref bridge so the effects below can read fresh redraw without
+  // taking a dep on it — its identity churns on unrelated state.
   const redrawAllRef = useRef(redrawAll)
-  useEffect(() => {
-    fitSizeRef.current = fitSize
-    fitToSizeRef.current = fitToSize
-    redrawAllRef.current = redrawAll
-  })
+  useEffect(() => { redrawAllRef.current = redrawAll })
 
-  // Reset view when viewResetVersion changes
+  // Reset view when viewResetVersion bumps (user clicked the reset button).
   useEffect(() => {
     if (viewResetVersion > 0) {
-      if (fitSizeRef.current) {
-        fitToSizeRef.current()
-      } else {
-        viewTransformRef.current.reset()
-      }
+      viewTransformRef.current.reset()
       redrawAllRef.current()
     }
   }, [viewResetVersion])
 
+  // Register the camera "home" — image center for an image reference, world
+  // origin for free drawing. Only the fit leader writes home so the two panels
+  // don't fight over a shared transform.
   useEffect(() => {
-    if (fitSize && isFitLeader) {
-      fitToSizeRef.current()
-      redrawAllRef.current()
-    }
+    if (!isFitLeader) return
+    const home = computeContentCenter(fitSize)
+    viewTransformRef.current.setHome(home.x, home.y, 1)
   }, [fitSize, isFitLeader])
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
@@ -223,8 +215,10 @@ export function DrawingCanvas({
     if (isFlipped) {
       screenX = rect.width - screenX
     }
-    return viewTransformRef.current.screenToCanvas(screenX, screenY)
-  }, [isFlipped])
+    return viewTransformRef.current.screenToCanvas(screenX, screenY, containerSizeRef.current, getBaseScale())
+  }, [isFlipped, getBaseScale])
+
+  const getCurrentScale = useCallback(() => viewTransformRef.current.getScale(getBaseScale()), [getBaseScale])
 
   const requestRedraw = useCallback(() => {
     if (rafIdRef.current) return
@@ -234,11 +228,17 @@ export function DrawingCanvas({
     })
   }, [redrawAll])
 
-  // When a shared ViewTransform is provided, redraw whenever the other panel mutates it.
+  // Subscribe via a ref-stable indirection so the subscription survives
+  // redrawAll identity changes (which churn whenever fitSize / grid / guides
+  // change). Otherwise we'd unsubscribe + resubscribe per render and miss
+  // notifications fired during the swap window.
+  const requestRedrawRef = useRef(requestRedraw)
+  useEffect(() => { requestRedrawRef.current = requestRedraw })
+
   useEffect(() => {
     if (!viewTransform) return
-    return viewTransform.subscribe(requestRedraw)
-  }, [viewTransform, requestRedraw])
+    return viewTransform.subscribe(() => requestRedrawRef.current())
+  }, [viewTransform])
 
   // Wheel event for trackpad zoom/pan
   useEffect(() => {
@@ -255,14 +255,17 @@ export function DrawingCanvas({
         focalX = rect.width - focalX
       }
 
+      const container = containerSizeRef.current
+      const baseScale = getBaseScale()
+
       if (e.ctrlKey) {
         // Pinch zoom on trackpad (ctrlKey is set by the browser for pinch gestures)
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED
-        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0)
+        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale)
       } else {
         // Pan — flip horizontal delta when flipped
         const deltaX = isFlipped ? e.deltaX : -e.deltaX
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY)
+        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale)
       }
 
       requestRedraw()
@@ -270,7 +273,7 @@ export function DrawingCanvas({
 
     canvas.addEventListener('wheel', handleWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', handleWheel)
-  }, [requestRedraw, isFlipped])
+  }, [requestRedraw, isFlipped, getBaseScale])
 
   // Touch handlers
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
@@ -315,7 +318,7 @@ export function DrawingCanvas({
     const point = getCanvasPoint(touch.clientX, touch.clientY)
 
     if (mode === 'eraser') {
-      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / viewTransformRef.current.get().scale)
+      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale())
       if (index !== null && index === highlightedStrokeIndex) {
         onDeleteHighlightedStroke?.()
       } else {
@@ -325,7 +328,7 @@ export function DrawingCanvas({
       strokeManagerRef.current.startStroke(point)
       drawingPointCountRef.current = 1
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef])
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     e.preventDefault()
@@ -360,7 +363,7 @@ export function DrawingCanvas({
       const translateX = isFlipped ? -rawTranslateX : rawTranslateX
       const translateY = midY - pinchRef.current.lastMidY
 
-      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY)
+      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale())
 
       pinchRef.current.lastDist = dist
       pinchRef.current.lastMidX = midX
@@ -379,7 +382,7 @@ export function DrawingCanvas({
     strokeManagerRef.current.appendStroke(point)
     onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke())
     requestRedraw()
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange])
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange, getBaseScale])
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault()
@@ -418,7 +421,7 @@ export function DrawingCanvas({
     const point = getCanvasPoint(e.clientX, e.clientY)
 
     if (mode === 'eraser') {
-      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / viewTransformRef.current.get().scale)
+      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale())
       if (index !== null && index === highlightedStrokeIndex) {
         onDeleteHighlightedStroke?.()
       } else {
@@ -428,7 +431,7 @@ export function DrawingCanvas({
       strokeManagerRef.current.startStroke(point)
       drawingPointCountRef.current = 1
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef])
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale])
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current || mode !== 'pen') return
