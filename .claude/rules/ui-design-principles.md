@@ -17,6 +17,7 @@ When a new UI is added or an existing one is changed, check it against these pri
   2. Function-button group(s), separated by 1px vertical dividers (`Box sx={{ width: '1px', height: 24, bgcolor: '#ddd' }}`)
   3. `flex: 1` spacer
   4. View / navigation button group (grid, flip, zoom-reset, fullscreen, gallery, etc.)
+- **Exception**: DrawingPanel の reference-collapse トグルだけは toolbar の **左端** (Close/title 相当の位置) に置く。横長レイアウトでドローパネルが画面右側にあるため、左端がそのままリファレンス/ドローイング境界の真横になり、`PanelLeftOpen/Close` のアイコン方向とも一致するため。縦長でも同じ位置に置くことで、orientation を切り替えてもユーザーがトグル位置を覚えやすくする。
 
 ## 2. The three-tier button model
 
