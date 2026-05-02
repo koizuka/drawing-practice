@@ -7,12 +7,16 @@ import type { Stroke, Point } from '../drawing/types'
 import type { GuideInteractionMode } from './ImageViewer'
 import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants'
 import type { ViewTransform, ContainerSize } from '../drawing/ViewTransform'
-import { computeBaseScale, drawOverlayStrokePath } from '../drawing/canvasUtils'
+import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils'
 import { pointToSegmentDistance } from '../guides/GuideManager'
 
 const LOGICAL_WIDTH = 1920
 const LOGICAL_HEIGHT = 1080
 const LOGICAL_CONTENT = { width: LOGICAL_WIDTH, height: LOGICAL_HEIGHT }
+// World origin is the logical-content center; the iframe extends by half its
+// dimensions in each direction. See GRID_CENTER in canvasUtils.
+const LOGICAL_HALF_W = LOGICAL_WIDTH / 2
+const LOGICAL_HALF_H = LOGICAL_HEIGHT / 2
 
 // Tap threshold: release within this radius and duration counts as a tap and
 // switches to video-interact mode.
@@ -113,6 +117,9 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     onFitSize?.(LOGICAL_WIDTH, LOGICAL_HEIGHT)
   }, [onFitSize])
 
+  // offsetX/offsetY here are the screen position of WORLD (0, 0) — i.e. the
+  // iframe's geometric center under the new center-origin convention. Callers
+  // shift by half the iframe extent in world coords to get its top-left.
   const getViewTransformState = useCallback((containerRect: DOMRect): { scale: number; offsetX: number; offsetY: number } => {
     const container: ContainerSize = { width: containerRect.width, height: containerRect.height }
     const baseScale = computeBaseScale(container, LOGICAL_CONTENT)
@@ -121,12 +128,14 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     }
     return {
       scale: baseScale,
-      offsetX: (containerRect.width - LOGICAL_WIDTH * baseScale) / 2,
-      offsetY: (containerRect.height - LOGICAL_HEIGHT * baseScale) / 2,
+      offsetX: containerRect.width / 2,
+      offsetY: containerRect.height / 2,
     }
   }, [viewTransform])
 
-  const getLogicalPoint = useCallback((clientX: number, clientY: number): Point => {
+  // Returns world coordinates (origin = grid center = logical-content center).
+  // Strokes and guide lines stored on the drawing side share this coord space.
+  const getWorldPoint = useCallback((clientX: number, clientY: number): Point => {
     const container = containerRef.current
     if (!container) return { x: 0, y: 0 }
     const rect = container.getBoundingClientRect()
@@ -171,10 +180,11 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     const { scale, offsetX, offsetY } = getViewTransformState(rect)
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, dpr * offsetX, dpr * offsetY)
 
-    const topLeft: Point = { x: 0, y: 0 }
-    const bottomRight: Point = { x: LOGICAL_WIDTH, y: LOGICAL_HEIGHT }
-    const center: Point = { x: LOGICAL_WIDTH / 2, y: LOGICAL_HEIGHT / 2 }
-    drawGrid(ctx, grid, topLeft, bottomRight, scale, center)
+    // Grid bounds = the iframe area in world coords; with center-origin
+    // convention the logical content spans (-W/2,-H/2) to (W/2,H/2).
+    const topLeft: Point = { x: -LOGICAL_HALF_W, y: -LOGICAL_HALF_H }
+    const bottomRight: Point = { x: LOGICAL_HALF_W, y: LOGICAL_HALF_H }
+    drawGrid(ctx, grid, topLeft, bottomRight, scale, GRID_CENTER)
     drawGuideLines(ctx, guideLines, scale, highlightedGuideId)
 
     if (dragStart && dragEnd) {
@@ -228,20 +238,22 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
     if (rect.width === 0 || rect.height === 0) return
 
     const state = getViewTransformState(rect)
-    wrapper.style.left = `${state.offsetX}px`
-    wrapper.style.top = `${state.offsetY}px`
+    // state.offsetX/Y is the screen position of world (0, 0) (= iframe center);
+    // shift back by half the iframe size to place the wrapper's top-left.
+    wrapper.style.left = `${state.offsetX - LOGICAL_HALF_W * state.scale}px`
+    wrapper.style.top = `${state.offsetY - LOGICAL_HALF_H * state.scale}px`
     wrapper.style.width = `${LOGICAL_WIDTH * state.scale}px`
     wrapper.style.height = `${LOGICAL_HEIGHT * state.scale}px`
     requestRedraw()
   }, [requestRedraw, getViewTransformState])
 
-  // When this viewer owns the initial fit, register the camera home so reset
-  // and first-load land on the logical canvas center. The camera projects
-  // against (container, baseScale) on every read so we don't need to re-fit
-  // on resize.
+  // When this viewer owns the initial fit, register the camera home. World
+  // origin is the logical canvas center under the new convention, so home is
+  // always (0, 0). The camera projects against (container, baseScale) on
+  // every read so we don't need to re-fit on resize.
   useEffect(() => {
     if (!viewTransform || !isFitLeader) return
-    viewTransform.setHome(LOGICAL_WIDTH / 2, LOGICAL_HEIGHT / 2, 1)
+    viewTransform.setHome(0, 0, 1)
   }, [viewTransform, isFitLeader])
 
   useEffect(() => {
@@ -373,7 +385,7 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
 
   const beginGuideInteraction = useCallback((clientX: number, clientY: number) => {
     if (guideMode === 'none') return
-    const point = getLogicalPoint(clientX, clientY)
+    const point = getWorldPoint(clientX, clientY)
     if (guideMode === 'add') {
       setDragStart(point)
       setDragEnd(point)
@@ -393,13 +405,13 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       }
       onHighlightGuide?.(best?.id ?? null)
     }
-  }, [guideMode, getLogicalPoint, getLogicalScale, guideLines, onHighlightGuide])
+  }, [guideMode, getWorldPoint, getLogicalScale, guideLines, onHighlightGuide])
 
   const updateGuideInteraction = useCallback((clientX: number, clientY: number) => {
     if (guideMode !== 'add' || !dragStart) return
-    setDragEnd(getLogicalPoint(clientX, clientY))
+    setDragEnd(getWorldPoint(clientX, clientY))
     requestRedraw()
-  }, [guideMode, dragStart, getLogicalPoint, requestRedraw])
+  }, [guideMode, dragStart, getWorldPoint, requestRedraw])
 
   const endGuideInteraction = useCallback(() => {
     if (guideMode !== 'add' || !dragStart || !dragEnd) return

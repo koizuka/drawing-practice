@@ -331,6 +331,10 @@ describe('SplitLayout', () => {
           lines: [],
         },
         updatedAt: new Date(),
+        // Mark with the current coord version so the restore loads strokes
+        // immediately. Legacy drafts without coordVersion would defer the load
+        // until the reference reports its size — covered by a separate test.
+        coordVersion: 2,
       }
       loadDraftMock.mockResolvedValueOnce(draft)
 

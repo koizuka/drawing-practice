@@ -16,6 +16,7 @@ const messages = {
     'cancel': 'Cancel',
     'collapseReference': 'Hide reference (free drawing)',
     'expandReference': 'Show reference',
+    'collapseLockedSketchfabBrowse': 'Fix the angle first to free-draw',
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',
@@ -146,6 +147,7 @@ const messages = {
     'cancel': 'キャンセル',
     'collapseReference': 'お手本を畳む（フリードローイング）',
     'expandReference': 'お手本を表示',
+    'collapseLockedSketchfabBrowse': '角度を確定してから畳めます',
 
     // ReferencePanel
     'sketchfab': 'Sketchfab',

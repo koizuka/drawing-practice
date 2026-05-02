@@ -70,4 +70,35 @@ describe('quantizeStrokesForStorage', () => {
     quantizeStrokesForStorage(input)
     expect(JSON.stringify(input)).toBe(snapshot)
   })
+
+  // World coordinates can be negative under the center-origin convention. JS
+  // Math.round biases to +Infinity at exact halves (Math.round(-0.5) === 0),
+  // which would skew points just below an origin-line away from the line.
+  // Symmetric (half-away-from-zero) rounding fixes this.
+  it('quantizes negative coordinates symmetrically with positive ones', () => {
+    const input: Stroke[] = [{
+      points: [
+        { x: -12.34567, y: -23.45678 },
+        { x: 12.34567, y: 23.45678 },
+      ],
+      timestamp: 1,
+    }]
+    const out = quantizeStrokesForStorage(input)
+    expect(out[0].points).toEqual([
+      { x: -12.3, y: -23.5 },
+      { x: 12.3, y: 23.5 },
+    ])
+  })
+
+  it('rounds half-away-from-zero for both signs', () => {
+    // 0.05 and -0.05 should both round to magnitude 0.1, not asymmetric to 0.
+    const input: Stroke[] = [{
+      points: [
+        { x: 0.05, y: -0.05 },
+      ],
+      timestamp: 1,
+    }]
+    const out = quantizeStrokesForStorage(input)
+    expect(out[0].points[0]).toEqual({ x: 0.1, y: -0.1 })
+  })
 })

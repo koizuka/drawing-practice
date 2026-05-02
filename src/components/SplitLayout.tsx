@@ -11,7 +11,8 @@ import { DrawingPanel } from './DrawingPanel'
 import { StrokeManager } from '../drawing/StrokeManager'
 import { ViewTransform } from '../drawing/ViewTransform'
 import { loadDraft } from '../storage/sessionStore'
-import { cleanupStalePrDatabases } from '../storage/db'
+import { cleanupStalePrDatabases, COORD_VERSION_CURRENT } from '../storage/db'
+import { shiftStrokes, shiftGuideState } from '../storage/coordMigration'
 import { addUrlHistory, getUrlHistoryEntry } from '../storage/urlHistoryStore'
 import { buildYouTubeCanonicalUrl } from '../utils/youtube'
 import { canonicalSketchfabUrl } from '../utils/sketchfab'
@@ -19,6 +20,7 @@ import { dataUrlToJpegBlob } from '../utils/imageResize'
 import type { SketchfabModelMeta } from './SketchfabViewer'
 import { t } from '../i18n'
 import type { Stroke, ReferenceSnapshot } from '../drawing/types'
+import type { GuideState } from '../guides/types'
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types'
 
 function SplitLayoutInner() {
@@ -102,7 +104,7 @@ function SplitLayoutInner() {
   })
 
   // Guide state (from context)
-  const { grid, lines, version: guideVersion, restoreGuides } = useGuides()
+  const { grid, lines, version: guideVersion, restoreGuides, guideManagerRef } = useGuides()
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
   const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null)
@@ -180,6 +182,16 @@ function SplitLayoutInner() {
     }
   })
 
+  // Defers the legacy-draft strokes/guides until the reference's natural size
+  // is known (handleReferenceImageSize), so the (-W/2, -H/2) shift to the new
+  // center-origin convention can be applied in a single step — avoiding a
+  // brief flash of mis-positioned strokes.
+  const pendingMigrationRef = useRef<{
+    strokes: Stroke[]
+    redoStack: Stroke[]
+    guides: GuideState
+  } | null>(null)
+
   /**
    * Record the current reference state as an undoable entry, then apply the
    * mutation. Used for all user-initiated reference changes (Fix Angle, image
@@ -187,6 +199,11 @@ function SplitLayoutInner() {
    * ensures individual setter calls can't bypass history recording.
    */
   const changeReference = useCallback((mutate: (setters: ReferenceSetters) => void) => {
+    // Cancel any pending coord migration: the legacy strokes were sized to
+    // the OUTGOING reference. The next onReferenceImageSize will report the
+    // new reference's dimensions, which would shift the legacy strokes by
+    // the wrong amount.
+    pendingMigrationRef.current = null
     const prev = captureReferenceSnapshot()
     strokeManagerRef.current?.recordReferenceChange(prev)
     mutate({
@@ -208,6 +225,10 @@ function SplitLayoutInner() {
    * so time doesn't keep ticking after the reference silently reverts.
    */
   const resetReferenceOnError = useCallback(() => {
+    // Cancel any pending coord migration: with no reference, the size
+    // callback that would have applied it never fires, and we don't want the
+    // legacy-coord arrays held forever.
+    pendingMigrationRef.current = null
     setSource('none')
     setReferenceMode('browse')
     setFixedImageUrl(null)
@@ -218,14 +239,51 @@ function SplitLayoutInner() {
   }, [pauseAndIncrementVersion, incrementFlushVersion])
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
-    setReferenceSize({ width, height })
-  }, [])
+    // Bail when the size hasn't actually changed. YouTubeViewer fires
+    // onFitSize with the constant 1920x1080 on every mount, so without this
+    // guard a remount triggers a wasted setState + re-render.
+    setReferenceSize(prev => (prev && prev.width === width && prev.height === height) ? prev : { width, height })
+
+    const pending = pendingMigrationRef.current
+    if (pending && width > 0 && height > 0) {
+      pendingMigrationRef.current = null
+      // If the user has already started drawing in the gap between draft
+      // restore and the size callback (e.g. image load lagged), abandon the
+      // migration rather than overwrite their work. Their session has
+      // effectively diverged from the legacy draft; the next autosave will
+      // tag the new state with the current coord version. Read via refs so
+      // this callback's identity doesn't churn on every guide update.
+      const userHasStarted =
+        (strokeManagerRef.current?.canUndo() ?? false)
+        || (guideManagerRef.current?.getLines().length ?? 0) > 0
+      if (userHasStarted) return
+      const dx = -width / 2
+      const dy = -height / 2
+      const migratedStrokes = shiftStrokes(pending.strokes, dx, dy)
+      const migratedRedo = shiftStrokes(pending.redoStack, dx, dy)
+      const migratedGuides = shiftGuideState(pending.guides, dx, dy)
+      if (strokeManagerRef.current && (migratedStrokes.length > 0 || migratedRedo.length > 0)) {
+        strokeManagerRef.current.loadState(migratedStrokes, migratedRedo)
+      }
+      restoreGuides(migratedGuides)
+      // Debounced autosave is fine — the next user interaction will persist
+      // the migrated coords; no need to bypass it via flushVersion.
+      setRestoreVersion(v => v + 1)
+      incrementChangeVersion()
+    }
+  }, [restoreGuides, incrementChangeVersion, guideManagerRef])
 
   // When the user closes the reference, the stored `referenceSize` is stale.
   // Pass null in that case so DrawingCanvas falls back to free-drawing
   // semantics (baseScale=1, home + grid centered at world origin) instead of
   // staying anchored to the previous image's dimensions.
   const drawingFitSize = source === 'none' ? null : referenceSize
+
+  // True while the Sketchfab 3D iframe is being used for framing — Fix Angle
+  // captures whatever the user sees, so the panel must stay at half-screen.
+  // Used to both block the collapse layout and disable the toggle button so
+  // the two stay in sync.
+  const collapseLocked = sketchfabViewerActive && referenceMode === 'browse'
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped(prev => !prev)
@@ -442,19 +500,37 @@ function SplitLayoutInner() {
         return
       }
 
-      // Restore strokes
-      if (strokeManagerRef.current && (draft.strokes.length > 0 || draft.redoStack.length > 0)) {
-        strokeManagerRef.current.loadState(draft.strokes, draft.redoStack)
+      // Defer the load only when a viewer that reports onReferenceImageSize
+      // will mount — sketchfab browse mode without a captured screenshot does
+      // not, and its strokes were drawn against an unscaled panel coord space
+      // that already matches the new convention.
+      const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT
+      const referenceWillSize =
+        draft.source === 'image' ||
+        draft.source === 'url' ||
+        draft.source === 'pexels' ||
+        draft.source === 'youtube' ||
+        (draft.source === 'sketchfab' && draft.referenceImageData !== null)
+      const deferStrokesForMigration = isLegacyCoords && referenceWillSize
+
+      if (deferStrokesForMigration) {
+        pendingMigrationRef.current = {
+          strokes: draft.strokes,
+          redoStack: draft.redoStack,
+          guides: draft.guideState ?? { grid: { mode: 'none' }, lines: [] },
+        }
+      } else {
+        if (strokeManagerRef.current && (draft.strokes.length > 0 || draft.redoStack.length > 0)) {
+          strokeManagerRef.current.loadState(draft.strokes, draft.redoStack)
+        }
+        if (draft.guideState) {
+          restoreGuides(draft.guideState)
+        }
       }
 
       // Restore timer
       if (draft.elapsedMs > 0) {
         timer.restore(draft.elapsedMs)
-      }
-
-      // Restore guides
-      if (draft.guideState) {
-        restoreGuides(draft.guideState)
       }
 
       // Restore collapsed layout state
@@ -507,10 +583,10 @@ function SplitLayoutInner() {
         </Alert>
       )}
       <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
-      {/* Hide for free-drawing collapse, but keep visible while the Sketchfab
-          3D viewer is mounted — its captured-screenshot framing must match what
-          the user sees on Fix Angle, which requires the panel at half-screen. */}
-      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !sketchfabViewerActive) ? 'none' : 'block' }}>
+      {/* `collapseLocked` keeps the reference panel visible even when the user
+          asked to collapse it; the toggle button is also disabled in that
+          state so the user gets a tooltip instead of a no-op click. */}
+      <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !collapseLocked) ? 'none' : 'block' }}>
         <ReferencePanel
           overlayStrokes={overlayStrokes}
           overlayCurrentStrokeRef={currentStrokeRef}
@@ -553,6 +629,7 @@ function SplitLayoutInner() {
           orientation={orientation}
           referenceCollapsed={referenceCollapsed}
           onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
+          collapseLocked={collapseLocked}
         />
       </Box>
       </Box>

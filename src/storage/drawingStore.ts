@@ -1,11 +1,16 @@
-import { db, type DrawingRecord } from './db'
+import { db, type DrawingRecord, COORD_VERSION_CURRENT } from './db'
 import type { Stroke } from '../drawing/types'
 import type { ReferenceInfo } from '../types'
 
 const QUANTIZE_FACTOR = 10
 
+// Round half away from zero so positive and negative coordinates quantize
+// symmetrically around the origin. Math.round biases toward +Infinity at exact
+// halves (Math.round(0.5) === 1, Math.round(-0.5) === 0), which would shift
+// strokes toward the origin asymmetrically once world coords can be negative.
 function quantize(v: number): number {
-  return Math.round(v * QUANTIZE_FACTOR) / QUANTIZE_FACTOR
+  const sign = v < 0 ? -1 : 1
+  return sign * Math.round(Math.abs(v) * QUANTIZE_FACTOR) / QUANTIZE_FACTOR
 }
 
 /**
@@ -45,6 +50,7 @@ export async function saveDrawing(
     reference: reference ?? undefined,
     createdAt: new Date(),
     elapsedMs,
+    coordVersion: COORD_VERSION_CURRENT,
   })
   return id as number
 }
