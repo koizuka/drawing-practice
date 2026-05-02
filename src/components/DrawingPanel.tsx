@@ -214,6 +214,33 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           minHeight: 40,
         }}
       >
+        {/* Reference panel collapse toggle is placed at the left end (instead
+            of the right view group) so it sits next to the reference/drawing
+            boundary in landscape mode and stays in a fixed spot across
+            orientations. See .claude/rules/ui-design-principles.md §1. */}
+        {onToggleReferenceCollapsed && (() => {
+          const icons = orientation === 'portrait'
+            ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
+            : { collapsed: PanelLeftOpen, expanded: PanelLeftClose };
+          const Icon = referenceCollapsed ? icons.collapsed : icons.expanded;
+          const tooltip = collapseLocked
+            ? t('collapseLockedSketchfabBrowse')
+            : referenceCollapsed ? t('expandReference') : t('collapseReference');
+          const button = (
+            <IconButton size="small" onClick={onToggleReferenceCollapsed} disabled={collapseLocked} aria-label={tooltip}>
+              <Icon size={20} />
+            </IconButton>
+          );
+          return (
+            <>
+              <ToolbarTooltip title={tooltip}>
+                {collapseLocked ? <span>{button}</span> : button}
+              </ToolbarTooltip>
+              <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+            </>
+          );
+        })()}
+
         {/* Drawing tools */}
         <ToolbarTooltip title={`${t('pen')} (P)`}>
           <IconButton
@@ -273,29 +300,6 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         <Box sx={{ flex: 1 }} />
 
         {/* View */}
-        {onToggleReferenceCollapsed && (() => {
-          const icons = orientation === 'portrait'
-            ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
-            : { collapsed: PanelLeftOpen, expanded: PanelLeftClose };
-          const Icon = referenceCollapsed ? icons.collapsed : icons.expanded;
-          const tooltip = collapseLocked
-            ? t('collapseLockedSketchfabBrowse')
-            : referenceCollapsed ? t('expandReference') : t('collapseReference');
-          // Only wrap in <span> when disabled — MUI suppresses tooltips on
-          // disabled buttons unless wrapped, but adding the span when enabled
-          // breaks the aria-label propagation tests rely on for queryByLabelText.
-          const button = (
-            <IconButton size="small" onClick={onToggleReferenceCollapsed} disabled={collapseLocked} aria-label={tooltip}>
-              <Icon size={20} />
-            </IconButton>
-          );
-          return (
-            <ToolbarTooltip title={tooltip}>
-              {collapseLocked ? <span>{button}</span> : button}
-            </ToolbarTooltip>
-          );
-        })()}
-
         <ToolbarTooltip title={t('resetZoom')}>
           <span>
             <IconButton
