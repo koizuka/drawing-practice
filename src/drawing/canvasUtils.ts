@@ -1,5 +1,5 @@
-import type { Point } from './types'
-import type { ContainerSize } from './ViewTransform'
+import type { Point } from './types';
+import type { ContainerSize } from './ViewTransform';
 
 /**
  * Fit-to-container scale: the largest scale that lets `content` fit inside
@@ -11,9 +11,9 @@ export function computeBaseScale(
   container: ContainerSize,
   content: { width: number; height: number } | null | undefined,
 ): number {
-  if (!content || container.width <= 0 || container.height <= 0) return 1
-  if (content.width <= 0 || content.height <= 0) return 1
-  return Math.min(container.width / content.width, container.height / content.height)
+  if (!content || container.width <= 0 || container.height <= 0) return 1;
+  if (content.width <= 0 || content.height <= 0) return 1;
+  return Math.min(container.width / content.width, container.height / content.height);
 }
 
 /**
@@ -23,18 +23,18 @@ export function computeBaseScale(
  * Strokes drawn at world coord (50, 30) stay 50 right / 30 down of the grid
  * center across reference loads — only the rendering scale shifts.
  */
-export const GRID_CENTER: Point = { x: 0, y: 0 }
+export const GRID_CENTER: Point = { x: 0, y: 0 };
 
 /** Draw a polyline stroke path in the current ctx transform. No-op for <2 points. */
 export function drawOverlayStrokePath(
   ctx: CanvasRenderingContext2D,
   points: readonly Point[],
 ): void {
-  if (points.length < 2) return
-  ctx.beginPath()
-  ctx.moveTo(points[0].x, points[0].y)
+  if (points.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(points[0].x, points[0].y);
   for (let i = 1; i < points.length; i++) {
-    ctx.lineTo(points[i].x, points[i].y)
+    ctx.lineTo(points[i].x, points[i].y);
   }
-  ctx.stroke()
+  ctx.stroke();
 }

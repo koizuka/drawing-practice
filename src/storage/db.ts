@@ -1,9 +1,9 @@
-import Dexie, { type EntityTable } from 'dexie'
-import type { Stroke } from '../drawing/types'
-import type { GuideLine, GridSettings } from '../guides/types'
-import type { ReferenceInfo, ReferenceSource } from '../types'
-import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels'
-import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab'
+import Dexie, { type EntityTable } from 'dexie';
+import type { Stroke } from '../drawing/types';
+import type { GuideLine, GridSettings } from '../guides/types';
+import type { ReferenceInfo, ReferenceSource } from '../types';
+import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
+import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab';
 
 /**
  * Stroke / guide-line coordinate system version.
@@ -14,124 +14,124 @@ import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter
  *   Free-drawing-only records (source === 'none') are version-agnostic — the
  *   convention is identical for them — but new writes always tag them as v2.
  */
-export const COORD_VERSION_CURRENT = 2
+export const COORD_VERSION_CURRENT = 2;
 
 export interface DrawingRecord {
-  id?: number
-  strokes: Stroke[]
-  thumbnail: string  // data URL (PNG)
-  referenceInfo: string  // legacy: plain string description
-  reference?: ReferenceInfo  // structured reference info (v2)
-  createdAt: Date
-  elapsedMs: number  // drawing time in milliseconds
+  id?: number;
+  strokes: Stroke[];
+  thumbnail: string; // data URL (PNG)
+  referenceInfo: string; // legacy: plain string description
+  reference?: ReferenceInfo; // structured reference info (v2)
+  createdAt: Date;
+  elapsedMs: number; // drawing time in milliseconds
   /** See COORD_VERSION_CURRENT. */
-  coordVersion?: number
+  coordVersion?: number;
 }
 
 export interface SessionDraft {
-  id: 1  // singleton
-  strokes: Stroke[]
-  redoStack: Stroke[]
-  elapsedMs: number
-  source: ReferenceSource
-  referenceInfo: ReferenceInfo | null
-  referenceImageData: string | null  // base64 data URL for images that don't survive reload
+  id: 1; // singleton
+  strokes: Stroke[];
+  redoStack: Stroke[];
+  elapsedMs: number;
+  source: ReferenceSource;
+  referenceInfo: ReferenceInfo | null;
+  referenceImageData: string | null; // base64 data URL for images that don't survive reload
   guideState: {
-    grid: GridSettings
-    lines: GuideLine[]
-  }
+    grid: GridSettings;
+    lines: GuideLine[];
+  };
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
-  referenceCollapsed?: boolean
-  updatedAt: Date
+  referenceCollapsed?: boolean;
+  updatedAt: Date;
   /** See COORD_VERSION_CURRENT. */
-  coordVersion?: number
+  coordVersion?: number;
 }
 
-export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image' | 'sketchfab'
+export type UrlHistoryType = 'youtube' | 'pexels' | 'url' | 'image' | 'sketchfab';
 
 export interface UrlHistoryEntry {
-  url: string
-  type: UrlHistoryType
-  title?: string
-  lastUsedAt: Date
+  url: string;
+  type: UrlHistoryType;
+  title?: string;
+  lastUsedAt: Date;
   /** Display name for 'image' entries (original file name). */
-  fileName?: string
+  fileName?: string;
   /** Resized reference bytes for 'image' entries; see resizeImageForHistory. */
-  imageBlob?: Blob
+  imageBlob?: Blob;
   /**
    * Small remote thumbnail URL for the dropdown preview. Used by 'pexels'
    * (photo.src.tiny) and 'sketchfab' (resized screenshot data URL or model
    * thumbnail CDN URL). 'youtube' derives its thumbnail from the video id at
    * render time, 'url' uses the entry url itself, and 'image' uses imageBlob.
    */
-  thumbnailUrl?: string
+  thumbnailUrl?: string;
   /**
    * For 'pexels' entries: the search query + orientation that produced this
    * photo when it was selected. Restored when the entry is re-opened so
    * "back to search" returns to the originating search context.
    */
-  pexelsSearchContext?: PexelsLastSearch
+  pexelsSearchContext?: PexelsLastSearch;
   /**
    * For 'sketchfab' entries: the search query + timeFilter + category in
    * effect when this model was Fix-Angled. Restored when the entry is
    * re-opened so the searcher returns to the originating context.
    */
-  sketchfabSearchContext?: SketchfabSearchContext
+  sketchfabSearchContext?: SketchfabSearchContext;
 }
 
 export interface PexelsSearchHistoryEntry {
   /** Dedup key: query.trim().toLowerCase(). */
-  key: string
+  key: string;
   /** Display form (preserves the user's original casing). */
-  query: string
-  orientation: PexelsOrientationFilter
-  lastUsedAt: Date
+  query: string;
+  orientation: PexelsOrientationFilter;
+  lastUsedAt: Date;
 }
 
 export interface SketchfabSearchHistoryEntry {
   /** Dedup key: `${query.trim().toLowerCase()}|${category ?? ''}`. */
-  key: string
+  key: string;
   /** Display form (preserves the user's original casing). */
-  query: string
-  category?: SketchfabCategorySlug
-  timeFilter: SketchfabTimeFilter
-  lastUsedAt: Date
+  query: string;
+  category?: SketchfabCategorySlug;
+  timeFilter: SketchfabTimeFilter;
+  lastUsedAt: Date;
 }
 
 // Scope database name by deploy path so PR previews don't share data.
 // Keep the original name for the main deployment to preserve existing data.
-const DB_BASE_NAME = 'DrawingPracticeDB'
-const PR_DB_PREFIX = `${DB_BASE_NAME}_`
-const basePath = import.meta.env.BASE_URL ?? '/'
-const isMainDeployment = basePath === '/' || basePath === '/drawing-practice/'
-const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`
+const DB_BASE_NAME = 'DrawingPracticeDB';
+const PR_DB_PREFIX = `${DB_BASE_NAME}_`;
+const basePath = import.meta.env.BASE_URL ?? '/';
+const isMainDeployment = basePath === '/' || basePath === '/drawing-practice/';
+const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`;
 
 const db = new Dexie(dbName) as Dexie & {
-  drawings: EntityTable<DrawingRecord, 'id'>
-  session: EntityTable<SessionDraft, 'id'>
-  urlHistory: EntityTable<UrlHistoryEntry, 'url'>
-  pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>
-  sketchfabSearchHistory: EntityTable<SketchfabSearchHistoryEntry, 'key'>
-}
+  drawings: EntityTable<DrawingRecord, 'id'>;
+  session: EntityTable<SessionDraft, 'id'>;
+  urlHistory: EntityTable<UrlHistoryEntry, 'url'>;
+  pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>;
+  sketchfabSearchHistory: EntityTable<SketchfabSearchHistoryEntry, 'key'>;
+};
 
 db.version(1).stores({
   drawings: '++id, createdAt',
-})
+});
 
 db.version(2).stores({
   drawings: '++id, createdAt',
-})
+});
 
 db.version(3).stores({
   drawings: '++id, createdAt',
   session: 'id',
-})
+});
 
 db.version(4).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
-})
+});
 
 // v5: no index change — anchors the additive fileName/imageBlob fields on
 // UrlHistoryEntry so future schema diffs are easy to track.
@@ -139,7 +139,7 @@ db.version(5).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
-})
+});
 
 // v6: no index change — anchors the additive thumbnailUrl field on
 // UrlHistoryEntry (used for the dropdown preview thumbnail).
@@ -147,7 +147,7 @@ db.version(6).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
-})
+});
 
 // v7: no index change — anchors the additive pexelsSearchContext field on
 // UrlHistoryEntry (per-photo Pexels search context restoration).
@@ -155,7 +155,7 @@ db.version(7).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
-})
+});
 
 // v8: adds the pexelsSearchHistory table for the multi-entry search history
 // dropdown (deduped by lowercased query, ordered by lastUsedAt desc).
@@ -164,7 +164,7 @@ db.version(8).stores({
   session: 'id',
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
-})
+});
 
 // v9: adds the sketchfabSearchHistory table (same shape as pexels) and anchors
 // the additive UrlHistoryEntry.sketchfabSearchContext field for sketchfab URL
@@ -175,7 +175,7 @@ db.version(9).stores({
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
   sketchfabSearchHistory: 'key, lastUsedAt',
-})
+});
 
 // v10: no index change — anchors the additive SessionDraft.referenceCollapsed
 // field (free-drawing layout state).
@@ -185,7 +185,7 @@ db.version(10).stores({
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
   sketchfabSearchHistory: 'key, lastUsedAt',
-})
+});
 
 // v11: no index change — anchors the additive coordVersion field on
 // DrawingRecord and SessionDraft. Tracks the stroke/guide coord-system
@@ -198,27 +198,28 @@ db.version(11).stores({
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
   sketchfabSearchHistory: 'key, lastUsedAt',
-})
+});
 
-export { db }
+export { db };
 
 /**
  * Delete IndexedDB databases left behind by closed PR previews.
  * Called on main deployment startup only.
  */
 export async function cleanupStalePrDatabases(): Promise<void> {
-  if (!isMainDeployment) return
-  if (typeof globalThis.indexedDB === 'undefined') return
-  if (typeof indexedDB.databases !== 'function') return
+  if (!isMainDeployment) return;
+  if (typeof globalThis.indexedDB === 'undefined') return;
+  if (typeof indexedDB.databases !== 'function') return;
 
   try {
-    const allDbs = await indexedDB.databases()
+    const allDbs = await indexedDB.databases();
     for (const { name } of allDbs) {
       if (name && name.startsWith(PR_DB_PREFIX)) {
-        indexedDB.deleteDatabase(name)
+        indexedDB.deleteDatabase(name);
       }
     }
-  } catch {
+  }
+  catch {
     // indexedDB.databases() may not be available in all browsers
   }
 }
