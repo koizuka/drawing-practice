@@ -84,21 +84,25 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const COMPACT_ERASE_THRESHOLD = 480;
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [compactErase, setCompactErase] = useState(false);
+  const [eraserMenuAnchor, setEraserMenuAnchor] = useState<HTMLElement | null>(null);
   useEffect(() => {
     const el = toolbarRef.current;
     if (!el) return;
     const update = () => {
       const w = el.clientWidth;
       if (w === 0) return;
-      setCompactErase(w < COMPACT_ERASE_THRESHOLD);
+      const isCompact = w < COMPACT_ERASE_THRESHOLD;
+      setCompactErase(isCompact);
+      // Close the chooser when growing back to the wide layout — its anchor
+      // IconButton is about to unmount and the popover would otherwise render
+      // against a stale element.
+      if (!isCompact) setEraserMenuAnchor(null);
     };
     const obs = new ResizeObserver(update);
     obs.observe(el);
     update();
     return () => obs.disconnect();
   }, []);
-
-  const [eraserMenuAnchor, setEraserMenuAnchor] = useState<HTMLElement | null>(null);
 
   const { grid, lines, version: guideVersion } = useGuides();
 
@@ -231,8 +235,8 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   }, [eraseSubmode, handleEraserTool, handleLassoTool]);
 
   const compactEraseLongPress = useLongPress({
-    onLongPress: (e) => {
-      setEraserMenuAnchor(e.currentTarget);
+    onLongPress: (target) => {
+      setEraserMenuAnchor(target);
     },
     onClick: handleCompactEraseTap,
     ms: 500,
