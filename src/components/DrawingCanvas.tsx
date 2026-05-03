@@ -67,7 +67,6 @@ export function DrawingCanvas({
     viewTransformRef.current = viewTransform ?? new ViewTransform();
   }
   const hasStylusRef = useRef(false);
-  const drawingPointCountRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Latest container size in CSS pixels — refreshed on every ResizeObserver
   // tick. The camera transform projects against this on every read so layout
@@ -301,7 +300,6 @@ export function DrawingCanvas({
       // when the pinch ends.
       if (mode === 'pen' && strokeManagerRef.current.getCurrentStroke()) {
         strokeManagerRef.current.cancelStroke();
-        drawingPointCountRef.current = 0;
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
@@ -339,7 +337,6 @@ export function DrawingCanvas({
     }
     else {
       strokeManagerRef.current.startStroke(point);
-      drawingPointCountRef.current = 1;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, onCurrentStrokeChange, requestRedraw]);
 
@@ -444,7 +441,6 @@ export function DrawingCanvas({
     }
     else {
       strokeManagerRef.current.startStroke(point);
-      drawingPointCountRef.current = 1;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale]);
 
