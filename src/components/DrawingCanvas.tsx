@@ -295,6 +295,17 @@ export function DrawingCanvas({
 
     // 2-finger pinch
     if (activeTouchesRef.current.size >= 2) {
+      // Cancel any in-progress single-finger stroke. On iPhone the second
+      // finger often lands a few frames after the first, and the small
+      // amount of motion in between would otherwise commit a stray line
+      // when the pinch ends.
+      if (mode === 'pen' && strokeManagerRef.current.getCurrentStroke()) {
+        strokeManagerRef.current.cancelStroke();
+        drawingPointCountRef.current = 0;
+        onCurrentStrokeChange?.(null);
+        requestRedraw();
+      }
+
       const ids = Array.from(activeTouchesRef.current.keys());
       const t1 = activeTouchesRef.current.get(ids[0])!;
       const t2 = activeTouchesRef.current.get(ids[1])!;
@@ -330,7 +341,7 @@ export function DrawingCanvas({
       strokeManagerRef.current.startStroke(point);
       drawingPointCountRef.current = 1;
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, onCurrentStrokeChange, requestRedraw]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     e.preventDefault();

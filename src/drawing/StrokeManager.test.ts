@@ -45,6 +45,48 @@ describe('StrokeManager', () => {
       expect(manager.getCurrentStroke()).toBeNull();
     });
 
+    it('cancelStroke discards the in-progress stroke without committing or affecting undo', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 5, y: 5 });
+      manager.appendStroke({ x: 10, y: 10 });
+      expect(manager.getCurrentStroke()!.points).toHaveLength(3);
+
+      manager.cancelStroke();
+
+      expect(manager.getCurrentStroke()).toBeNull();
+      expect(manager.getStrokes()).toHaveLength(0);
+      expect(manager.canUndo()).toBe(false);
+
+      // A subsequent endStroke must be a no-op (currentStroke already cleared)
+      expect(manager.endStroke()).toBeNull();
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('cancelStroke is safe to call when no stroke is active', () => {
+      expect(() => manager.cancelStroke()).not.toThrow();
+      expect(manager.getCurrentStroke()).toBeNull();
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('cancelStroke does not disturb previously committed strokes or undo stack', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      manager.endStroke();
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.canUndo()).toBe(true);
+
+      manager.startStroke({ x: 100, y: 100 });
+      manager.appendStroke({ x: 110, y: 110 });
+      manager.cancelStroke();
+
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.canUndo()).toBe(true);
+      // The first (committed) stroke is still undoable
+      const undone = manager.undo();
+      expect(undone?.kind).toBe('stroke');
+      expect(manager.getStrokes()).toHaveLength(0);
+    });
+
     it('tracks current stroke during drawing', () => {
       manager.startStroke({ x: 0, y: 0 });
       expect(manager.getCurrentStroke()).not.toBeNull();

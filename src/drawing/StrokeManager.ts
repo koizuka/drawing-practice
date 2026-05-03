@@ -62,6 +62,15 @@ export class StrokeManager {
     return stroke;
   }
 
+  /**
+   * Discard the in-progress stroke without committing it or touching the
+   * undo/redo stacks. Used when a multi-finger gesture takes over mid-stroke
+   * so a stray short line is not left behind.
+   */
+  cancelStroke(): void {
+    this.currentStroke = null;
+  }
+
   getCurrentStroke(): Stroke | null {
     return this.currentStroke;
   }
