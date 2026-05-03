@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { Box, IconButton, Typography } from '@mui/material';
+import { Box, IconButton, Popover, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
+import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
+import { useLongPress } from '../hooks/useLongPress';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
 import type { ViewTransform } from '../drawing/ViewTransform';
@@ -60,6 +61,10 @@ interface DrawingPanelProps {
 export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager());
   const [mode, setMode] = useState<DrawingMode>('pen');
+  // The most-recently-used eraser sub-mode. In narrow layouts the eraser
+  // toolbar button shows this icon and a short tap activates this sub-mode;
+  // long-press opens a chooser. Not persisted across sessions.
+  const [eraseSubmode, setEraseSubmode] = useState<'eraser' | 'lasso'>('eraser');
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null);
   const [strokeCount, setStrokeCount] = useState(0);
   const [canUndo, setCanUndo] = useState(false);
@@ -70,6 +75,34 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [showGallery, setShowGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // Collapse the eraser/lasso pair into a single long-press button when the
+  // toolbar is narrower than the threshold. Stored as a boolean (rather than
+  // raw width) so resize events that don't cross the breakpoint don't trigger
+  // re-renders. Threshold of 480px catches iPhone widths in both portrait
+  // (375–430px) and landscape half-panel (~466px).
+  const COMPACT_ERASE_THRESHOLD = 480;
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [compactErase, setCompactErase] = useState(false);
+  const [eraserMenuAnchor, setEraserMenuAnchor] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = toolbarRef.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      if (w === 0) return;
+      const isCompact = w < COMPACT_ERASE_THRESHOLD;
+      setCompactErase(isCompact);
+      // Close the chooser when growing back to the wide layout — its anchor
+      // IconButton is about to unmount and the popover would otherwise render
+      // against a stale element.
+      if (!isCompact) setEraserMenuAnchor(null);
+    };
+    const obs = new ResizeObserver(update);
+    obs.observe(el);
+    update();
+    return () => obs.disconnect();
+  }, []);
 
   const { grid, lines, version: guideVersion } = useGuides();
 
@@ -184,7 +217,30 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
 
   const handleEraserTool = useCallback(() => {
     setMode('eraser');
+    setHighlightedStrokeIndex(null);
+    setEraseSubmode('eraser');
   }, []);
+
+  const handleLassoTool = useCallback(() => {
+    setMode('lasso');
+    setHighlightedStrokeIndex(null);
+    setEraseSubmode('lasso');
+  }, []);
+
+  // Compact (narrow toolbar) eraser button: short tap re-enters the most-
+  // recently-used erase sub-mode; long-press opens the chooser popover.
+  const handleCompactEraseTap = useCallback(() => {
+    if (eraseSubmode === 'lasso') handleLassoTool();
+    else handleEraserTool();
+  }, [eraseSubmode, handleEraserTool, handleLassoTool]);
+
+  const compactEraseLongPress = useLongPress({
+    onLongPress: (target) => {
+      setEraserMenuAnchor(target);
+    },
+    onClick: handleCompactEraseTap,
+    ms: 500,
+  });
 
   const mod = getModifierPrefix();
 
@@ -195,14 +251,24 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
       onRedo: handleRedo,
       onPenTool: handlePenTool,
       onEraserTool: handleEraserTool,
+      onLassoTool: handleLassoTool,
       onSave: handleSave,
-    }), [handleUndo, handleRedo, handlePenTool, handleEraserTool, handleSave]),
+    }), [handleUndo, handleRedo, handlePenTool, handleEraserTool, handleLassoTool, handleSave]),
   });
+
+  const eraseSx = (active: boolean) => ({
+    'bgcolor': active ? 'error.main' : 'transparent',
+    'color': active ? 'white' : 'inherit',
+    '&:hover': { bgcolor: active ? 'error.dark' : 'action.hover' },
+  });
+  const compactEraseIcon = eraseSubmode === 'lasso' ? <LassoSelect size={20} /> : <Eraser size={20} />;
+  const compactEraseLabel = eraseSubmode === 'lasso' ? t('lassoEraser') : t('eraser');
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
       <Box
+        ref={toolbarRef}
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -256,19 +322,63 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           </IconButton>
         </ToolbarTooltip>
 
-        <ToolbarTooltip title={`${t('eraser')} (E)`}>
-          <IconButton
-            size="small"
-            onClick={handleEraserTool}
-            sx={{
-              'bgcolor': mode === 'eraser' ? 'error.main' : 'transparent',
-              'color': mode === 'eraser' ? 'white' : 'inherit',
-              '&:hover': { bgcolor: mode === 'eraser' ? 'error.dark' : 'action.hover' },
-            }}
-          >
-            <Eraser size={20} />
-          </IconButton>
-        </ToolbarTooltip>
+        {compactErase
+          ? (
+              <ToolbarTooltip title={`${compactEraseLabel} (E / L)`}>
+                <IconButton
+                  size="small"
+                  aria-label={compactEraseLabel}
+                  sx={{ ...eraseSx(mode === 'eraser' || mode === 'lasso'), touchAction: 'none' }}
+                  {...compactEraseLongPress}
+                >
+                  {compactEraseIcon}
+                </IconButton>
+              </ToolbarTooltip>
+            )
+          : (
+              <>
+                <ToolbarTooltip title={`${t('eraser')} (E)`}>
+                  <IconButton size="small" onClick={handleEraserTool} aria-label={t('eraser')} sx={eraseSx(mode === 'eraser')}>
+                    <Eraser size={20} />
+                  </IconButton>
+                </ToolbarTooltip>
+                <ToolbarTooltip title={`${t('lassoEraser')} (L)`}>
+                  <IconButton size="small" onClick={handleLassoTool} aria-label={t('lassoEraser')} sx={eraseSx(mode === 'lasso')}>
+                    <LassoSelect size={20} />
+                  </IconButton>
+                </ToolbarTooltip>
+              </>
+            )}
+
+        <Popover
+          open={Boolean(eraserMenuAnchor)}
+          anchorEl={eraserMenuAnchor}
+          onClose={() => setEraserMenuAnchor(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+          transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+          slotProps={{ paper: { sx: { display: 'flex', p: 0.5 } } }}
+        >
+          <ToolbarTooltip title={t('eraser')}>
+            <IconButton
+              size="small"
+              aria-label={t('eraser')}
+              onClick={() => { handleEraserTool(); setEraserMenuAnchor(null); }}
+              sx={eraseSx(mode === 'eraser')}
+            >
+              <Eraser size={20} />
+            </IconButton>
+          </ToolbarTooltip>
+          <ToolbarTooltip title={t('lassoEraser')}>
+            <IconButton
+              size="small"
+              aria-label={t('lassoEraser')}
+              onClick={() => { handleLassoTool(); setEraserMenuAnchor(null); }}
+              sx={eraseSx(mode === 'lasso')}
+            >
+              <LassoSelect size={20} />
+            </IconButton>
+          </ToolbarTooltip>
+        </Popover>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 

@@ -16,6 +16,7 @@ interface ShortcutActions {
   onRedo: () => void;
   onPenTool: () => void;
   onEraserTool: () => void;
+  onLassoTool: () => void;
   onSave: () => void;
 }
 
@@ -81,6 +82,10 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
         case 'e':
           e.preventDefault();
           actions.onEraserTool();
+          break;
+        case 'l':
+          e.preventDefault();
+          actions.onLassoTool();
           break;
       }
     }

@@ -331,6 +331,132 @@ describe('StrokeManager', () => {
     });
   });
 
+  describe('lassoDelete', () => {
+    function addStroke(x: number, y: number) {
+      manager.startStroke({ x, y });
+      manager.appendStroke({ x: x + 10, y: y + 10 });
+      manager.endStroke();
+    }
+
+    it('deletes multiple strokes in a single undo entry', () => {
+      addStroke(0, 0); // index 0
+      addStroke(20, 20); // index 1
+      addStroke(40, 40); // index 2
+      addStroke(60, 60); // index 3
+
+      const removed = manager.lassoDelete([0, 2]);
+      expect(removed).not.toBeNull();
+      expect(removed!).toHaveLength(2);
+      expect(manager.getStrokes()).toHaveLength(2);
+      // Remaining: original indices 1 and 3.
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 20, y: 20 });
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 60, y: 60 });
+    });
+
+    it('returns null and skips history when nothing matches', () => {
+      addStroke(0, 0);
+      const before = manager.canUndo();
+      const removed = manager.lassoDelete([]);
+      expect(removed).toBeNull();
+      expect(manager.canUndo()).toBe(before);
+
+      const removed2 = manager.lassoDelete([5, 10, -1]);
+      expect(removed2).toBeNull();
+      expect(manager.getStrokes()).toHaveLength(1);
+    });
+
+    it('deduplicates and ignores out-of-range indices', () => {
+      addStroke(0, 0);
+      addStroke(20, 20);
+
+      const removed = manager.lassoDelete([0, 0, 1, 5, -2]);
+      expect(removed).toHaveLength(2);
+      expect(manager.getStrokes()).toHaveLength(0);
+    });
+
+    it('undo restores all deleted strokes at their original indices', () => {
+      addStroke(0, 0);
+      addStroke(20, 20);
+      addStroke(40, 40);
+      addStroke(60, 60);
+
+      manager.lassoDelete([0, 2]);
+      expect(manager.getStrokes()).toHaveLength(2);
+
+      const result = manager.undo();
+      expect(result).not.toBeNull();
+      expect(result!.kind).toBe('strokes');
+      expect(manager.getStrokes()).toHaveLength(4);
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 0, y: 0 });
+      expect(manager.getStrokes()[1].points[0]).toEqual({ x: 20, y: 20 });
+      expect(manager.getStrokes()[2].points[0]).toEqual({ x: 40, y: 40 });
+      expect(manager.getStrokes()[3].points[0]).toEqual({ x: 60, y: 60 });
+    });
+
+    it('redo re-applies the lasso delete after undo', () => {
+      addStroke(0, 0);
+      addStroke(20, 20);
+      addStroke(40, 40);
+
+      manager.lassoDelete([0, 1, 2]);
+      expect(manager.getStrokes()).toHaveLength(0);
+
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(3);
+
+      const result = manager.redo();
+      expect(result).not.toBeNull();
+      expect(result!.kind).toBe('strokes');
+      expect(manager.getStrokes()).toHaveLength(0);
+    });
+
+    it('survives multiple undo/redo cycles', () => {
+      addStroke(0, 0);
+      addStroke(20, 20);
+      addStroke(40, 40);
+      const before = manager.getStrokes().map(s => ({ ...s }));
+
+      manager.lassoDelete([0, 2]);
+      manager.undo();
+      manager.redo();
+      manager.undo();
+
+      const after = manager.getStrokes();
+      expect(after).toHaveLength(3);
+      expect(after.map(s => s.points[0])).toEqual(before.map(s => s.points[0]));
+    });
+
+    it('clears the redo stack on a fresh lasso delete', () => {
+      addStroke(0, 0);
+      addStroke(20, 20);
+
+      manager.undo(); // redo stack now has 1 entry
+      expect(manager.canRedo()).toBe(true);
+
+      manager.lassoDelete([0]);
+      expect(manager.canRedo()).toBe(false);
+    });
+
+    it('interleaves correctly with stroke add and single delete', () => {
+      addStroke(0, 0); // [s0]
+      addStroke(20, 20); // [s0, s1]
+      manager.lassoDelete([0]); // [s1]
+      addStroke(40, 40); // [s1, s2]
+      manager.deleteStroke(0); // [s2]
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 40, y: 40 });
+
+      manager.undo(); // restore single delete -> [s1, s2]
+      expect(manager.getStrokes()).toHaveLength(2);
+      manager.undo(); // undo add s2 -> [s1]
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 20, y: 20 });
+      manager.undo(); // undo lasso -> [s0, s1]
+      expect(manager.getStrokes()).toHaveLength(2);
+      expect(manager.getStrokes()[0].points[0]).toEqual({ x: 0, y: 0 });
+    });
+  });
+
   describe('findNearestStroke', () => {
     it('finds the nearest stroke within threshold', () => {
       manager.startStroke({ x: 100, y: 100 });

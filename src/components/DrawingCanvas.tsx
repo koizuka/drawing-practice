@@ -3,13 +3,13 @@ import { Box } from '@mui/material';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { CanvasRenderer } from '../drawing/CanvasRenderer';
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
-import { computeBaseScale, GRID_CENTER } from '../drawing/canvasUtils';
+import { computeBaseScale, GRID_CENTER, pointInPolygon, emptyBoundingBox, extendBoundingBox, type BoundingBox } from '../drawing/canvasUtils';
 import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import { drawGrid, drawGuideLines } from '../guides/drawGuides';
 import type { Point, Stroke } from '../drawing/types';
 import type { GridSettings, GuideLine } from '../guides/types';
 
-export type DrawingMode = 'pen' | 'eraser';
+export type DrawingMode = 'pen' | 'eraser' | 'lasso';
 
 interface DrawingCanvasProps {
   mode: DrawingMode;
@@ -68,6 +68,20 @@ export function DrawingCanvas({
   }
   const hasStylusRef = useRef(false);
   const rafIdRef = useRef<number>(0);
+  // Lasso (free-form selection) state. Points are in world coordinates so the
+  // selection follows the camera while the user draws; null when inactive.
+  const lassoPointsRef = useRef<Point[] | null>(null);
+  // Running bbox of the lasso polygon, updated incrementally on each append
+  // so per-move enclosure recomputation is O(1) in polygon size.
+  const lassoBboxRef = useRef<BoundingBox | null>(null);
+  // Marching-ants animation phase (in world units). Advanced on every rAF
+  // tick while lasso is active so the dashes appear to flow along the path.
+  const dashPhaseRef = useRef(0);
+  const marchingRafRef = useRef<number>(0);
+  // Indices of strokes currently enclosed by the in-progress lasso. Recomputed
+  // whenever the lasso path grows so the user gets live "would-be-deleted"
+  // feedback in red. Null when no lasso is active.
+  const lassoSelectedRef = useRef<Set<number> | null>(null);
   // Latest container size in CSS pixels — refreshed on every ResizeObserver
   // tick. The camera transform projects against this on every read so layout
   // changes (collapse, rotate, window resize) all preserve view center
@@ -114,11 +128,26 @@ export function DrawingCanvas({
       dpr * projected.offsetX, dpr * projected.offsetY,
     );
 
-    renderer.drawStrokes(strokeManagerRef.current.getStrokes());
+    const strokes = strokeManagerRef.current.getStrokes();
+    const lassoSelected = lassoSelectedRef.current;
+    if (lassoSelected && lassoSelected.size > 0) {
+      // Draw enclosed strokes in the highlight color so the user can see what
+      // releasing the lasso right now would delete.
+      for (let i = 0; i < strokes.length; i++) {
+        if (lassoSelected.has(i)) {
+          renderer.drawHighlightedStroke(strokes[i]);
+        }
+        else {
+          renderer.drawStroke(strokes[i]);
+        }
+      }
+    }
+    else {
+      renderer.drawStrokes(strokes);
+    }
 
     // Draw highlighted stroke
     if (highlightedStrokeIndex !== null) {
-      const strokes = strokeManagerRef.current.getStrokes();
       if (highlightedStrokeIndex < strokes.length) {
         renderer.drawHighlightedStroke(strokes[highlightedStrokeIndex]);
       }
@@ -135,6 +164,15 @@ export function DrawingCanvas({
     const bottomRight = viewTransformRef.current.screenToCanvas(container.width, container.height, container, baseScale);
     drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER);
     drawGuideLines(ctx, guideLines, projected.scale);
+
+    // In-progress lasso (marching ants). Drawn on top of strokes/grid so the
+    // selection outline is always visible. Line width compensates for zoom so
+    // the outline thickness stays visually constant.
+    const lasso = lassoPointsRef.current;
+    if (lasso && lasso.length >= 2) {
+      const worldLineWidth = 1.5 / projected.scale;
+      renderer.drawLasso(lasso, dashPhaseRef.current / projected.scale, worldLineWidth);
+    }
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -226,6 +264,122 @@ export function DrawingCanvas({
     });
   }, [redrawAll]);
 
+  const stopMarching = useCallback(() => {
+    if (marchingRafRef.current) {
+      cancelAnimationFrame(marchingRafRef.current);
+      marchingRafRef.current = 0;
+    }
+  }, []);
+
+  // Drives the marching-ants animation while a lasso is being drawn. The loop
+  // self-stops once `lassoPointsRef.current` becomes null.
+  const startMarching = useCallback(() => {
+    if (marchingRafRef.current) return;
+    const tick = () => {
+      if (!lassoPointsRef.current) {
+        marchingRafRef.current = 0;
+        return;
+      }
+      // ~1px / frame in screen space. Multiplied by some constant so motion
+      // is visible without being distracting.
+      dashPhaseRef.current = (dashPhaseRef.current + 0.5) % 1024;
+      requestRedraw();
+      marchingRafRef.current = requestAnimationFrame(tick);
+    };
+    marchingRafRef.current = requestAnimationFrame(tick);
+  }, [requestRedraw]);
+
+  const cancelLasso = useCallback(() => {
+    if (!lassoPointsRef.current) return;
+    lassoPointsRef.current = null;
+    lassoBboxRef.current = null;
+    lassoSelectedRef.current = null;
+    stopMarching();
+    requestRedraw();
+  }, [stopMarching, requestRedraw]);
+
+  /** Begin a new lasso path at the given world-space point. */
+  const startLasso = useCallback((point: Point) => {
+    lassoPointsRef.current = [point];
+    const bb = emptyBoundingBox();
+    extendBoundingBox(bb, point);
+    lassoBboxRef.current = bb;
+    lassoSelectedRef.current = null;
+    dashPhaseRef.current = 0;
+  }, []);
+
+  /** Append a point to the lasso path and refresh the running bbox. */
+  const appendLasso = useCallback((point: Point) => {
+    const polygon = lassoPointsRef.current;
+    const bb = lassoBboxRef.current;
+    if (!polygon || !bb) return;
+    polygon.push(point);
+    extendBoundingBox(bb, point);
+  }, []);
+
+  /**
+   * Recompute which strokes are fully enclosed by the current lasso path, so
+   * `redrawAll` can render them in the highlight color. The lasso bbox is
+   * already maintained incrementally; the per-stroke loop uses it as a cheap
+   * reject before falling back to the ray-cast.
+   */
+  const recomputeLassoSelection = useCallback(() => {
+    const polygon = lassoPointsRef.current;
+    const bb = lassoBboxRef.current;
+    if (!polygon || polygon.length < 3 || !bb) {
+      lassoSelectedRef.current = null;
+      return;
+    }
+    const strokes = strokeManagerRef.current.getStrokes();
+    const selected = new Set<number>();
+    for (let i = 0; i < strokes.length; i++) {
+      const pts = strokes[i].points;
+      if (pts.length === 0) continue;
+      let allInside = true;
+      for (const p of pts) {
+        if (p.x < bb.minX || p.x > bb.maxX || p.y < bb.minY || p.y > bb.maxY
+          || !pointInPolygon(p, polygon)) {
+          allInside = false;
+          break;
+        }
+      }
+      if (allInside) selected.add(i);
+    }
+    lassoSelectedRef.current = selected;
+  }, [strokeManagerRef]);
+
+  // Apply the just-drawn lasso path: delete every stroke flagged as enclosed
+  // and notify the parent so save/undo state refreshes. Reuses the live
+  // selection cache (kept up to date by recomputeLassoSelection on each move)
+  // so the release path doesn't redo the per-stroke geometry pass.
+  const finishLasso = useCallback(() => {
+    const polygon = lassoPointsRef.current;
+    const selected = lassoSelectedRef.current;
+    lassoPointsRef.current = null;
+    lassoBboxRef.current = null;
+    lassoSelectedRef.current = null;
+    stopMarching();
+    if (!polygon || polygon.length < 3 || !selected || selected.size === 0) {
+      requestRedraw();
+      return;
+    }
+    const targets = Array.from(selected).sort((a, b) => a - b);
+    strokeManagerRef.current.lassoDelete(targets);
+    notifyStrokeCount();
+    redrawAll();
+  }, [stopMarching, requestRedraw, strokeManagerRef, notifyStrokeCount, redrawAll]);
+
+  // Stop the marching animation if the component unmounts mid-lasso.
+  useEffect(() => () => stopMarching(), [stopMarching]);
+
+  // If the user toggles out of lasso mode mid-draw, abandon the partial path
+  // so it doesn't linger on screen.
+  useEffect(() => {
+    if (mode !== 'lasso' && lassoPointsRef.current) {
+      cancelLasso();
+    }
+  }, [mode, cancelLasso]);
+
   // Subscribe via a ref-stable indirection so the subscription survives
   // redrawAll identity changes (which churn whenever fitSize / grid / guides
   // change). Otherwise we'd unsubscribe + resubscribe per render and miss
@@ -303,6 +457,11 @@ export function DrawingCanvas({
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
+      // Same idea for an in-progress lasso: a second finger means the user
+      // is starting to pinch, not closing a selection.
+      if (mode === 'lasso' && lassoPointsRef.current) {
+        cancelLasso();
+      }
 
       const ids = Array.from(activeTouchesRef.current.keys());
       const t1 = activeTouchesRef.current.get(ids[0])!;
@@ -335,10 +494,15 @@ export function DrawingCanvas({
         onHighlightStroke(index);
       }
     }
+    else if (mode === 'lasso') {
+      startLasso(point);
+      startMarching();
+      requestRedraw();
+    }
     else {
       strokeManagerRef.current.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, onCurrentStrokeChange, requestRedraw]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
@@ -383,6 +547,17 @@ export function DrawingCanvas({
       return;
     }
 
+    // Lasso path drawing
+    if (mode === 'lasso' && lassoPointsRef.current) {
+      const touch = e.changedTouches[0] as Touch & { touchType?: string };
+      if (hasStylusRef.current && touch.touchType !== 'stylus') return;
+      const point = getCanvasPoint(touch.clientX, touch.clientY);
+      appendLasso(point);
+      recomputeLassoSelection();
+      requestRedraw();
+      return;
+    }
+
     // Drawing
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
@@ -392,7 +567,7 @@ export function DrawingCanvas({
     strokeManagerRef.current.appendStroke(point);
     onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange, getBaseScale]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     e.preventDefault();
@@ -419,7 +594,14 @@ export function DrawingCanvas({
         redrawAll();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange]);
+    else if (mode === 'lasso' && lassoPointsRef.current) {
+      // Only commit when the last finger lifts; intermediate touchends from
+      // multi-finger gestures are handled by the cancelLasso call above.
+      if (activeTouchesRef.current.size === 0) {
+        finishLasso();
+      }
+    }
+  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange, finishLasso]);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
@@ -439,19 +621,32 @@ export function DrawingCanvas({
         onHighlightStroke(index);
       }
     }
+    else if (mode === 'lasso') {
+      startLasso(point);
+      startMarching();
+      requestRedraw();
+    }
     else {
       strokeManagerRef.current.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, startMarching, requestRedraw, startLasso]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!isMouseDownRef.current || mode !== 'pen') return;
+    if (!isMouseDownRef.current) return;
+    if (mode === 'lasso' && lassoPointsRef.current) {
+      const point = getCanvasPoint(e.clientX, e.clientY);
+      appendLasso(point);
+      recomputeLassoSelection();
+      requestRedraw();
+      return;
+    }
+    if (mode !== 'pen') return;
 
     const point = getCanvasPoint(e.clientX, e.clientY);
     strokeManagerRef.current.appendStroke(point);
     onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, onCurrentStrokeChange]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
 
   const handleMouseUp = useCallback(() => {
     if (!isMouseDownRef.current) return;
@@ -465,7 +660,10 @@ export function DrawingCanvas({
         redrawAll();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange]);
+    else if (mode === 'lasso' && lassoPointsRef.current) {
+      finishLasso();
+    }
+  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange, finishLasso]);
 
   return (
     <Box
@@ -474,7 +672,7 @@ export function DrawingCanvas({
         width: '100%',
         height: '100%',
         position: 'relative',
-        cursor: mode === 'eraser' ? 'crosshair' : 'default',
+        cursor: mode === 'eraser' || mode === 'lasso' ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
     >
