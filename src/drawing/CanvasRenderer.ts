@@ -59,6 +59,46 @@ export class CanvasRenderer {
     this.drawStroke(stroke, this.options.highlightColor, this.options.highlightWidth);
   }
 
+  /**
+   * Draw the in-progress lasso selection path with a "marching ants" style
+   * dashed border. The path is rendered as implicitly closed (a segment from
+   * the last point back to the first is drawn).
+   *
+   * @param points Lasso vertices in the current ctx coordinate space.
+   * @param dashPhase Animation offset; callers increment over time so the
+   *   dashes appear to march.
+   * @param lineWidth Width in the same coordinate space as `points` — pass a
+   *   value pre-divided by zoom so the line stays visually constant.
+   */
+  drawLasso(points: readonly Point[], dashPhase: number, lineWidth: number): void {
+    if (points.length < 2) return;
+
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.closePath();
+
+    // Outer light pass for contrast against any background.
+    ctx.lineCap = 'butt';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = lineWidth;
+    ctx.setLineDash([6 * lineWidth, 4 * lineWidth]);
+
+    ctx.lineDashOffset = -dashPhase;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.stroke();
+
+    ctx.lineDashOffset = -dashPhase + 5 * lineWidth;
+    ctx.strokeStyle = 'rgba(20, 20, 20, 0.95)';
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
   /** Draw points incrementally (for the current in-progress stroke). */
   drawPoints(points: readonly Point[], fromIndex: number): void {
     if (fromIndex >= points.length - 1) return;

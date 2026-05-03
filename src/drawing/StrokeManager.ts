@@ -3,21 +3,33 @@ import type { Point, ReferenceSnapshot, Stroke } from './types';
 /** Maximum number of reference-change entries kept in history to bound memory. */
 const MAX_REFERENCE_HISTORY = 20;
 
+/**
+ * One stroke deletion captured as part of a batch (lasso) erase. Stored with
+ * its original index so undo can splice it back into the same slot.
+ */
+interface LassoDeleteItem {
+  stroke: Stroke;
+  index: number;
+}
+
 /** An entry on the undo stack records one reversible action. */
 type UndoEntry
   = | { type: 'add' }
     | { type: 'delete'; stroke: Stroke; index: number }
+    | { type: 'lasso-delete'; items: LassoDeleteItem[] }
     | { type: 'reference'; prev: ReferenceSnapshot };
 
 /** An entry on the redo stack stores enough data to replay the action. */
 type RedoEntry
   = | { type: 'add'; stroke: Stroke }
     | { type: 'delete'; stroke: Stroke; index: number }
+    | { type: 'lasso-delete'; items: LassoDeleteItem[] }
     | { type: 'reference'; next: ReferenceSnapshot };
 
 /** Result returned from undo()/redo() so callers can distinguish what changed. */
 export type UndoResult
   = | { kind: 'stroke'; stroke: Stroke }
+    | { kind: 'strokes'; strokes: Stroke[] }
     | { kind: 'reference' }
     | null;
 
@@ -131,6 +143,17 @@ export class StrokeManager {
       this.redoStack.push({ type: 'delete', stroke: entry.stroke, index: entry.index });
       return { kind: 'stroke', stroke: entry.stroke };
     }
+    if (entry.type === 'lasso-delete') {
+      // Re-insert in ascending index order so each splice() lands at the slot
+      // the stroke originally occupied. items is stored ascending (see lassoDelete).
+      const restored: Stroke[] = [];
+      for (const item of entry.items) {
+        this.strokes.splice(item.index, 0, item.stroke);
+        restored.push(item.stroke);
+      }
+      this.redoStack.push({ type: 'lasso-delete', items: entry.items });
+      return { kind: 'strokes', strokes: restored };
+    }
     // entry.type === 'reference'
     this.undoReferenceCount--;
     const current = captureCurrentRef?.();
@@ -162,6 +185,17 @@ export class StrokeManager {
       this.undoStack.push({ type: 'delete', stroke: removed, index: entry.index });
       return { kind: 'stroke', stroke: removed };
     }
+    if (entry.type === 'lasso-delete') {
+      // Re-delete in descending index order so earlier indices stay valid
+      // throughout the splice loop.
+      const removed: Stroke[] = [];
+      for (let i = entry.items.length - 1; i >= 0; i--) {
+        const [s] = this.strokes.splice(entry.items[i].index, 1);
+        removed.push(s);
+      }
+      this.undoStack.push({ type: 'lasso-delete', items: entry.items });
+      return { kind: 'strokes', strokes: removed };
+    }
     // entry.type === 'reference'
     const current = captureCurrentRef?.();
     if (current) {
@@ -186,6 +220,32 @@ export class StrokeManager {
     this.undoStack.push({ type: 'delete', stroke: removed, index });
     this.redoStack = [];
     return removed;
+  }
+
+  /**
+   * Delete multiple strokes in a single undo entry. `indices` may be in any
+   * order and may contain duplicates / out-of-range values (which are ignored).
+   * Returns the deleted strokes in original (ascending-index) order, or `null`
+   * when nothing was deleted (so callers can skip side effects like redraws).
+   */
+  lassoDelete(indices: readonly number[]): Stroke[] | null {
+    const valid = Array.from(new Set(indices))
+      .filter(i => i >= 0 && i < this.strokes.length)
+      .sort((a, b) => a - b);
+    if (valid.length === 0) return null;
+
+    // Capture (stroke, original index) pairs in ascending-index order. Then
+    // splice in descending order so earlier indices remain valid.
+    const items: LassoDeleteItem[] = valid.map(index => ({
+      stroke: this.strokes[index],
+      index,
+    }));
+    for (let i = valid.length - 1; i >= 0; i--) {
+      this.strokes.splice(valid[i], 1);
+    }
+    this.undoStack.push({ type: 'lasso-delete', items });
+    this.redoStack = [];
+    return items.map(it => it.stroke);
   }
 
   /** Find the nearest stroke to a point within the given threshold distance. */

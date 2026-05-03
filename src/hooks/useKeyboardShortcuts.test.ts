@@ -13,6 +13,7 @@ function createActions() {
     onRedo: vi.fn(),
     onPenTool: vi.fn(),
     onEraserTool: vi.fn(),
+    onLassoTool: vi.fn(),
     onSave: vi.fn(),
   };
 }
@@ -78,6 +79,14 @@ describe('useKeyboardShortcuts', () => {
 
       fireKey({ code: 'KeyE', key: 'e' });
       expect(actions.onEraserTool).toHaveBeenCalledOnce();
+    });
+
+    it('fires onLassoTool on L', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      fireKey({ code: 'KeyL', key: 'l' });
+      expect(actions.onLassoTool).toHaveBeenCalledOnce();
     });
   });
 

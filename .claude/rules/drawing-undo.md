@@ -11,7 +11,8 @@ paths:
 
 Single chronological undo/redo stack shared by **strokes AND reference changes**. Discriminated union entries:
 - `add` — stroke added
-- `delete` — stroke erased
+- `delete` — single stroke erased (tap eraser)
+- `lasso-delete` — batch erase: N strokes deleted as one undo unit (lasso). Items stored ascending by index; undo splices them back in ascending order, redo splices out in descending order so indices stay valid.
 - `reference` — reference (source/mode/image/Sketchfab angle) changed
 
 Reference entries are restored via an injected `ReferenceRestorer` callback. `undo(captureCurrentRef)` / `redo(captureCurrentRef)` accept a snapshot factory so the opposite stack can record the "current" reference before swapping.

@@ -1,0 +1,125 @@
+import { renderHook, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import { useLongPress } from './useLongPress';
+
+function fakePointerEvent(overrides: Partial<ReactPointerEvent<HTMLElement>> = {}): ReactPointerEvent<HTMLElement> {
+  return {
+    button: 0,
+    clientX: 0,
+    clientY: 0,
+    ...overrides,
+  } as ReactPointerEvent<HTMLElement>;
+}
+
+describe('useLongPress', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('fires onLongPress after the hold duration', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
+
+    act(() => result.current.onPointerDown(fakePointerEvent()));
+    expect(onLongPress).not.toHaveBeenCalled();
+
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+
+    act(() => result.current.onPointerUp(fakePointerEvent()));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('fires onClick on a quick release before the threshold', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
+
+    act(() => result.current.onPointerDown(fakePointerEvent()));
+    act(() => { vi.advanceTimersByTime(200); });
+    act(() => result.current.onPointerUp(fakePointerEvent()));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it('cancels the press when the pointer moves beyond the tolerance', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() =>
+      useLongPress({ onLongPress, onClick, ms: 500, moveTolerancePx: 8 }),
+    );
+
+    act(() => result.current.onPointerDown(fakePointerEvent({ clientX: 0, clientY: 0 })));
+    act(() => result.current.onPointerMove(fakePointerEvent({ clientX: 20, clientY: 0 })));
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(onLongPress).not.toHaveBeenCalled();
+
+    act(() => result.current.onPointerUp(fakePointerEvent({ clientX: 20, clientY: 0 })));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('keeps the press alive for movements within the tolerance', () => {
+    const onLongPress = vi.fn();
+    const { result } = renderHook(() =>
+      useLongPress({ onLongPress, ms: 500, moveTolerancePx: 8 }),
+    );
+
+    act(() => result.current.onPointerDown(fakePointerEvent({ clientX: 0, clientY: 0 })));
+    act(() => result.current.onPointerMove(fakePointerEvent({ clientX: 5, clientY: 5 })));
+    act(() => { vi.advanceTimersByTime(500); });
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels via onPointerCancel', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
+
+    act(() => result.current.onPointerDown(fakePointerEvent()));
+    act(() => result.current.onPointerCancel(fakePointerEvent()));
+    act(() => { vi.advanceTimersByTime(500); });
+
+    expect(onLongPress).not.toHaveBeenCalled();
+    act(() => result.current.onPointerUp(fakePointerEvent()));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it('preventDefault is called on contextmenu', () => {
+    const onLongPress = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress }));
+
+    const e = { preventDefault: vi.fn() } as unknown as React.MouseEvent<HTMLElement>;
+    act(() => result.current.onContextMenu(e));
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it('ignores non-primary mouse buttons', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress, onClick }));
+
+    act(() => result.current.onPointerDown(fakePointerEvent({ button: 2 })));
+    act(() => { vi.advanceTimersByTime(500); });
+    expect(onLongPress).not.toHaveBeenCalled();
+  });
+
+  it('does not double-fire onClick after onLongPress', () => {
+    const onLongPress = vi.fn();
+    const onClick = vi.fn();
+    const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
+
+    act(() => result.current.onPointerDown(fakePointerEvent()));
+    act(() => { vi.advanceTimersByTime(500); });
+    act(() => result.current.onPointerUp(fakePointerEvent()));
+
+    expect(onLongPress).toHaveBeenCalledTimes(1);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+});

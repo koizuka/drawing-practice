@@ -38,3 +38,48 @@ export function drawOverlayStrokePath(
   }
   ctx.stroke();
 }
+
+export interface BoundingBox {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/** Empty bbox seed; expand against points using `extendBoundingBox`. */
+export function emptyBoundingBox(): BoundingBox {
+  return { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+}
+
+export function extendBoundingBox(bb: BoundingBox, p: Point): void {
+  if (p.x < bb.minX) bb.minX = p.x;
+  if (p.y < bb.minY) bb.minY = p.y;
+  if (p.x > bb.maxX) bb.maxX = p.x;
+  if (p.y > bb.maxY) bb.maxY = p.y;
+}
+
+/**
+ * Ray-casting point-in-polygon test. The polygon is treated as implicitly
+ * closed (the segment from polygon[n-1] to polygon[0] is included), so callers
+ * do not need to repeat the first point at the end. Returns false when the
+ * polygon has fewer than 3 vertices (no enclosed area).
+ *
+ * Edge behavior is unspecified by design — points lying exactly on an edge may
+ * be reported either way depending on floating-point tie-breaking. For the
+ * lasso-delete use case this is acceptable since stroke points are sampled
+ * pixel positions, not arbitrarily-aligned coordinates.
+ */
+export function pointInPolygon(p: Point, polygon: readonly Point[]): boolean {
+  const n = polygon.length;
+  if (n < 3) return false;
+
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y;
+    const xj = polygon[j].x, yj = polygon[j].y;
+    const intersects = ((yi > p.y) !== (yj > p.y))
+      && (p.x < ((xj - xi) * (p.y - yi)) / (yj - yi) + xi);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
