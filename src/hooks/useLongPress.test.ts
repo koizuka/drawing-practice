@@ -105,7 +105,7 @@ describe('useLongPress', () => {
     const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
 
     act(() => result.current.onPointerDown(fakePointerEvent()));
-    act(() => result.current.onPointerCancel(fakePointerEvent()));
+    act(() => result.current.onPointerCancel());
     act(() => { vi.advanceTimersByTime(500); });
 
     expect(onLongPress).not.toHaveBeenCalled();

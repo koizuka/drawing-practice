@@ -22,8 +22,10 @@ interface UseLongPressOptions {
 interface UseLongPressHandlers {
   onPointerDown: (e: ReactPointerEvent<HTMLElement>) => void;
   onPointerMove: (e: ReactPointerEvent<HTMLElement>) => void;
-  onPointerUp: (e: ReactPointerEvent<HTMLElement>) => void;
-  onPointerCancel: (e: ReactPointerEvent<HTMLElement>) => void;
+  // No parameter — the consumer's element/state is captured at pointerdown.
+  // JSX accepts a handler with fewer params than the synthetic-event signature.
+  onPointerUp: () => void;
+  onPointerCancel: () => void;
   onContextMenu: (e: ReactMouseEvent<HTMLElement>) => void;
 }
 
