@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create PR"
+  short_description: "Run checks, commit changes, push, and open a PR"
+  default_prompt: "Create a pull request for the current changes."

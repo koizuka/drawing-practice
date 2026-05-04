@@ -90,6 +90,12 @@ Read the relevant rule document before changing those areas. Keep `AGENTS.md` as
 - When working in an area covered by `.claude/rules/`, read the matching rule document alongside the code before editing.
 - Run `npm run lint` after meaningful code changes. Run targeted tests when behavior is covered by tests; add tests when the changed logic is isolated enough to justify them.
 
+## Project Codex Skills
+
+- `.agents/skills/create-pr`: check, branch, commit, push, and open a PR for the current changes.
+- `.agents/skills/merged`: switch back to `main`, pull, delete the merged local branch, and prune stale remote refs.
+- Invoke skills explicitly with `$create-pr` or `$merged`. In the Codex app, enabled skills may also appear in the slash command list after Codex reloads skill discovery.
+
 ## When In Doubt
 
 - Read code over relying on this file. This document is only a map of stable constraints and entry points.
