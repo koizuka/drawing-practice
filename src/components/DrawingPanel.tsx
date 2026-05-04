@@ -90,7 +90,13 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   // The cover element extends the toolbar bg across the toolbar's pre-toggle
   // bounds during the slide so the (newly-revealed) reference toolbar
   // doesn't peek through the area behind translating icons on expand.
-  const pendingFlipRef = useRef<{ box: DOMRect; children: DOMRect[] } | null>(null);
+  //
+  // Children are keyed by element reference (not index) so a list-shape
+  // change between pre and post — e.g. compactErase swapping eraser+lasso
+  // for a single long-press button when the toolbar crosses the width
+  // threshold — gracefully drops the missing children instead of pairing
+  // surviving icons with unrelated rects.
+  const pendingFlipRef = useRef<{ box: DOMRect; children: Map<HTMLElement, DOMRect> } | null>(null);
   const flipRafIdRef = useRef<number | null>(null);
   const toolbarCoverRef = useRef<HTMLDivElement>(null);
 
@@ -297,9 +303,11 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     // from the current visual position rather than snapping.
     const targets = collectFlipTargets();
     if (targets) {
+      const childRects = new Map<HTMLElement, DOMRect>();
+      for (const c of targets.children) childRects.set(c, c.getBoundingClientRect());
       pendingFlipRef.current = {
         box: targets.toolbar.getBoundingClientRect(),
-        children: targets.children.map(c => c.getBoundingClientRect()),
+        children: childRects,
       };
     }
     onToggleReferenceCollapsed();
@@ -326,8 +334,8 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
 
     let animatedAny = false;
 
-    children.forEach((child, i) => {
-      const preRect = pending.children[i];
+    children.forEach((child) => {
+      const preRect = pending.children.get(child);
       if (!preRect) return;
       const post = child.getBoundingClientRect();
       const dx = preRect.left - post.left;
