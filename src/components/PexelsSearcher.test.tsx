@@ -66,6 +66,10 @@ describe('PexelsSearcher history dropdown', () => {
 describe('PexelsSearcher search error feedback', () => {
   it('shows an error Alert when the search fetch fails', async () => {
     const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'));
+    // The component logs the network error via console.error on this branch;
+    // silence it here so the deliberate-failure path doesn't dump a stack trace
+    // into the test output.
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
@@ -79,6 +83,7 @@ describe('PexelsSearcher search error feedback', () => {
     expect(alert.textContent).toBeTruthy();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
     fetchSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
   it('does not surface an Alert when fetch succeeds', async () => {
