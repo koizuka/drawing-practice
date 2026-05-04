@@ -33,6 +33,7 @@ Perform these steps immediately without asking for confirmation unless a command
 4. Create the branch and commit:
    - Generate a concise branch name from the change, prefixed with `codex/`.
    - Create or switch to that branch.
+   - If creating `codex/<name>` fails with `unable to create directory for .git/refs/heads/codex/<name>` or `.git/index.lock: Operation not permitted`, treat it as a likely sandbox write-permission issue and rerun the same git command with approval/escalation. Do not infer that a plain `codex` branch exists unless `git branch --list 'codex'` or `git show-ref --verify refs/heads/codex` confirms it.
    - Stage all intended changes. Use `git add .` only after confirming it will not sweep in unrelated user work.
    - Generate a commit message that describes the purpose of the change. Mention doc updates if `CLAUDE.md`, `AGENTS.md`, or `README.md` changed.
    - Commit the staged changes.
@@ -45,4 +46,4 @@ Perform these steps immediately without asking for confirmation unless a command
 
 ## Failure Handling
 
-If a command fails, stop at the failing step and summarize the command, the relevant output, and what needs to be fixed. Do not continue to later GitHub steps after failed checks or failed git commands.
+If a command fails because the sandbox cannot write Git metadata, request approval and rerun the same command with escalation before stopping. For other command failures, stop at the failing step and summarize the command, the relevant output, and what needs to be fixed. Do not continue to later GitHub steps after failed checks or failed git commands.
