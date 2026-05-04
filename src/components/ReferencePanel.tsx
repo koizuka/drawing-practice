@@ -7,6 +7,7 @@ import { ImageViewer, type GuideInteractionMode } from './ImageViewer';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer';
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog';
+import { LazyErrorBoundary } from './LazyErrorBoundary';
 
 // Heavy on-demand panels — only mounted when the user picks the matching
 // reference source. Splitting them out keeps them off the initial bundle.
@@ -1396,17 +1397,19 @@ export function ReferencePanel({
             search context restored from the URL-history entry. */}
         {source === 'sketchfab' && (
           <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
-            <Suspense fallback={<LazyPanelFallback />}>
-              <SketchfabViewer
-                key={sketchfabRestore?.token ?? 0}
-                onFixAngle={handleFixAngle}
-                onStateChange={handleSfStateChange}
-                actionsRef={sfActionsRef}
-                initialQuery={sketchfabRestore?.query}
-                initialTimeFilter={sketchfabRestore?.timeFilter}
-                initialCategory={sketchfabRestore?.category}
-              />
-            </Suspense>
+            <LazyErrorBoundary>
+              <Suspense fallback={<LazyPanelFallback />}>
+                <SketchfabViewer
+                  key={sketchfabRestore?.token ?? 0}
+                  onFixAngle={handleFixAngle}
+                  onStateChange={handleSfStateChange}
+                  actionsRef={sfActionsRef}
+                  initialQuery={sketchfabRestore?.query}
+                  initialTimeFilter={sketchfabRestore?.timeFilter}
+                  initialCategory={sketchfabRestore?.category}
+                />
+              </Suspense>
+            </LazyErrorBoundary>
           </Box>
         )}
 
@@ -1417,16 +1420,18 @@ export function ReferencePanel({
             search context restored from the URL-history entry. */}
         {source === 'pexels' && (
           <Box sx={{ display: referenceMode === 'browse' ? 'contents' : 'none' }}>
-            <Suspense fallback={<LazyPanelFallback />}>
-              <PexelsSearcher
-                key={pexelsRestore?.token ?? 0}
-                onSelectPhoto={handleSelectPexelsPhoto}
-                onOpenApiKeySettings={() => setPexelsKeyDialogOpen(true)}
-                apiKeyVersion={pexelsKeyVersion}
-                initialQuery={pexelsRestore?.query}
-                initialOrientation={pexelsRestore?.orientation}
-              />
-            </Suspense>
+            <LazyErrorBoundary>
+              <Suspense fallback={<LazyPanelFallback />}>
+                <PexelsSearcher
+                  key={pexelsRestore?.token ?? 0}
+                  onSelectPhoto={handleSelectPexelsPhoto}
+                  onOpenApiKeySettings={() => setPexelsKeyDialogOpen(true)}
+                  apiKeyVersion={pexelsKeyVersion}
+                  initialQuery={pexelsRestore?.query}
+                  initialOrientation={pexelsRestore?.orientation}
+                />
+              </Suspense>
+            </LazyErrorBoundary>
           </Box>
         )}
 
