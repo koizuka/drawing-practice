@@ -95,6 +95,7 @@ Read the relevant rule document before changing those areas. Keep `AGENTS.md` as
 - `.agents/skills/create-pr`: check, branch, commit, push, and open a PR for the current changes.
 - `.agents/skills/merged`: switch back to `main`, pull, delete the merged local branch, and prune stale remote refs.
 - Invoke skills explicitly with `$create-pr` or `$merged`. In the Codex app, enabled skills may also appear in the slash command list after Codex reloads skill discovery.
+- Repository skills live under `.agents/skills`, not `.codex/skills`. If Codex shows an old `.codex/skills/...` skill path, restart Codex or reload skill discovery before invoking it.
 
 ## When In Doubt
 
