@@ -296,6 +296,10 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     });
   }, [collapseLocked, onToggleReferenceCollapsed, referenceCollapsed, isLandscape]);
 
+  // Invalidate any in-flight rAF chain on unmount so the inner callback
+  // becomes a no-op instead of calling setState on an unmounted component.
+  useEffect(() => () => { toolbarSlideTokenRef.current++; }, []);
+
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
