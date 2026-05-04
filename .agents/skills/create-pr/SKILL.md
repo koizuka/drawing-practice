@@ -1,0 +1,48 @@
+---
+name: create-pr
+description: Create a pull request for this repository from the current local changes. Use when the user says create-pr, asks to make a PR, says "PRにして", "pull requestを作って", or otherwise wants Codex to check, branch, commit, push, and open a GitHub PR for the current work.
+---
+
+# Create PR
+
+## Overview
+
+Run the repository's pre-PR checks, optionally update project docs if the change affects them, create a `codex/` branch, commit all intended changes, push it, and open a PR against `main`.
+
+## Workflow
+
+Perform these steps immediately without asking for confirmation unless a command fails or the worktree contains unrelated changes that would make staging everything unsafe.
+
+1. Inspect repository state:
+   - Run `git status`.
+   - Run `git diff HEAD`.
+   - Run `git branch --show-current`.
+   - Run `git log --oneline -10`.
+   - Identify the intended change set and whether unrelated user changes are present.
+
+2. Run prechecks on the current branch:
+   - Run `npm run lint` and `npm run build`.
+   - Run them in parallel when the environment allows it.
+   - If either command fails, report the failure and stop before branching, committing, pushing, or opening a PR.
+
+3. Check docs before committing:
+   - Read `CLAUDE.md` if the change affects architecture, file structure, major components, or agent-facing workflow.
+   - Read `README.md` if the change affects user-facing features, development commands, stack, setup, or usage.
+   - Update those files only when the change materially requires it.
+
+4. Create the branch and commit:
+   - Generate a concise branch name from the change, prefixed with `codex/`.
+   - Create or switch to that branch.
+   - Stage all intended changes. Use `git add .` only after confirming it will not sweep in unrelated user work.
+   - Generate a commit message that describes the purpose of the change. Mention doc updates if `CLAUDE.md`, `AGENTS.md`, or `README.md` changed.
+   - Commit the staged changes.
+
+5. Push and open the PR:
+   - Push the branch to `origin`.
+   - Create a PR against `main`.
+   - Use a PR body with a short summary and the validation results from the prechecks.
+   - Report the PR URL.
+
+## Failure Handling
+
+If a command fails, stop at the failing step and summarize the command, the relevant output, and what needs to be fixed. Do not continue to later GitHub steps after failed checks or failed git commands.

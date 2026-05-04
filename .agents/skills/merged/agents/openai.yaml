@@ -1,0 +1,4 @@
+interface:
+  display_name: "Merged Cleanup"
+  short_description: "Clean up the local branch after a PR merge"
+  default_prompt: "Clean up after the current PR has been merged."
