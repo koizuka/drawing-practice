@@ -131,6 +131,11 @@ const messages = {
     youtubePlay: 'Play',
     youtubePause: 'Pause',
     youtubeReturnToZoom: 'Return to canvas zoom',
+
+    // Lazy chunk load failure (e.g. transient network error or stale tab
+    // referencing chunks that were removed by a redeploy)
+    lazyChunkLoadFailed: 'Failed to load this section. Reloading the page usually fixes it.',
+    reload: 'Reload',
   },
   ja: {
     // DrawingPanel
@@ -264,6 +269,10 @@ const messages = {
     youtubePlay: '再生',
     youtubePause: '一時停止',
     youtubeReturnToZoom: 'キャンバスズームに戻る',
+
+    // Lazy chunk load failure
+    lazyChunkLoadFailed: 'この機能の読み込みに失敗しました。ページを再読み込みすると通常は解決します。',
+    reload: '再読み込み',
   },
 } as const;
 

@@ -1,5 +1,5 @@
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { Box, IconButton, Popover, Typography } from '@mui/material';
+import { useRef, useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import { Box, CircularProgress, IconButton, Popover, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
 import { useLongPress } from '../hooks/useLongPress';
@@ -12,10 +12,14 @@ import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
 import { saveDrawing } from '../storage';
 import { generateThumbnail } from '../storage/generateThumbnail';
-import { Gallery } from './Gallery';
+import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
+
+// Gallery is a modal opened on demand via the "Gallery" toolbar button —
+// keep it out of the initial bundle.
+const Gallery = lazy(() => import('./Gallery').then(m => ({ default: m.Gallery })));
 
 interface DrawingPanelProps {
   referenceSize?: { width: number; height: number } | null;
@@ -558,7 +562,28 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
         />
       </Box>
 
-      {showGallery && <Gallery onClose={() => setShowGallery(false)} onLoadReference={onLoadReference} />}
+      {showGallery && (
+        <LazyErrorBoundary>
+          <Suspense
+            fallback={(
+              <Box sx={{
+                position: 'fixed',
+                inset: 0,
+                bgcolor: 'rgba(0,0,0,0.4)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000,
+              }}
+              >
+                <CircularProgress />
+              </Box>
+            )}
+          >
+            <Gallery onClose={() => setShowGallery(false)} onLoadReference={onLoadReference} />
+          </Suspense>
+        </LazyErrorBoundary>
+      )}
     </Box>
   );
 }

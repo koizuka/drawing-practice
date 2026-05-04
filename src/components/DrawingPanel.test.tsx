@@ -272,8 +272,8 @@ describe('DrawingPanel keyboard shortcuts × Gallery', () => {
     document.dispatchEvent(event);
   }
 
-  it('suppresses Ctrl+Z undo while Gallery is open, and re-enables it on close', () => {
-    const { container, harness, getByTestId, queryByTestId } = setup();
+  it('suppresses Ctrl+Z undo while Gallery is open, and re-enables it on close', async () => {
+    const { container, harness, findByTestId, queryByTestId } = setup();
 
     // Arrange: one stroke on the manager, timer started via canvas callback.
     act(() => {
@@ -287,7 +287,9 @@ describe('DrawingPanel keyboard shortcuts × Gallery', () => {
     act(() => {
       fireEvent.click(galleryBtn);
     });
-    expect(getByTestId('gallery-stub')).toBeInTheDocument();
+    // Gallery is lazy-loaded; await the Suspense to resolve to the stub.
+    const galleryStub = await findByTestId('gallery-stub');
+    expect(galleryStub).toBeInTheDocument();
     expect(harness.timer.isRunning).toBe(false);
 
     // Ctrl+Z should be ignored — stroke stays.
@@ -298,7 +300,7 @@ describe('DrawingPanel keyboard shortcuts × Gallery', () => {
 
     // Close Gallery via the stub's button.
     act(() => {
-      fireEvent.click(getByTestId('gallery-stub').querySelector('button')!);
+      fireEvent.click(galleryStub.querySelector('button')!);
     });
     expect(queryByTestId('gallery-stub')).not.toBeInTheDocument();
 
