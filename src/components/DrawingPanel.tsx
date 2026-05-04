@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense } from 'react';
 import { Box, CircularProgress, IconButton, Popover, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
@@ -20,6 +20,10 @@ import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 // Gallery is a modal opened on demand via the "Gallery" toolbar button —
 // keep it out of the initial bundle.
 const Gallery = lazy(() => import('./Gallery').then(m => ({ default: m.Gallery })));
+
+const FLIP_TRANSITION = 'transform 250ms ease-out';
+const FLIP_TRANSLATE_EPSILON = 0.5;
+const FLIP_SCALE_EPSILON = 0.01;
 
 interface DrawingPanelProps {
   referenceSize?: { width: number; height: number } | null;
@@ -80,11 +84,15 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  // Layout snaps on collapse-toggle, but the toolbar slides from its
-  // pre-toggle position so the user can visually trace where the toggle
-  // button moved (and find their way back to expand the reference panel).
-  const [toolbarSlide, setToolbarSlide] = useState<{ offset: number; animate: boolean }>({ offset: 0, animate: false });
-  const toolbarSlideTokenRef = useRef(0);
+  // FLIP animation across collapse-toggle. Per-child (not whole-toolbar) so
+  // right-anchored icons that don't move in landscape stay perfectly still
+  // instead of being dragged off-screen and back with the rest of the bar.
+  // The cover element extends the toolbar bg across the toolbar's pre-toggle
+  // bounds during the slide so the (newly-revealed) reference toolbar
+  // doesn't peek through the area behind translating icons on expand.
+  const pendingFlipRef = useRef<{ box: DOMRect; children: DOMRect[] } | null>(null);
+  const flipRafIdRef = useRef<number | null>(null);
+  const toolbarCoverRef = useRef<HTMLDivElement>(null);
 
   // Collapse the eraser/lasso pair into a single long-press button when the
   // toolbar is narrower than the threshold. Stored as a boolean (rather than
@@ -274,35 +282,100 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const compactEraseIcon = eraseSubmode === 'lasso' ? <LassoSelect size={20} /> : <Eraser size={20} />;
   const compactEraseLabel = eraseSubmode === 'lasso' ? t('lassoEraser') : t('eraser');
 
-  const isLandscape = orientation === 'landscape';
+  const collectFlipTargets = useCallback(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return null;
+    const cover = toolbarCoverRef.current;
+    const children = (Array.from(toolbar.children) as HTMLElement[]).filter(c => c !== cover);
+    return { toolbar, cover, children };
+  }, []);
 
   const handleCollapseToggleClick = useCallback(() => {
     if (collapseLocked || !onToggleReferenceCollapsed) return;
-    // The reference panel always splits the viewport in half along the split
-    // axis, so the toolbar's pre-toggle edge is half a viewport away from its
-    // post-toggle edge. Snap the toolbar to that old edge with no transition,
-    // then animate back to 0 once the layout has committed.
-    const dimension = isLandscape ? window.innerWidth : window.innerHeight;
-    const startOffset = (referenceCollapsed ? -1 : 1) * dimension / 2;
-    setToolbarSlide({ offset: startOffset, animate: false });
+    // getBoundingClientRect includes any in-flight transform, so a rapid
+    // second click during the previous animation starts the new animation
+    // from the current visual position rather than snapping.
+    const targets = collectFlipTargets();
+    if (targets) {
+      pendingFlipRef.current = {
+        box: targets.toolbar.getBoundingClientRect(),
+        children: targets.children.map(c => c.getBoundingClientRect()),
+      };
+    }
     onToggleReferenceCollapsed();
-    // Double rAF: first frame lets React commit the offset + layout snap;
-    // second frame waits for paint so the next transform change actually
-    // triggers a CSS transition instead of folding into the same style recalc.
-    // Token guard: a rapid second click bumps the token, so the in-flight
-    // chain becomes a no-op instead of fighting the new chain's start offset.
-    const token = ++toolbarSlideTokenRef.current;
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (toolbarSlideTokenRef.current !== token) return;
-        setToolbarSlide({ offset: 0, animate: true });
-      });
-    });
-  }, [collapseLocked, onToggleReferenceCollapsed, referenceCollapsed, isLandscape]);
+  }, [collapseLocked, onToggleReferenceCollapsed, collectFlipTargets]);
 
-  // Invalidate any in-flight rAF chain on unmount so the inner callback
-  // becomes a no-op instead of calling setState on an unmounted component.
-  useEffect(() => () => { toolbarSlideTokenRef.current++; }, []);
+  // Gate via pendingFlipRef: draft-restore paths that flip referenceCollapsed
+  // without a click leave the ref null, so this effect no-ops in that case.
+  useLayoutEffect(() => {
+    const pending = pendingFlipRef.current;
+    if (!pending) return;
+    pendingFlipRef.current = null;
+    const targets = collectFlipTargets();
+    if (!targets) return;
+    const { toolbar, cover, children } = targets;
+
+    const resetStyles = (el: HTMLElement) => {
+      el.style.transition = 'none';
+      el.style.transform = '';
+    };
+    if (cover) resetStyles(cover);
+    children.forEach(resetStyles);
+
+    const postBox = toolbar.getBoundingClientRect();
+
+    let animatedAny = false;
+
+    children.forEach((child, i) => {
+      const preRect = pending.children[i];
+      if (!preRect) return;
+      const post = child.getBoundingClientRect();
+      const dx = preRect.left - post.left;
+      const dy = preRect.top - post.top;
+      if (Math.abs(dx) < FLIP_TRANSLATE_EPSILON && Math.abs(dy) < FLIP_TRANSLATE_EPSILON) return;
+      child.style.transform = `translate(${dx}px, ${dy}px)`;
+      animatedAny = true;
+    });
+
+    if (cover && postBox.width > 0 && postBox.height > 0) {
+      const tx = pending.box.left - postBox.left;
+      const ty = pending.box.top - postBox.top;
+      const sx = pending.box.width / postBox.width;
+      const sy = pending.box.height / postBox.height;
+      const significant
+        = Math.abs(tx) > FLIP_TRANSLATE_EPSILON
+          || Math.abs(ty) > FLIP_TRANSLATE_EPSILON
+          || Math.abs(sx - 1) > FLIP_SCALE_EPSILON
+          || Math.abs(sy - 1) > FLIP_SCALE_EPSILON;
+      if (significant) {
+        cover.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
+        animatedAny = true;
+      }
+    }
+
+    if (!animatedAny) return;
+    // Force reflow so the inverted transforms are committed before we switch
+    // to transitioned transforms — otherwise the browser folds both into the
+    // same style recalc and skips the animation.
+    void toolbar.offsetWidth;
+    if (flipRafIdRef.current !== null) cancelAnimationFrame(flipRafIdRef.current);
+    flipRafIdRef.current = requestAnimationFrame(() => {
+      flipRafIdRef.current = null;
+      const animateBack = (el: HTMLElement, identity: string) => {
+        if (!el.style.transform) return;
+        el.style.transition = FLIP_TRANSITION;
+        el.style.transform = identity;
+      };
+      if (cover) animateBack(cover, '');
+      children.forEach(child => animateBack(child, 'translate(0, 0)'));
+    });
+  }, [referenceCollapsed, collectFlipTargets]);
+
+  // Cancel in-flight rAF on unmount so the callback doesn't touch a
+  // detached DOM node.
+  useEffect(() => () => {
+    if (flipRafIdRef.current !== null) cancelAnimationFrame(flipRafIdRef.current);
+  }, []);
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -319,16 +392,32 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           bgcolor: '#fafafa',
           minHeight: 40,
           // Stack above the (now-revealed) reference panel during the
-          // expand-direction slide so the sliding toolbar covers its sibling
-          // toolbar instead of overlapping it transparently.
+          // expand-direction slide so toolbar children translating across
+          // the panel boundary cover the sibling toolbar instead of
+          // overlapping it transparently.
           position: 'relative',
           zIndex: 1,
-          transform: isLandscape
-            ? `translateX(${toolbarSlide.offset}px)`
-            : `translateY(${toolbarSlide.offset}px)`,
-          transition: toolbarSlide.animate ? 'transform 250ms ease-out' : 'none',
         }}
       >
+        {/* Bg cover used by the FLIP animation (see useLayoutEffect above) to
+            keep the draw-toolbar bg in front of the reference toolbar during
+            the collapse-toggle slide. zIndex: -1 keeps it behind the icons in
+            the toolbar's stacking context but above the toolbar's own bg, so
+            scaling it beyond the toolbar's natural width extends the visible
+            #fafafa region during the animation. */}
+        <Box
+          ref={toolbarCoverRef}
+          aria-hidden
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            bgcolor: '#fafafa',
+            borderBottom: '1px solid #ddd',
+            transformOrigin: '0 0',
+            pointerEvents: 'none',
+            zIndex: -1,
+          }}
+        />
         {/* Reference panel collapse toggle is placed at the left end (instead
             of the right view group) so it sits next to the reference/drawing
             boundary in landscape mode and stays in a fixed spot across
