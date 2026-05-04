@@ -171,7 +171,7 @@ describe('SplitLayout', () => {
       expect(screen.getByText('Image File')).toBeInTheDocument();
     });
 
-    it('enables undo after opening Pexels and reverts to none on undo', () => {
+    it('enables undo after opening Pexels and reverts to none on undo', async () => {
       const { container } = render(<SplitLayout />);
 
       expect(screen.getByText('Pexels')).toBeInTheDocument();
@@ -181,8 +181,9 @@ describe('SplitLayout', () => {
 
       // Source selection UI is replaced with Pexels searcher
       expect(screen.queryByText('Image File')).not.toBeInTheDocument();
-      // Search input (from PexelsSearcher placeholder) is visible
-      expect(screen.getByPlaceholderText(/Search photos/i)).toBeInTheDocument();
+      // Search input (from PexelsSearcher placeholder) is visible — wait for
+      // the lazy chunk to resolve before asserting on its DOM.
+      expect(await screen.findByPlaceholderText(/Search photos/i)).toBeInTheDocument();
       expect(undoBtn(container)).not.toBeDisabled();
 
       fireEvent.click(undoBtn(container));
