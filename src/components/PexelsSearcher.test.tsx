@@ -64,12 +64,18 @@ describe('PexelsSearcher history dropdown', () => {
 });
 
 describe('PexelsSearcher search error feedback', () => {
+  // Restore window.fetch / console.error spies even if an assertion throws
+  // mid-test, so a failed test doesn't leak its mocks into the next one.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('shows an error Alert when the search fetch fails', async () => {
-    const fetchSpy = vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'));
+    vi.spyOn(window, 'fetch').mockRejectedValue(new TypeError('Network down'));
     // The component logs the network error via console.error on this branch;
     // silence it here so the deliberate-failure path doesn't dump a stack trace
     // into the test output.
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
@@ -82,8 +88,6 @@ describe('PexelsSearcher search error feedback', () => {
     // pexelsNetworkError content; matching loosely so locale changes don't break.
     expect(alert.textContent).toBeTruthy();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
-    fetchSpy.mockRestore();
-    errorSpy.mockRestore();
   });
 
   it('does not surface an Alert when fetch succeeds', async () => {
@@ -104,6 +108,5 @@ describe('PexelsSearcher search error feedback', () => {
     // The needsKey info Alert is gated on missing key — with a key set it should
     // not be present, so any role="alert" here would be the error banner.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    fetchSpy.mockRestore();
   });
 });
