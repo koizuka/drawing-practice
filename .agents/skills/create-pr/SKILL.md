@@ -22,17 +22,19 @@ Perform these steps immediately without asking for confirmation unless a command
 
 2. Run prechecks on the current branch:
    - Run `npm run lint` and `npm run build`.
-   - Run them in parallel when the environment allows it.
-   - If either command fails, report the failure and stop before branching, committing, pushing, or opening a PR.
+   - Run targeted tests when the change touches behavior already covered by tests, or when AGENTS.md or the relevant `.claude/rules/` guidance asks for targeted tests. Use `npm run test -- <path-or-pattern>` when a focused test target is clear; otherwise explain why tests were not run.
+   - Run independent checks in parallel when the environment allows it.
+   - If any required check fails, report the failure and stop before branching, committing, pushing, or opening a PR.
 
 3. Check docs before committing:
    - Read `CLAUDE.md` if the change affects architecture, file structure, major components, or agent-facing workflow.
+   - Read `AGENTS.md` if the change affects Codex-facing workflow, repository instructions, agent skills, or project structure.
    - Read `README.md` if the change affects user-facing features, development commands, stack, setup, or usage.
    - Update those files only when the change materially requires it.
 
 4. Create the branch and commit:
    - Generate a concise branch name from the change, prefixed with `codex/`.
-   - Create or switch to that branch.
+   - Prefer creating a new branch. If the generated branch already exists locally or remotely, inspect it before reusing it: compare its commits and diff against `main`, check whether it already has an open PR, and only reuse it when it clearly represents the same current change set. Otherwise generate a different branch name.
    - If creating `codex/<name>` fails with `unable to create directory for .git/refs/heads/codex/<name>` or `.git/index.lock: Operation not permitted`, treat it as a likely sandbox write-permission issue and rerun the same git command with approval/escalation. Do not infer that a plain `codex` branch exists unless `git branch --list 'codex'` or `git show-ref --verify refs/heads/codex` confirms it.
    - Stage all intended changes. Use `git add .` only after confirming it will not sweep in unrelated user work.
    - Generate a commit message that describes the purpose of the change. Mention doc updates if `CLAUDE.md`, `AGENTS.md`, or `README.md` changed.

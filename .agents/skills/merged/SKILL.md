@@ -15,7 +15,8 @@ Perform these steps immediately without asking for confirmation unless the workt
 
 1. Determine the branch to clean up:
    - If the user supplied a branch name, use it.
-   - Otherwise use `git branch --show-current`.
+   - Otherwise use `git branch --show-current` only when the current branch is not `main`.
+   - If the current branch is `main` and the user did not supply a branch name, stop and ask for the merged branch name instead of guessing.
    - Save that branch name before switching.
 
 2. Check the worktree:
@@ -27,8 +28,11 @@ Perform these steps immediately without asking for confirmation unless the workt
    - Pull the latest changes from `origin/main`.
 
 4. Remove stale branch state:
-   - Delete the merged local branch with `git branch -D <branch>`.
    - Do not attempt to delete `main`.
+   - Verify the branch is merged into the updated `main` with `git branch --merged main --list <branch>` or an equivalent reachability check.
+   - If the branch is not listed as merged, stop and report that cleanup cannot safely delete it.
+   - Delete the merged local branch with `git branch -d <branch>`.
+   - Use `git branch -D <branch>` only if the branch was verified as merged but `-d` still fails for a mechanical reason, and explain that fallback.
    - Run `git remote prune origin`.
 
 5. Summarize the cleanup:
