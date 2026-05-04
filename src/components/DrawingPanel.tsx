@@ -76,6 +76,12 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // Layout snaps on collapse-toggle, but the toolbar slides from its
+  // pre-toggle position so the user can visually trace where the toggle
+  // button moved (and find their way back to expand the reference panel).
+  const [toolbarSlide, setToolbarSlide] = useState<{ offset: number; animate: boolean }>({ offset: 0, animate: false });
+  const toolbarSlideTokenRef = useRef(0);
+
   // Collapse the eraser/lasso pair into a single long-press button when the
   // toolbar is narrower than the threshold. Stored as a boolean (rather than
   // raw width) so resize events that don't cross the breakpoint don't trigger
@@ -264,6 +270,32 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
   const compactEraseIcon = eraseSubmode === 'lasso' ? <LassoSelect size={20} /> : <Eraser size={20} />;
   const compactEraseLabel = eraseSubmode === 'lasso' ? t('lassoEraser') : t('eraser');
 
+  const isLandscape = orientation === 'landscape';
+
+  const handleCollapseToggleClick = useCallback(() => {
+    if (collapseLocked || !onToggleReferenceCollapsed) return;
+    // The reference panel always splits the viewport in half along the split
+    // axis, so the toolbar's pre-toggle edge is half a viewport away from its
+    // post-toggle edge. Snap the toolbar to that old edge with no transition,
+    // then animate back to 0 once the layout has committed.
+    const dimension = isLandscape ? window.innerWidth : window.innerHeight;
+    const startOffset = (referenceCollapsed ? -1 : 1) * dimension / 2;
+    setToolbarSlide({ offset: startOffset, animate: false });
+    onToggleReferenceCollapsed();
+    // Double rAF: first frame lets React commit the offset + layout snap;
+    // second frame waits for paint so the next transform change actually
+    // triggers a CSS transition instead of folding into the same style recalc.
+    // Token guard: a rapid second click bumps the token, so the in-flight
+    // chain becomes a no-op instead of fighting the new chain's start offset.
+    const token = ++toolbarSlideTokenRef.current;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (toolbarSlideTokenRef.current !== token) return;
+        setToolbarSlide({ offset: 0, animate: true });
+      });
+    });
+  }, [collapseLocked, onToggleReferenceCollapsed, referenceCollapsed, isLandscape]);
+
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Toolbar */}
@@ -278,6 +310,15 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           borderBottom: '1px solid #ddd',
           bgcolor: '#fafafa',
           minHeight: 40,
+          // Stack above the (now-revealed) reference panel during the
+          // expand-direction slide so the sliding toolbar covers its sibling
+          // toolbar instead of overlapping it transparently.
+          position: 'relative',
+          zIndex: 1,
+          transform: isLandscape
+            ? `translateX(${toolbarSlide.offset}px)`
+            : `translateY(${toolbarSlide.offset}px)`,
+          transition: toolbarSlide.animate ? 'transform 250ms ease-out' : 'none',
         }}
       >
         {/* Reference panel collapse toggle is placed at the left end (instead
@@ -293,7 +334,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
             ? t('collapseLockedSketchfabBrowse')
             : referenceCollapsed ? t('expandReference') : t('collapseReference');
           const button = (
-            <IconButton size="small" onClick={onToggleReferenceCollapsed} disabled={collapseLocked} aria-label={tooltip}>
+            <IconButton size="small" onClick={handleCollapseToggleClick} disabled={collapseLocked} aria-label={tooltip}>
               <Icon size={20} />
             </IconButton>
           );
