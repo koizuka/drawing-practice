@@ -49,24 +49,28 @@ type Harness = {
   sm: StrokeManager | null;
   bumpRestore: () => void;
   bumpHistory: () => void;
+  setReferenceCollapsed: (v: boolean) => void;
 };
 
 function setup(opts: {
   captureRef?: () => ReferenceSnapshot;
   onToggleReferenceCollapsed?: () => void;
   collapseLocked?: boolean;
+  initialReferenceCollapsed?: boolean;
 } = {}) {
   const harness: Harness = {
     timer: null as unknown as TimerHandle,
     sm: null,
     bumpRestore: () => {},
     bumpHistory: () => {},
+    setReferenceCollapsed: () => {},
   };
 
-  function Inner({ children }: { children: (h: { timer: TimerHandle; restoreVersion: number; historySyncVersion: number }) => ReactNode }) {
+  function Inner({ children }: { children: (h: { timer: TimerHandle; restoreVersion: number; historySyncVersion: number; referenceCollapsed: boolean }) => ReactNode }) {
     const timer = useTimer();
     const [restoreVersion, setRestoreVersion] = useState(0);
     const [historySyncVersion, setHistorySyncVersion] = useState(0);
+    const [referenceCollapsed, setReferenceCollapsed] = useState(opts.initialReferenceCollapsed ?? false);
 
     // Mirror handles into the external harness object via effects so the
     // react-hooks/immutability lint rule is satisfied (mutating outside state
@@ -78,15 +82,16 @@ function setup(opts: {
     useEffect(() => {
       harness.bumpRestore = () => setRestoreVersion(v => v + 1);
       harness.bumpHistory = () => setHistorySyncVersion(v => v + 1);
+      harness.setReferenceCollapsed = (v: boolean) => setReferenceCollapsed(v);
     }, []);
 
-    return <>{children({ timer, restoreVersion, historySyncVersion })}</>;
+    return <>{children({ timer, restoreVersion, historySyncVersion, referenceCollapsed })}</>;
   }
 
   const utils = render(
     <GuideProvider>
       <Inner>
-        {({ timer, restoreVersion, historySyncVersion }) => (
+        {({ timer, restoreVersion, historySyncVersion, referenceCollapsed }) => (
           <DrawingPanel
             timer={timer}
             onStrokeManagerReady={(sm) => {
@@ -97,6 +102,7 @@ function setup(opts: {
             captureReferenceSnapshot={opts.captureRef}
             onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
             collapseLocked={opts.collapseLocked}
+            referenceCollapsed={referenceCollapsed}
           />
         )}
       </Inner>
@@ -357,6 +363,34 @@ describe('DrawingPanel collapse toggle', () => {
     // Disabled buttons should not fire onClick. Use fireEvent — disabled MUI
     // IconButtons swallow the event natively.
     fireEvent.click(btn!);
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  // The FLIP animation only runs when the user clicks the toggle; a
+  // referenceCollapsed change driven by draft-restore (or any other parent
+  // state path) must NOT animate, otherwise reload would briefly slide the
+  // toolbar across the viewport for no reason. The implementation gates the
+  // useLayoutEffect on a pendingFlipRef populated only by the click handler.
+  it('does not write FLIP transform styles when referenceCollapsed flips without a click', () => {
+    const onToggle = vi.fn();
+    const { container, harness } = setup({
+      onToggleReferenceCollapsed: onToggle,
+      initialReferenceCollapsed: false,
+    });
+
+    const toolbar = container.querySelector<HTMLDivElement>('button[aria-label*="reference"i]')!.closest('div')!;
+    expect(toolbar).not.toBeNull();
+
+    act(() => {
+      harness.setReferenceCollapsed(true);
+    });
+
+    // No click happened, so no element inside the toolbar should have an
+    // inline transform applied by the FLIP effect.
+    const elementsWithTransform = Array.from(toolbar.querySelectorAll('*')).filter(
+      el => (el as HTMLElement).style.transform !== '',
+    );
+    expect(elementsWithTransform).toHaveLength(0);
     expect(onToggle).not.toHaveBeenCalled();
   });
 });
