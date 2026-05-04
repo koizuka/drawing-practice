@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import type { UrlHistoryEntry } from '../storage/db';
 import { buildYouTubeThumbnailUrl } from '../utils/youtube';
@@ -134,7 +134,7 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
 
     const { unmount } = render(<SplitLayout />);
     // Wait for the URL-history reload effect to settle so imageThumbUrls is built.
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledTimes(2);
     });
     expect(revokeObjectURLSpy).not.toHaveBeenCalled();
@@ -156,7 +156,7 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
 
     render(<SplitLayout />);
     // Source-selection screen has rendered; URL input is now in the DOM.
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(screen.getByPlaceholderText(/URL/i)).toBeInTheDocument();
     });
 
@@ -191,7 +191,7 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     getUrlHistoryMock.mockResolvedValue([]);
 
     const { container } = render(<SplitLayout />);
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(screen.getByText('Sketchfab')).toBeInTheDocument();
     });
 
@@ -228,12 +228,12 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     ]);
 
     render(<SplitLayout />);
-    await vi.waitFor(() => {
+    await waitFor(() => {
       // SplitLayout has settled when the source-selection screen is showing
       // (which it does whenever no source is loaded, including post-mount).
       expect(screen.getByText('Sketchfab')).toBeInTheDocument();
     });
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     });
   });
