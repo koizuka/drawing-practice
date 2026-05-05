@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { vi } from 'vitest';
 import { SplitLayout } from './SplitLayout';
-import { loadDraft } from '../storage/sessionStore';
+import { loadDraft, saveDraft } from '../storage/sessionStore';
 import type { SessionDraft } from '../storage/db';
 
 vi.mock('../storage/sessionStore', () => ({
@@ -394,6 +394,93 @@ describe('SplitLayout', () => {
       const undoIcon = container.querySelector('svg.lucide-undo-2');
       const undoBtn = undoIcon!.closest('button') as HTMLButtonElement;
       expect(undoBtn).toBeDisabled();
+    });
+  });
+
+  describe('autosave on reference change', () => {
+    const saveDraftMock = vi.mocked(saveDraft);
+    const loadDraftMock = vi.mocked(loadDraft);
+
+    afterEach(() => {
+      saveDraftMock.mockClear();
+      loadDraftMock.mockResolvedValue(undefined);
+    });
+
+    it('writes the new reference to the draft immediately (no debounce wait)', async () => {
+      loadDraftMock.mockResolvedValueOnce(undefined);
+      render(<SplitLayout />);
+
+      // Wait for restore to settle so suppressAutosaveRef is cleared.
+      await waitFor(() => {
+        expect(screen.getByText('Sketchfab')).toBeInTheDocument();
+      });
+      saveDraftMock.mockClear();
+
+      fireEvent.click(screen.getByText('Sketchfab'));
+
+      // Immediate flush: saveDraft must fire synchronously after the click,
+      // well before the 2s debounce. If it doesn't, a fast reload would lose
+      // the user's reference confirmation.
+      await waitFor(() => {
+        expect(saveDraftMock).toHaveBeenCalled();
+      }, { timeout: 500 });
+
+      const lastCall = saveDraftMock.mock.calls.at(-1)![0];
+      expect(lastCall.source).toBe('sketchfab');
+    });
+
+    it('persists the updated reference info on a Pexels URL paste', async () => {
+      getPhotoMock.mockResolvedValueOnce(pexelsPhoto(67890, 'Bob Photographer'));
+      loadDraftMock.mockResolvedValueOnce(undefined);
+      render(<SplitLayout />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Sketchfab')).toBeInTheDocument();
+      });
+      saveDraftMock.mockClear();
+
+      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement;
+      fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-67890/' } });
+      fireEvent.click(screen.getByText('Load'));
+
+      await waitFor(() => {
+        const pexelsCalls = saveDraftMock.mock.calls.filter(c => c[0].source === 'pexels');
+        expect(pexelsCalls.length).toBeGreaterThan(0);
+      }, { timeout: 500 });
+    });
+
+    it('does not depend on the 2s debounce timer firing (pure immediate-flush path)', async () => {
+      // Use fake timers so the 2s changeVersion debounce *cannot* fire — only
+      // the immediate flushVersion path can produce a saveDraft call. If this
+      // test fails, the user's reported "reverts to previous value within 2s"
+      // bug is real (the changeReference flushVersion bump isn't reaching
+      // useAutosave's flush effect).
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        loadDraftMock.mockResolvedValueOnce(undefined);
+        render(<SplitLayout />);
+
+        await waitFor(() => {
+          expect(screen.getByText('Sketchfab')).toBeInTheDocument();
+        });
+        saveDraftMock.mockClear();
+
+        fireEvent.click(screen.getByText('Sketchfab'));
+
+        // Drain microtasks (the flush effect's doSave is async). Do NOT advance
+        // any timers — if save only fires after 2s of debounce, this assertion
+        // will fail.
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(saveDraftMock).toHaveBeenCalled();
+        const args = saveDraftMock.mock.calls.at(-1)![0];
+        expect(args.source).toBe('sketchfab');
+      }
+      finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
