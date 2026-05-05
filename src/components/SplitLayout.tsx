@@ -177,7 +177,6 @@ function SplitLayoutInner() {
       setFixedImageUrl(snap.fixedImageUrl);
       setLocalImageUrl(snap.localImageUrl);
       setReferenceInfo(snap.referenceInfo);
-      viewTransform.reset();
       pauseAndIncrementVersion();
       incrementFlushVersion();
     };
@@ -219,16 +218,10 @@ function SplitLayoutInner() {
       setLocalImageUrl,
       setReferenceInfo,
     });
-    // Snap the camera to home up front so the immediate-save below captures
-    // (new reference, home camera) instead of (new reference, old camera).
-    // Without this, a reload before the new viewer's image-onload setHome
-    // would restore the old camera. All viewers register home at (0, 0, 1)
-    // so a reset() here is consistent with what setHome will reaffirm later.
-    viewTransform.reset();
     pauseAndIncrementVersion();
     setHistorySyncVersion(v => v + 1);
     incrementFlushVersion();
-  }, [captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion, viewTransform]);
+  }, [captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion]);
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -246,10 +239,9 @@ function SplitLayoutInner() {
     setFixedImageUrl(null);
     setLocalImageUrl(null);
     setReferenceInfo(null);
-    viewTransform.reset();
     pauseAndIncrementVersion();
     incrementFlushVersion();
-  }, [pauseAndIncrementVersion, incrementFlushVersion, viewTransform]);
+  }, [pauseAndIncrementVersion, incrementFlushVersion]);
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     // Bail when the size hasn't actually changed. YouTubeViewer fires
