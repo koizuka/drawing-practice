@@ -18,6 +18,7 @@ interface AutosaveState {
   lines: readonly GuideLine[];
   referenceCollapsed?: boolean;
   camera: { viewCenterX: number; viewCenterY: number; zoom: number };
+  flipped: boolean;
 }
 
 export function useAutosave(
@@ -60,6 +61,7 @@ export function useAutosave(
       },
       referenceCollapsed: state.referenceCollapsed ?? false,
       camera: { ...state.camera },
+      flipped: state.flipped,
     };
 
     await saveDraft(data);

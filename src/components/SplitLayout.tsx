@@ -292,7 +292,8 @@ function SplitLayoutInner() {
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped(prev => !prev);
-  }, []);
+    incrementFlushVersion();
+  }, [incrementFlushVersion]);
 
   const handleToggleOverlay = useCallback(() => {
     setOverlayActive((prev) => {
@@ -484,7 +485,8 @@ function SplitLayoutInner() {
     lines,
     referenceCollapsed,
     camera: viewTransform.getCamera(),
-  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform]);
+    flipped: isFlipped,
+  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
@@ -523,13 +525,17 @@ function SplitLayoutInner() {
     };
   }, [viewTransform, incrementFlushVersion]);
 
-  // Trigger autosave when guide state changes. Use the render-time prev-prop
-  // pattern instead of an effect so we don't violate react-hooks/set-state-in-effect.
+  // Trigger autosave when guide state changes. Guide changes (grid mode, line
+  // add/remove/clear) are discrete user actions, so flush immediately rather
+  // than wait the 2s debounce — same rationale as collapse-toggle and
+  // reference change. Restore-time bumps are gated by suppressAutosaveRef in
+  // the flush path. Render-time prev-prop pattern instead of an effect so we
+  // don't violate react-hooks/set-state-in-effect.
   const [prevGuideVersion, setPrevGuideVersion] = useState(guideVersion);
   if (prevGuideVersion !== guideVersion) {
     setPrevGuideVersion(guideVersion);
     if (guideVersion > 0) {
-      incrementChangeVersion();
+      incrementFlushVersion();
     }
   }
 
@@ -607,6 +613,11 @@ function SplitLayoutInner() {
 
       // Restore collapsed layout state
       setReferenceCollapsed(draft.referenceCollapsed ?? false);
+
+      // Restore flipped state
+      if (draft.flipped !== undefined) {
+        setIsFlipped(draft.flipped);
+      }
 
       // Restore camera. When a viewer with setHome will mount, defer; the
       // pending-camera effect re-applies it after the viewer's setHome has

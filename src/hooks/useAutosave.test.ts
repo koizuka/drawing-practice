@@ -29,6 +29,7 @@ describe('useAutosave', () => {
     grid: { mode: 'normal' as const },
     lines: [],
     camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
+    flipped: false,
     ...overrides,
   });
 

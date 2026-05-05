@@ -48,6 +48,8 @@ export interface SessionDraft {
    * with drafts written before this field existed.
    */
   camera?: { viewCenterX: number; viewCenterY: number; zoom: number };
+  /** Drawing panel flipped horizontally. Optional for back-compat. */
+  flipped?: boolean;
   updatedAt: Date;
   /** See COORD_VERSION_CURRENT. */
   coordVersion?: number;
@@ -209,6 +211,16 @@ db.version(11).stores({
 // v12: no index change — anchors the additive `camera` field on SessionDraft
 // (persisted view-transform camera state so pan/zoom survives reload).
 db.version(12).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+});
+
+// v13: no index change — anchors the additive `flipped` field on SessionDraft
+// (persisted horizontal-flip toggle state).
+db.version(13).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',
