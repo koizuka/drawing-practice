@@ -240,15 +240,20 @@ export function DrawingCanvas({
   // When `fitSize` changes (e.g. closing the reference: referenceSize → null),
   // baseScale changes — and since visualScale = baseScale × zoom, the visual
   // size of strokes around the canvas center would jump unless we compensate.
-  // Adjust camera.zoom inversely so visualScale stays the same. ImageViewer /
-  // YouTubeViewer's setHome on actual content load will overwrite this for the
-  // case where new content arrives, which is the desired reset behavior.
+  // Adjust camera.zoom inversely so visualScale stays the same.
+  //
+  // BUT skip when the camera is at home (isDirty=false): that means either the
+  // user hasn't pan/zoomed yet, or ImageViewer/YouTubeViewer just called
+  // setHome on actual content load. In the latter case, the snap-to-home IS
+  // the intended reset and our compensation would undo it. Either way, no
+  // user state to preserve, so let baseScale change drive the visual.
   const prevFitSizeRef = useRef(fitSize);
   useEffect(() => {
     const prev = prevFitSizeRef.current;
     prevFitSizeRef.current = fitSize;
     if (prev === fitSize) return;
     if (prev?.width === fitSize?.width && prev?.height === fitSize?.height) return;
+    if (!viewTransformRef.current.isDirty()) return;
     const container = containerSizeRef.current;
     const oldBaseScale = computeBaseScale(container, prev);
     const newBaseScale = computeBaseScale(container, fitSize);
