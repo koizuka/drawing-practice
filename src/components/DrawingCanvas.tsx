@@ -564,7 +564,7 @@ export function DrawingCanvas({
     if (hasStylusRef.current && touch.touchType !== 'stylus') return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
-    strokeManagerRef.current.appendStroke(point);
+    if (!strokeManagerRef.current.appendStroke(point)) return;
     onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
@@ -643,7 +643,7 @@ export function DrawingCanvas({
     if (mode !== 'pen') return;
 
     const point = getCanvasPoint(e.clientX, e.clientY);
-    strokeManagerRef.current.appendStroke(point);
+    if (!strokeManagerRef.current.appendStroke(point)) return;
     onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
