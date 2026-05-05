@@ -488,16 +488,27 @@ function SplitLayoutInner() {
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
-  // Persist camera at gesture end without wiring pointer-up across the three
-  // viewers + DrawingCanvas: tail-debounce a flushVersion bump after ~250ms
-  // of stillness so saves fire once per gesture, not once per frame. Avoid
-  // bumping changeVersion here — that would trigger a SplitLayout re-render
-  // on every pinch/wheel notify (60fps). Suppressed during restore.
+  // Persist camera changes without wiring pointer-up across the three viewers
+  // + DrawingCanvas. Two paths:
+  //   - Continuous gestures (pinch/wheel) — tail-debounce a flushVersion bump
+  //     after ~250ms of stillness so saves fire once per gesture.
+  //   - Discrete reset (toolbar reset button / Cmd+0) — camera lands exactly
+  //     at home, detected via `!isDirty()`, flush immediately so the reset
+  //     persists without the 250ms wait.
+  // Avoid bumping changeVersion — that would trigger a SplitLayout re-render
+  // on every notify (60fps during a pinch). Suppressed during restore.
   const cameraFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const unsubscribe = viewTransform.subscribe(() => {
       if (suppressAutosaveRef.current) return;
-      if (cameraFlushTimerRef.current) clearTimeout(cameraFlushTimerRef.current);
+      if (cameraFlushTimerRef.current) {
+        clearTimeout(cameraFlushTimerRef.current);
+        cameraFlushTimerRef.current = null;
+      }
+      if (!viewTransform.isDirty()) {
+        incrementFlushVersion();
+        return;
+      }
       cameraFlushTimerRef.current = setTimeout(() => {
         cameraFlushTimerRef.current = null;
         incrementFlushVersion();
