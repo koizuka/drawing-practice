@@ -28,6 +28,7 @@ describe('useAutosave', () => {
     referenceImageData: 'data:image/png;base64,abc',
     grid: { mode: 'normal' as const },
     lines: [],
+    camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
     ...overrides,
   });
 
@@ -167,6 +168,23 @@ describe('useAutosave', () => {
 
     expect(saveDraft).not.toHaveBeenCalled();
     expect(clearDraft).not.toHaveBeenCalled();
+  });
+
+  it('persists camera state in the saved draft', async () => {
+    const suppressRef = { current: false };
+    const state = makeState({ camera: { viewCenterX: 123, viewCenterY: -45, zoom: 2.5 } });
+    const { rerender } = renderHook(
+      ({ flush }) => useAutosave(() => state, 0, flush, suppressRef),
+      { initialProps: { flush: 0 } },
+    );
+
+    await act(async () => {
+      rerender({ flush: 1 });
+    });
+
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    const arg = (saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(arg.camera).toEqual({ viewCenterX: 123, viewCenterY: -45, zoom: 2.5 });
   });
 
   it('uses latest state on flush (no stale capture)', async () => {

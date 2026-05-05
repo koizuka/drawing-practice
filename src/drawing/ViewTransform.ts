@@ -14,6 +14,10 @@ export interface ContainerSize {
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 8;
 
+function clampZoom(zoom: number): number {
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
+}
+
 /**
  * Camera-model view transform. State is stored as a viewing center in world
  * coordinates plus a zoom multiplier — both container-independent — so a
@@ -60,6 +64,22 @@ export class ViewTransform {
     this.viewCenterX = this.homeX;
     this.viewCenterY = this.homeY;
     this.zoom = this.homeZoom;
+    this.notify();
+  }
+
+  /**
+   * Set the camera position/zoom directly without changing the registered
+   * home. Used to restore a persisted camera (e.g. after page reload) without
+   * disturbing the reset target. `zoom` is clamped to the same range as pinch.
+   */
+  setCamera(viewCenterX: number, viewCenterY: number, zoom: number): void {
+    const clampedZoom = clampZoom(zoom);
+    if (this.viewCenterX === viewCenterX
+      && this.viewCenterY === viewCenterY
+      && this.zoom === clampedZoom) return;
+    this.viewCenterX = viewCenterX;
+    this.viewCenterY = viewCenterY;
+    this.zoom = clampedZoom;
     this.notify();
   }
 
@@ -126,7 +146,7 @@ export class ViewTransform {
     const focalWorldX = this.viewCenterX + (focalX - container.width / 2) / oldScale;
     const focalWorldY = this.viewCenterY + (focalY - container.height / 2) / oldScale;
 
-    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.zoom * scaleDelta));
+    const newZoom = clampZoom(this.zoom * scaleDelta);
     const newScale = baseScale * newZoom;
 
     // After the gesture we want the focal world point to land at

@@ -42,6 +42,12 @@ export interface SessionDraft {
   };
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
   referenceCollapsed?: boolean;
+  /**
+   * Camera state (viewing center in world coords + zoom multiplier). Restored
+   * on reload so pan/zoom survives across sessions. Optional for back-compat
+   * with drafts written before this field existed.
+   */
+  camera?: { viewCenterX: number; viewCenterY: number; zoom: number };
   updatedAt: Date;
   /** See COORD_VERSION_CURRENT. */
   coordVersion?: number;
@@ -193,6 +199,16 @@ db.version(10).stores({
 // without coordVersion are treated as legacy and lazy-migrated on load —
 // see SplitLayout.handleReferenceImageSize / storage/coordMigration.ts.
 db.version(11).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+});
+
+// v12: no index change — anchors the additive `camera` field on SessionDraft
+// (persisted view-transform camera state so pan/zoom survives reload).
+db.version(12).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',

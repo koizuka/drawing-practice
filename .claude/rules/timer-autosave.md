@@ -37,8 +37,9 @@ Reference-related pausing is wired through `pauseAndIncrementVersion` in `SplitL
 - **Suppressed during draft restore** to avoid overwriting with partial state.
 - Clears draft when session is empty (no strokes and no reference).
 - **Immediate-save path** for reference changes: `useAutosave` takes a separate `flushVersion` prop. `changeReference`, `resetReferenceOnError`, and the reference snapshot restorer (undo/redo) bump it via `incrementFlushVersion`. The hook observes the bump in a useEffect (so React has already committed the setState updates), cancels any pending debounce timer, and queues `saveDraft` immediately (no debounce — the IndexedDB write itself is still async). **Why:** a reload immediately after a reference swap would otherwise restore the previous reference. Stroke and guide changes still go through the 2s debounce path.
+- **Camera (pan/zoom)** is persisted as part of the draft. `SplitLayout` subscribes to `viewTransform` and bumps `changeVersion` per frame during a gesture, plus a 250ms tail-debounce that bumps `flushVersion` so the camera flushes immediately at gesture end (no need to wire pointer-up across the three viewers + DrawingCanvas). On restore, the camera is buffered in `pendingCameraRef` when the active source mounts a viewer that calls `setHome(0,0,1)` (image / url / pexels / youtube / sketchfab-fixed), and applied via `viewTransform.setCamera` from a parent effect keyed on `referenceSize` — runs after the viewer's setHome so the persisted camera wins. Sources without such a viewer apply the camera directly during `loadDraft`.
 
-Persisted: strokes, redo stack, reference, guides, timer elapsed.
+Persisted: strokes, redo stack, reference, guides, timer elapsed, camera (viewCenter + zoom).
 **NOT persisted**: reference undo history (kept session-only — see `drawing-undo.md`).
 
 Local file images are stored as data URLs (via `FileReader.readAsDataURL`) to survive page reload. URL references store only the URL. Sketchfab references store the screenshot as a data URL.
