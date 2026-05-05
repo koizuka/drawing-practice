@@ -489,14 +489,14 @@ function SplitLayoutInner() {
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
   // Persist camera at gesture end without wiring pointer-up across the three
-  // viewers + DrawingCanvas: bump changeVersion on every notify (standard 2s
-  // save), and tail-debounce a flushVersion bump after ~250ms of stillness
-  // (immediate save). Suppressed during restore.
+  // viewers + DrawingCanvas: tail-debounce a flushVersion bump after ~250ms
+  // of stillness so saves fire once per gesture, not once per frame. Avoid
+  // bumping changeVersion here — that would trigger a SplitLayout re-render
+  // on every pinch/wheel notify (60fps). Suppressed during restore.
   const cameraFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const unsubscribe = viewTransform.subscribe(() => {
       if (suppressAutosaveRef.current) return;
-      incrementChangeVersion();
       if (cameraFlushTimerRef.current) clearTimeout(cameraFlushTimerRef.current);
       cameraFlushTimerRef.current = setTimeout(() => {
         cameraFlushTimerRef.current = null;
@@ -510,7 +510,7 @@ function SplitLayoutInner() {
         cameraFlushTimerRef.current = null;
       }
     };
-  }, [viewTransform, incrementChangeVersion, incrementFlushVersion]);
+  }, [viewTransform, incrementFlushVersion]);
 
   // Trigger autosave when guide state changes. Use the render-time prev-prop
   // pattern instead of an effect so we don't violate react-hooks/set-state-in-effect.
