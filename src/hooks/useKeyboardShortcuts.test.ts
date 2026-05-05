@@ -15,6 +15,7 @@ function createActions() {
     onEraserTool: vi.fn(),
     onLassoTool: vi.fn(),
     onSave: vi.fn(),
+    onResetZoom: vi.fn(),
   };
 }
 
@@ -97,6 +98,64 @@ describe('useKeyboardShortcuts', () => {
 
       fireKey({ code: 'KeyS', key: 's', ctrlKey: true });
       expect(actions.onSave).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('Reset zoom (Ctrl+0)', () => {
+    it('fires onResetZoom on Ctrl+0', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      const event = fireKey({ code: 'Digit0', key: '0', ctrlKey: true });
+      expect(actions.onResetZoom).toHaveBeenCalledOnce();
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('fires onResetZoom on Ctrl+Numpad0', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      const event = fireKey({ code: 'Numpad0', key: '0', ctrlKey: true });
+      expect(actions.onResetZoom).toHaveBeenCalledOnce();
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('does not fire on Ctrl+Shift+0', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      fireKey({ code: 'Digit0', key: '0', ctrlKey: true, shiftKey: true });
+      expect(actions.onResetZoom).not.toHaveBeenCalled();
+    });
+
+    it('does not fire on plain 0 (no modifier)', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      fireKey({ code: 'Digit0', key: '0' });
+      expect(actions.onResetZoom).not.toHaveBeenCalled();
+    });
+
+    it('does not fire when target is an input element', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      try {
+        const event = new KeyboardEvent('keydown', {
+          bubbles: true,
+          cancelable: true,
+          code: 'Digit0',
+          key: '0',
+          ctrlKey: true,
+        });
+        input.dispatchEvent(event);
+        expect(actions.onResetZoom).not.toHaveBeenCalled();
+      }
+      finally {
+        document.body.removeChild(input);
+      }
     });
   });
 

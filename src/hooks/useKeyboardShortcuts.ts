@@ -18,6 +18,7 @@ interface ShortcutActions {
   onEraserTool: () => void;
   onLassoTool: () => void;
   onSave: () => void;
+  onResetZoom: () => void;
 }
 
 interface UseKeyboardShortcutsOptions {
@@ -68,6 +69,13 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
     if (mod && !e.shiftKey && e.code === 'KeyS') {
       e.preventDefault();
       actions.onSave();
+      return;
+    }
+
+    // Reset zoom: Cmd/Ctrl+0 (also Numpad 0)
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'Digit0' || e.code === 'Numpad0')) {
+      e.preventDefault();
+      actions.onResetZoom();
       return;
     }
 
