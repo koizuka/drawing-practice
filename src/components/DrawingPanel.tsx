@@ -277,6 +277,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
       onEraserTool: handleEraserTool,
       onLassoTool: handleLassoTool,
       onSave: handleSave,
+      onResetZoom: () => setViewResetVersion(v => v + 1),
     }), [handleUndo, handleRedo, handlePenTool, handleEraserTool, handleLassoTool, handleSave]),
   });
 
