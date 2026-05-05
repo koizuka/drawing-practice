@@ -65,7 +65,9 @@ function SplitLayoutInner() {
   // The reference side can drive the fit when a fit-capable viewer is rendering
   // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
   // to the shared ViewTransform). Otherwise (Sketchfab browse / no reference) the
-  // drawing canvas leads.
+  // drawing canvas leads. Logic mirrored in splitLayoutHelpers.computeFitLeader
+  // (which the unit tests exercise); kept inline because the React Compiler's
+  // memoization analysis interacts badly with the extracted form.
   const fitLeader: 'reference' | 'drawing'
     = source === 'youtube'
       || (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab'))
@@ -278,11 +280,13 @@ function SplitLayoutInner() {
     }
   }, [restoreGuides, incrementChangeVersion, guideManagerRef]);
 
-  // When the user closes the reference, the stored `referenceSize` is stale.
-  // Pass null in that case so DrawingCanvas falls back to free-drawing
-  // semantics (baseScale=1, home + grid centered at world origin) instead of
-  // staying anchored to the previous image's dimensions.
-  const drawingFitSize = source === 'none' ? null : referenceSize;
+  // DrawingCanvas should fit-to-canvas only when a viewer is actively fitting
+  // the reference. Otherwise the previous reference's `referenceSize` is
+  // stale — using it would project strokes/grid against an invisible old
+  // image and cause the visual zoom to alternate as the user navigates
+  // between the source picker and a search screen. Logic mirrored in
+  // splitLayoutHelpers.resolveDrawingFitSize.
+  const drawingFitSize = fitLeader === 'reference' ? referenceSize : null;
 
   // True while the Sketchfab 3D iframe is being used for framing — Fix Angle
   // captures whatever the user sees, so the panel must stay at half-screen.
