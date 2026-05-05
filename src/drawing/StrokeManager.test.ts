@@ -97,6 +97,59 @@ describe('StrokeManager', () => {
       manager.endStroke();
       expect(manager.getCurrentStroke()).toBeNull();
     });
+
+    it('quantizes the start point to the 0.1px grid', () => {
+      manager.startStroke({ x: 12.34567, y: -5.05 });
+      expect(manager.getCurrentStroke()!.points[0]).toEqual({ x: 12.3, y: -5.1 });
+    });
+
+    it('quantizes appended points and skips duplicates that collapse onto the previous point', () => {
+      manager.startStroke({ x: 12.34, y: 23.45 });
+      manager.appendStroke({ x: 12.32, y: 23.46 }); // → (12.3, 23.5) duplicate, skipped
+      manager.appendStroke({ x: 12.30, y: 23.49 }); // → (12.3, 23.5) duplicate, skipped
+      manager.appendStroke({ x: 80, y: 80 });
+
+      const points = manager.getCurrentStroke()!.points;
+      expect(points).toEqual([
+        { x: 12.3, y: 23.5 },
+        { x: 80, y: 80 },
+      ]);
+    });
+
+    it('keeps points that differ after quantization', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 0.04, y: 0.04 }); // → (0, 0) duplicate, skipped
+      manager.appendStroke({ x: 0.06, y: 0.06 }); // → (0.1, 0.1) kept
+      const stroke = manager.endStroke();
+      expect(stroke!.points).toEqual([
+        { x: 0, y: 0 },
+        { x: 0.1, y: 0.1 },
+      ]);
+    });
+
+    it('appendStroke returns true when the point is added and false on dedup-skip', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      expect(manager.appendStroke({ x: 0.04, y: 0.04 })).toBe(false); // dedup of (0,0)
+      expect(manager.appendStroke({ x: 0.06, y: 0.06 })).toBe(true); // (0.1, 0.1)
+      expect(manager.appendStroke({ x: 0.08, y: 0.12 })).toBe(false); // dedup of (0.1, 0.1)
+      expect(manager.appendStroke({ x: 0.5, y: 0.5 })).toBe(true);
+    });
+
+    it('appendStroke returns false when no stroke is active', () => {
+      expect(manager.appendStroke({ x: 1, y: 2 })).toBe(false);
+    });
+
+    it('endStroke returns the same quantized stroke that getStrokes exposes', () => {
+      manager.startStroke({ x: 1.23, y: 4.56 });
+      manager.appendStroke({ x: 7.89, y: 0.12 });
+      const returned = manager.endStroke();
+      expect(returned).not.toBeNull();
+      expect(returned!.points).toEqual([
+        { x: 1.2, y: 4.6 },
+        { x: 7.9, y: 0.1 },
+      ]);
+      expect(manager.getStrokes()[0]).toBe(returned);
+    });
   });
 
   describe('undo/redo', () => {
@@ -513,6 +566,25 @@ describe('StrokeManager', () => {
 
       strokes.push({ points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 });
       expect(manager.getStrokes()).toHaveLength(1);
+    });
+
+    it('quantizes loaded strokes and redo stack', () => {
+      const strokes = [
+        { points: [{ x: 12.34, y: 23.45 }, { x: 12.32, y: 23.46 }, { x: 80, y: 80 }], timestamp: 1 },
+      ];
+      const redoStack = [
+        { points: [{ x: 1.111, y: 2.222 }, { x: 5.555, y: 6.666 }], timestamp: 2 },
+      ];
+      manager.loadState(strokes, redoStack);
+
+      expect(manager.getStrokes()[0].points).toEqual([
+        { x: 12.3, y: 23.5 },
+        { x: 80, y: 80 },
+      ]);
+      expect(manager.getRedoStack()[0].points).toEqual([
+        { x: 1.1, y: 2.2 },
+        { x: 5.6, y: 6.7 },
+      ]);
     });
   });
 

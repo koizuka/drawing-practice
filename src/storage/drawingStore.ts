@@ -1,40 +1,16 @@
 import { db, type DrawingRecord, COORD_VERSION_CURRENT } from './db';
 import type { Stroke } from '../drawing/types';
+import { quantizeStroke } from '../drawing/quantize';
 import type { ReferenceInfo } from '../types';
 
-const QUANTIZE_FACTOR = 10;
-
-// Round half away from zero so positive and negative coordinates quantize
-// symmetrically around the origin. Math.round biases toward +Infinity at exact
-// halves (Math.round(0.5) === 1, Math.round(-0.5) === 0), which would shift
-// strokes toward the origin asymmetrically once world coords can be negative.
-function quantize(v: number): number {
-  const sign = v < 0 ? -1 : 1;
-  return sign * Math.round(Math.abs(v) * QUANTIZE_FACTOR) / QUANTIZE_FACTOR;
-}
-
 /**
- * Reduce on-disk size for saved drawings by snapping coordinates to 0.1px and
- * dropping points that collapse onto the previous point after quantization.
- * Shape is preserved (no RDP-style approximation). Applied only when persisting
- * to the drawings table; in-memory strokes and the autosave session draft are
- * untouched.
+ * Snap coordinates to 0.1px and drop collapsed points. Strokes coming from
+ * StrokeManager are already quantized at input time, so this is a no-op for
+ * the live path; kept as defense-in-depth for any code path that bypasses the
+ * manager (e.g. legacy data loaded outside the loadState flow).
  */
 export function quantizeStrokesForStorage(strokes: readonly Stroke[]): Stroke[] {
-  return strokes.map((stroke) => {
-    const out: Stroke['points'] = [];
-    let prevX = NaN;
-    let prevY = NaN;
-    for (const p of stroke.points) {
-      const x = quantize(p.x);
-      const y = quantize(p.y);
-      if (x === prevX && y === prevY) continue;
-      out.push({ x, y });
-      prevX = x;
-      prevY = y;
-    }
-    return { points: out, timestamp: stroke.timestamp };
-  });
+  return strokes.map(quantizeStroke);
 }
 
 export async function saveDrawing(

@@ -61,6 +61,20 @@ describe('quantizeStrokesForStorage', () => {
     ]);
   });
 
+  it('is idempotent for already-quantized input', () => {
+    const input: Stroke[] = [{
+      points: [
+        { x: 12.3, y: 23.5 },
+        { x: 80, y: 80 },
+        { x: -0.1, y: 0.1 },
+      ],
+      timestamp: 1,
+    }];
+    const once = quantizeStrokesForStorage(input);
+    const twice = quantizeStrokesForStorage(once);
+    expect(twice).toEqual(once);
+  });
+
   it('does not mutate the input strokes', () => {
     const input: Stroke[] = [{
       points: [{ x: 1.234, y: 5.678 }],

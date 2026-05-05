@@ -1,4 +1,5 @@
 import type { Point, ReferenceSnapshot, Stroke } from './types';
+import { quantizePoint, quantizeStroke } from './quantize';
 
 /** Maximum number of reference-change entries kept in history to bound memory. */
 const MAX_REFERENCE_HISTORY = 20;
@@ -48,16 +49,36 @@ export class StrokeManager {
   /** Number of reference entries currently in undoStack. Avoids O(n) scans during pruning. */
   private undoReferenceCount = 0;
 
+  // Invariant: every point stored in `currentStroke.points` and in
+  // `this.strokes[]` is already snapped to the 0.1px grid (see ./quantize).
+  // Points are quantized at the entry boundary (startStroke / appendStroke /
+  // loadState) so downstream code — redraw, hit-test, autosave serialization,
+  // undo/redo — all operate on the smaller, deduplicated point arrays without
+  // needing to re-run quantization. endStroke is left as the place for any
+  // future whole-stroke refinement (RDP simplification, smoothing, end-snap).
+
   startStroke(point: Point): void {
     this.currentStroke = {
-      points: [point],
+      points: [quantizePoint(point)],
       timestamp: Date.now(),
     };
   }
 
-  appendStroke(point: Point): void {
-    if (!this.currentStroke) return;
-    this.currentStroke.points.push(point);
+  /**
+   * Append a point to the in-progress stroke. Returns `true` if the point was
+   * actually added, `false` if it was skipped (no active stroke, or the point
+   * collapses onto the previous one after quantization). Callers can use the
+   * return value to skip downstream work like canvas redraws when nothing
+   * changed.
+   */
+  appendStroke(point: Point): boolean {
+    if (!this.currentStroke) return false;
+    const q = quantizePoint(point);
+    const points = this.currentStroke.points;
+    const last = points[points.length - 1];
+    if (last.x === q.x && last.y === q.y) return false;
+    points.push(q);
+    return true;
   }
 
   endStroke(): Stroke | null {
@@ -270,9 +291,12 @@ export class StrokeManager {
   }
 
   loadState(strokes: Stroke[], redoStack: Stroke[]): void {
-    this.strokes = [...strokes];
-    this.undoStack = strokes.map(() => ({ type: 'add' as const }));
-    this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke }));
+    // Quantize on entry so legacy session drafts and gallery loads land in the
+    // same already-quantized state as freshly-drawn strokes.
+    const quantizedStrokes = strokes.map(quantizeStroke);
+    this.strokes = quantizedStrokes;
+    this.undoStack = quantizedStrokes.map(() => ({ type: 'add' as const }));
+    this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke: quantizeStroke(stroke) }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;
   }

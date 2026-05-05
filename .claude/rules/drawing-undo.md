@@ -19,6 +19,10 @@ Reference entries are restored via an injected `ReferenceRestorer` callback. `un
 
 `MAX_REFERENCE_HISTORY = 20` caps reference entries via `undoReferenceCount` for O(1) pruning. **Why:** reference snapshots can hold large data URLs; unbounded growth would balloon memory.
 
+## Stroke quantization invariant
+
+Every `Point` in `currentStroke.points` and `this.strokes[]` is snapped to the 0.1px grid (`src/drawing/quantize.ts`). Quantization is applied at the entry boundary — `startStroke`, `appendStroke`, and `loadState` — so all downstream code (redraw, hit-test, autosave serialization, undo/redo, save) operates on the smaller, deduplicated arrays. `appendStroke` returns `boolean`: `false` when the new point collapses onto the previous one after quantization, so callers (e.g. `DrawingCanvas` pointer-move handlers) can skip redundant `requestRedraw` and `onCurrentStrokeChange` notifications. **Why:** Apple Pencil at 120Hz produces many points landing in the same 0.1px cell when drawing slowly; dedup-on-entry shrinks memory continuously and keeps redraw cost proportional to actual visual change. `endStroke` is left as the place for any future whole-stroke refinement (RDP simplification, smoothing, end-snap) that needs the entire stroke before it can act.
+
 ## Reference undo wiring (in SplitLayout)
 
 - All reference mutations go through `changeReference(mutate)` — it records an undo entry, applies the mutation, and bumps `historySyncVersion` so DrawingPanel's `canUndo`/`canRedo` UI refreshes.
