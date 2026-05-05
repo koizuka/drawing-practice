@@ -237,23 +237,23 @@ export function DrawingCanvas({
   // the source picker, closing a reference) where the user expects pan/zoom
   // to be preserved. setHome's snap-to-home side effect would clobber that.
 
-  // When `fitSize` changes (e.g. closing the reference: referenceSize → null),
-  // baseScale changes — and since visualScale = baseScale × zoom, the visual
-  // size of strokes around the canvas center would jump unless we compensate.
-  // Adjust camera.zoom inversely so visualScale stays the same.
+  // When `fitSize` changes, baseScale changes — and since visualScale =
+  // baseScale × zoom, the visual size of strokes around the canvas center
+  // would jump unless we compensate by inversely adjusting camera.zoom.
   //
-  // BUT skip when the camera is at home (isDirty=false): that means either the
-  // user hasn't pan/zoomed yet, or ImageViewer/YouTubeViewer just called
-  // setHome on actual content load. In the latter case, the snap-to-home IS
-  // the intended reset and our compensation would undo it. Either way, no
-  // user state to preserve, so let baseScale change drive the visual.
+  // Only compensate when transitioning FROM a fitted reference TO non-fitted
+  // (size → null), which is UI navigation: closing the reference, returning
+  // to the source picker, entering search. Transitions that bring in new
+  // content (null → size, or size → size for switching references) must NOT
+  // compensate — the viewer's setHome(0, 0, 1) on image load is the intended
+  // reset, and adjusting zoom here would undo it.
   const prevFitSizeRef = useRef(fitSize);
   useEffect(() => {
     const prev = prevFitSizeRef.current;
     prevFitSizeRef.current = fitSize;
     if (prev === fitSize) return;
     if (prev?.width === fitSize?.width && prev?.height === fitSize?.height) return;
-    if (!viewTransformRef.current.isDirty()) return;
+    if (!prev || fitSize) return;
     const container = containerSizeRef.current;
     const oldBaseScale = computeBaseScale(container, prev);
     const newBaseScale = computeBaseScale(container, fitSize);
