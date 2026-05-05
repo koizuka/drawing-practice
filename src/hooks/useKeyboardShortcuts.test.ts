@@ -111,6 +111,15 @@ describe('useKeyboardShortcuts', () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
+    it('fires onResetZoom on Ctrl+Numpad0', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+
+      const event = fireKey({ code: 'Numpad0', key: '0', ctrlKey: true });
+      expect(actions.onResetZoom).toHaveBeenCalledOnce();
+      expect(event.defaultPrevented).toBe(true);
+    });
+
     it('does not fire on Ctrl+Shift+0', () => {
       const actions = createActions();
       renderHook(() => useKeyboardShortcuts({ actions }));

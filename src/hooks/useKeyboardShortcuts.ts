@@ -72,8 +72,8 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
       return;
     }
 
-    // Reset zoom: Cmd/Ctrl+0
-    if (mod && !e.shiftKey && !e.altKey && e.code === 'Digit0') {
+    // Reset zoom: Cmd/Ctrl+0 (also Numpad 0)
+    if (mod && !e.shiftKey && !e.altKey && (e.code === 'Digit0' || e.code === 'Numpad0')) {
       e.preventDefault();
       actions.onResetZoom();
       return;
