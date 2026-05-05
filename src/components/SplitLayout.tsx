@@ -725,7 +725,6 @@ function SplitLayoutInner() {
             historySyncVersion={historySyncVersion}
             isFlipped={isFlipped}
             viewTransform={viewTransform}
-            fitLeader={fitLeader}
             orientation={orientation}
             referenceCollapsed={referenceCollapsed}
             onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
