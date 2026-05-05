@@ -50,7 +50,6 @@ interface DrawingPanelProps {
   /** Optional shared ViewTransform for zoom sync with ReferencePanel. */
   viewTransform?: ViewTransform;
   /** Which panel owns the fit calculation. */
-  fitLeader?: 'reference' | 'drawing';
   /** Current viewport orientation, used to pick the collapse-toggle icon. */
   orientation?: Orientation;
   /** Whether the reference panel is currently hidden (free-drawing layout). */
@@ -66,7 +65,7 @@ interface DrawingPanelProps {
   collapseLocked?: boolean;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, fitLeader, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
   const strokeManagerRef = useRef(new StrokeManager());
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
@@ -656,7 +655,6 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           isFlipped={isFlipped}
           onCurrentStrokeChange={onCurrentStrokeChange}
           viewTransform={viewTransform}
-          isFitLeader={fitLeader === 'drawing'}
         />
       </Box>
 

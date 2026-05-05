@@ -138,6 +138,45 @@ describe('ViewTransform (camera model)', () => {
     });
   });
 
+  describe('setCamera', () => {
+    it('sets the camera without changing the registered home', () => {
+      vt.setHome(50, 75, 1); // home and camera at (50, 75, 1)
+      vt.setCamera(200, -100, 3);
+      const cam = vt.getCamera();
+      expect(cam.viewCenterX).toBe(200);
+      expect(cam.viewCenterY).toBe(-100);
+      expect(cam.zoom).toBe(3);
+      // Home unchanged: reset returns to (50, 75, 1)
+      vt.reset();
+      const home = vt.getCamera();
+      expect(home.viewCenterX).toBe(50);
+      expect(home.viewCenterY).toBe(75);
+      expect(home.zoom).toBe(1);
+    });
+
+    it('clamps zoom to MIN_ZOOM / MAX_ZOOM', () => {
+      vt.setCamera(0, 0, 0.001);
+      expect(vt.getCamera().zoom).toBe(0.25);
+      vt.setCamera(0, 0, 100);
+      expect(vt.getCamera().zoom).toBe(8);
+    });
+
+    it('notifies subscribers on change', () => {
+      const fn = vi.fn();
+      vt.subscribe(fn);
+      vt.setCamera(10, 20, 1.5);
+      expect(fn).toHaveBeenCalledTimes(1);
+    });
+
+    it('is a no-op when called with current values', () => {
+      vt.setCamera(10, 20, 1.5);
+      const fn = vi.fn();
+      vt.subscribe(fn);
+      vt.setCamera(10, 20, 1.5);
+      expect(fn).not.toHaveBeenCalled();
+    });
+  });
+
   describe('subscribe', () => {
     it('notifies on applyPinch', () => {
       const fn = vi.fn();

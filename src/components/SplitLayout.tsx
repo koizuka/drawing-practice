@@ -65,7 +65,9 @@ function SplitLayoutInner() {
   // The reference side can drive the fit when a fit-capable viewer is rendering
   // (ImageViewer for fixed-image sources, or YouTubeViewer which maps its iframe
   // to the shared ViewTransform). Otherwise (Sketchfab browse / no reference) the
-  // drawing canvas leads.
+  // drawing canvas leads. Logic mirrored in splitLayoutHelpers.computeFitLeader
+  // (which the unit tests exercise); kept inline because the React Compiler's
+  // memoization analysis interacts badly with the extracted form.
   const fitLeader: 'reference' | 'drawing'
     = source === 'youtube'
       || (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab'))
@@ -192,6 +194,11 @@ function SplitLayoutInner() {
     guides: GuideState;
   } | null>(null);
 
+  // Camera state captured from the autosave draft, applied AFTER the active
+  // viewer fires its `setHome(0,0,1)` on first reference load (which would
+  // otherwise stomp the restored camera). Cleared on first apply.
+  const pendingCameraRef = useRef<{ viewCenterX: number; viewCenterY: number; zoom: number } | null>(null);
+
   /**
    * Record the current reference state as an undoable entry, then apply the
    * mutation. Used for all user-initiated reference changes (Fix Angle, image
@@ -273,11 +280,13 @@ function SplitLayoutInner() {
     }
   }, [restoreGuides, incrementChangeVersion, guideManagerRef]);
 
-  // When the user closes the reference, the stored `referenceSize` is stale.
-  // Pass null in that case so DrawingCanvas falls back to free-drawing
-  // semantics (baseScale=1, home + grid centered at world origin) instead of
-  // staying anchored to the previous image's dimensions.
-  const drawingFitSize = source === 'none' ? null : referenceSize;
+  // DrawingCanvas should fit-to-canvas only when a viewer is actively fitting
+  // the reference. Otherwise the previous reference's `referenceSize` is
+  // stale — using it would project strokes/grid against an invisible old
+  // image and cause the visual zoom to alternate as the user navigates
+  // between the source picker and a search screen. Logic mirrored in
+  // splitLayoutHelpers.resolveDrawingFitSize.
+  const drawingFitSize = fitLeader === 'reference' ? referenceSize : null;
 
   // True while the Sketchfab 3D iframe is being used for framing — Fix Angle
   // captures whatever the user sees, so the panel must stay at half-screen.
@@ -287,7 +296,8 @@ function SplitLayoutInner() {
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped(prev => !prev);
-  }, []);
+    incrementFlushVersion();
+  }, [incrementFlushVersion]);
 
   const handleToggleOverlay = useCallback(() => {
     setOverlayActive((prev) => {
@@ -478,17 +488,58 @@ function SplitLayoutInner() {
     grid,
     lines,
     referenceCollapsed,
-  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed]);
+    camera: viewTransform.getCamera(),
+    flipped: isFlipped,
+  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
-  // Trigger autosave when guide state changes. Use the render-time prev-prop
-  // pattern instead of an effect so we don't violate react-hooks/set-state-in-effect.
+  // Persist camera changes without wiring pointer-up across the three viewers
+  // + DrawingCanvas. Two paths:
+  //   - Continuous gestures (pinch/wheel) — tail-debounce a flushVersion bump
+  //     after ~250ms of stillness so saves fire once per gesture.
+  //   - Discrete reset (toolbar reset button / Cmd+0) — camera lands exactly
+  //     at home, detected via `!isDirty()`, flush immediately so the reset
+  //     persists without the 250ms wait.
+  // Avoid bumping changeVersion — that would trigger a SplitLayout re-render
+  // on every notify (60fps during a pinch). Suppressed during restore.
+  const cameraFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsubscribe = viewTransform.subscribe(() => {
+      if (suppressAutosaveRef.current) return;
+      if (cameraFlushTimerRef.current) {
+        clearTimeout(cameraFlushTimerRef.current);
+        cameraFlushTimerRef.current = null;
+      }
+      if (!viewTransform.isDirty()) {
+        incrementFlushVersion();
+        return;
+      }
+      cameraFlushTimerRef.current = setTimeout(() => {
+        cameraFlushTimerRef.current = null;
+        incrementFlushVersion();
+      }, 250);
+    });
+    return () => {
+      unsubscribe();
+      if (cameraFlushTimerRef.current) {
+        clearTimeout(cameraFlushTimerRef.current);
+        cameraFlushTimerRef.current = null;
+      }
+    };
+  }, [viewTransform, incrementFlushVersion]);
+
+  // Trigger autosave when guide state changes. Guide changes (grid mode, line
+  // add/remove/clear) are discrete user actions, so flush immediately rather
+  // than wait the 2s debounce — same rationale as collapse-toggle and
+  // reference change. Restore-time bumps are gated by suppressAutosaveRef in
+  // the flush path. Render-time prev-prop pattern instead of an effect so we
+  // don't violate react-hooks/set-state-in-effect.
   const [prevGuideVersion, setPrevGuideVersion] = useState(guideVersion);
   if (prevGuideVersion !== guideVersion) {
     setPrevGuideVersion(guideVersion);
     if (guideVersion > 0) {
-      incrementChangeVersion();
+      incrementFlushVersion();
     }
   }
 
@@ -496,6 +547,22 @@ function SplitLayoutInner() {
   useEffect(() => {
     cleanupStalePrDatabases();
   }, []);
+
+  // Apply the restored camera once the active viewer has reported its size.
+  // Ordering: ImageViewer runs setHome synchronously after onImageLoaded in
+  // its image-onload callback, so React commits referenceSize and runs this
+  // parent effect after setHome has already snapped to home. YouTubeViewer's
+  // setHome lives in a child useEffect, which in current React runs before
+  // parent effects on the same commit. If that child-before-parent ordering
+  // ever changes, the pendingCameraRef apply would race with setHome —
+  // re-evaluate then. Cleared on first apply so later reference-size changes
+  // (user-driven swaps) don't re-stomp the camera.
+  useEffect(() => {
+    const pending = pendingCameraRef.current;
+    if (!pending || !referenceSize) return;
+    pendingCameraRef.current = null;
+    viewTransform.setCamera(pending.viewCenterX, pending.viewCenterY, pending.zoom);
+  }, [viewTransform, referenceSize, restoreVersion]);
 
   // Restore draft when session lock is acquired
   const restoredRef = useRef(false);
@@ -510,17 +577,21 @@ function SplitLayoutInner() {
         return;
       }
 
-      // Defer the load only when a viewer that reports onReferenceImageSize
-      // will mount — sketchfab browse mode without a captured screenshot does
-      // not, and its strokes were drawn against an unscaled panel coord space
-      // that already matches the new convention.
-      const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
+      // True when the active source will mount a viewer that both reports
+      // onReferenceImageSize and calls setHome(0, 0, 1) on first load. Used
+      // for two purposes downstream: (1) deferring legacy stroke migration
+      // until the viewer's size is known, (2) deferring camera restore until
+      // after the viewer's setHome would have stomped a directly-applied
+      // camera. Sketchfab browse without a captured screenshot does neither,
+      // and its strokes were drawn against an unscaled panel coord space that
+      // already matches the new convention.
       const referenceWillSize
         = draft.source === 'image'
           || draft.source === 'url'
           || draft.source === 'pexels'
           || draft.source === 'youtube'
           || (draft.source === 'sketchfab' && draft.referenceImageData !== null);
+      const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
       const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
 
       if (deferStrokesForMigration) {
@@ -546,6 +617,24 @@ function SplitLayoutInner() {
 
       // Restore collapsed layout state
       setReferenceCollapsed(draft.referenceCollapsed ?? false);
+
+      // Restore flipped state
+      if (draft.flipped !== undefined) {
+        setIsFlipped(draft.flipped);
+      }
+
+      // Restore camera. When a viewer with setHome will mount, defer; the
+      // pending-camera effect re-applies it after the viewer's setHome has
+      // run. Otherwise apply directly — nothing later will overwrite it.
+      if (draft.camera) {
+        const cam = draft.camera;
+        if (referenceWillSize) {
+          pendingCameraRef.current = cam;
+        }
+        else {
+          viewTransform.setCamera(cam.viewCenterX, cam.viewCenterY, cam.zoom);
+        }
+      }
 
       // Restore reference state
       if (draft.source !== 'none') {
@@ -640,7 +729,6 @@ function SplitLayoutInner() {
             historySyncVersion={historySyncVersion}
             isFlipped={isFlipped}
             viewTransform={viewTransform}
-            fitLeader={fitLeader}
             orientation={orientation}
             referenceCollapsed={referenceCollapsed}
             onToggleReferenceCollapsed={handleToggleReferenceCollapsed}

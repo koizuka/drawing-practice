@@ -32,8 +32,6 @@ interface DrawingCanvasProps {
   onCurrentStrokeChange?: (stroke: Stroke | null) => void;
   /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with ReferencePanel). */
   viewTransform?: ViewTransform;
-  /** When false, this panel doesn't own the home registration (another panel does). */
-  isFitLeader?: boolean;
 }
 
 const ERASER_THRESHOLD = 20;
@@ -54,7 +52,6 @@ export function DrawingCanvas({
   isFlipped,
   onCurrentStrokeChange,
   viewTransform,
-  isFitLeader = true,
 }: DrawingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -233,14 +230,41 @@ export function DrawingCanvas({
     }
   }, [viewResetVersion]);
 
-  // Register the camera "home". World origin is always the grid center (the
-  // image's geometric center when a reference is loaded, or the panel center
-  // for free drawing), so home is always (0, 0). Only the fit leader writes
-  // home so the two panels don't fight over a shared transform.
+  // Home is always (0, 0, 1) by ViewTransform's default and gets re-registered
+  // by ImageViewer/YouTubeViewer on actual content load. We deliberately do
+  // NOT call setHome on `isFitLeader` transitions here: those transitions
+  // happen on UI navigation (entering Sketchfab/Pexels search, returning to
+  // the source picker, closing a reference) where the user expects pan/zoom
+  // to be preserved. setHome's snap-to-home side effect would clobber that.
+
+  // When `fitSize` changes, baseScale changes — and since visualScale =
+  // baseScale × zoom, the visual size of strokes around the canvas center
+  // would jump unless we compensate by inversely adjusting camera.zoom.
+  //
+  // Only compensate when transitioning FROM a fitted reference TO non-fitted
+  // (size → null), which is UI navigation: closing the reference, returning
+  // to the source picker, entering search. Transitions that bring in new
+  // content (null → size, or size → size for switching references) must NOT
+  // compensate — the viewer's setHome(0, 0, 1) on image load is the intended
+  // reset, and adjusting zoom here would undo it.
+  const prevFitSizeRef = useRef(fitSize);
   useEffect(() => {
-    if (!isFitLeader) return;
-    viewTransformRef.current.setHome(0, 0, 1);
-  }, [fitSize, isFitLeader]);
+    const prev = prevFitSizeRef.current;
+    prevFitSizeRef.current = fitSize;
+    if (prev === fitSize) return;
+    if (prev?.width === fitSize?.width && prev?.height === fitSize?.height) return;
+    if (!prev || fitSize) return;
+    const container = containerSizeRef.current;
+    const oldBaseScale = computeBaseScale(container, prev);
+    const newBaseScale = computeBaseScale(container, fitSize);
+    if (oldBaseScale === newBaseScale || oldBaseScale <= 0 || newBaseScale <= 0) return;
+    const cam = viewTransformRef.current.getCamera();
+    viewTransformRef.current.setCamera(
+      cam.viewCenterX,
+      cam.viewCenterY,
+      cam.zoom * (oldBaseScale / newBaseScale),
+    );
+  }, [fitSize]);
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
     const canvas = canvasRef.current!;
