@@ -25,6 +25,7 @@ import { GitHubIcon } from './GitHubIcon';
 import { parseYouTubeVideoId, fetchYouTubeTitle } from '../utils/youtube';
 import {
   buildPexelsReferenceInfo,
+  getPexelsApiKey,
   getPexelsLastSearch,
   getPhoto,
   mapPexelsErrorKey,
@@ -369,6 +370,13 @@ export function ReferencePanel({
   // Pexels API key dialog state
   const [pexelsKeyDialogOpen, setPexelsKeyDialogOpen] = useState(false);
   const [pexelsKeyVersion, setPexelsKeyVersion] = useState(0);
+  // Set when the user clicked the Pexels source button without an API key
+  // configured: we open the key dialog first and, on successful save, finish
+  // the original "open Pexels" intent. Cleared on cancel/clear so the next
+  // dialog opening (e.g. from the gear icon) doesn't get hijacked. Ref instead
+  // of state — no UI depends on it, and avoiding a re-render between the two
+  // setStates in handleOpenPexels keeps the dialog open path single-frame.
+  const pendingPexelsOpenRef = useRef(false);
 
   // Per-URL-history-entry Pexels search context restore. Bumping `token`
   // remounts PexelsSearcher with the entry's saved query+orientation so
@@ -714,7 +722,7 @@ export function ReferencePanel({
     });
   }, [onReferenceChange]);
 
-  const handleOpenPexels = useCallback(() => {
+  const enterPexelsBrowse = useCallback(() => {
     onReferenceChange((s) => {
       s.setSource('pexels');
       s.setReferenceMode('browse');
@@ -723,6 +731,17 @@ export function ReferencePanel({
       s.setReferenceInfo(null);
     });
   }, [onReferenceChange]);
+
+  const handleOpenPexels = useCallback(() => {
+    if (getPexelsApiKey() === '') {
+      // No key yet — open the settings dialog and remember we wanted Pexels
+      // so the save handler can finish the navigation.
+      pendingPexelsOpenRef.current = true;
+      setPexelsKeyDialogOpen(true);
+      return;
+    }
+    enterPexelsBrowse();
+  }, [enterPexelsBrowse]);
 
   const handleSelectPexelsPhoto = useCallback((
     info: Extract<ReferenceInfo, { source: 'pexels' }>,
@@ -754,6 +773,37 @@ export function ReferencePanel({
       s.setFixedImageUrl(null);
     });
   }, [onReferenceChange]);
+
+  // Hierarchical Esc for Sketchfab/Pexels: viewer/fixed → search → picker.
+  // Other sources (image, youtube, sketchfab fixed after Fix Angle) are
+  // intentionally excluded — closing the reference would be a destructive
+  // surprise (strokes survive but undo would be required).
+  useEffect(() => {
+    const action: (() => void) | null = (() => {
+      if (source === 'sketchfab' && referenceMode === 'browse') {
+        return sfShowViewer ? () => sfActionsRef.current?.back() : handleClose;
+      }
+      if (source === 'pexels') {
+        return referenceMode === 'fixed' ? handleBackToPexelsSearch : handleClose;
+      }
+      return null;
+    })();
+    if (!action) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      // MUI Autocomplete preventDefault()s Esc when its dropdown is open
+      // (closing the popper). Defer to that and don't escape the screen.
+      if (e.defaultPrevented) return;
+      // Backstop: the popper is portaled to body, so we can detect an open
+      // dropdown directly. Covers MUI version differences in preventDefault
+      // behavior.
+      if (document.querySelector('.MuiAutocomplete-popper')) return;
+      e.preventDefault();
+      action();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [source, referenceMode, sfShowViewer, handleClose, handleBackToPexelsSearch]);
 
   const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
     setSfShowViewer(state.showViewer);
@@ -1494,8 +1544,21 @@ export function ReferencePanel({
 
       <PexelsApiKeyDialog
         open={pexelsKeyDialogOpen}
-        onClose={() => setPexelsKeyDialogOpen(false)}
-        onKeyChanged={() => setPexelsKeyVersion(v => v + 1)}
+        onClose={() => {
+          setPexelsKeyDialogOpen(false);
+          // Cancel drops the pending intent so the next gear-icon opening
+          // doesn't get hijacked into navigating to Pexels.
+          pendingPexelsOpenRef.current = false;
+        }}
+        onKeyChanged={() => {
+          setPexelsKeyVersion(v => v + 1);
+          // Clear-with-empty-key keeps the user where they are; Save fires
+          // only with a non-empty key (the dialog disables Save otherwise).
+          if (pendingPexelsOpenRef.current) {
+            pendingPexelsOpenRef.current = false;
+            if (getPexelsApiKey() !== '') enterPexelsBrowse();
+          }
+        }}
       />
     </Box>
   );

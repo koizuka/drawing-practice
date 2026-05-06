@@ -197,6 +197,11 @@ export function SketchfabViewer({
   }, []);
   useEffect(() => { reloadHistory(); }, [reloadHistory]);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  // Focus the search input on initial mount and whenever the user returns
+  // from the model viewer back to the browse UI.
+  useEffect(() => { if (!showViewer) searchInputRef.current?.focus(); }, [showViewer]);
+
   // Load the Sketchfab client script. Initial scriptLoaded covers the case
   // where window.Sketchfab is already present, so the effect only handles the
   // "needs to be injected" path.
@@ -538,7 +543,6 @@ export function SketchfabViewer({
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <Autocomplete<SketchfabSearchHistoryEntry, false, false, true>
               freeSolo
-              openOnFocus
               size="small"
               sx={{ flex: 1 }}
               fullWidth
@@ -601,6 +605,7 @@ export function SketchfabViewer({
               renderInput={params => (
                 <TextField
                   {...params}
+                  inputRef={searchInputRef}
                   size="small"
                   placeholder={t('searchModels')}
                   onKeyDown={(e) => {

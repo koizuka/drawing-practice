@@ -172,22 +172,32 @@ describe('SplitLayout', () => {
     });
 
     it('enables undo after opening Pexels and reverts to none on undo', async () => {
-      const { container } = render(<SplitLayout />);
+      // Pexels source button now opens the API-key dialog first when no key
+      // is configured, instead of navigating to the searcher. Pre-populate the
+      // key so this test exercises the original "open searcher → undo" flow.
+      // try/finally so an assertion failure can't leak the key into later tests.
+      localStorage.setItem('pexelsApiKey', 'test-key');
+      try {
+        const { container } = render(<SplitLayout />);
 
-      expect(screen.getByText('Pexels')).toBeInTheDocument();
-      expect(undoBtn(container)).toBeDisabled();
+        expect(screen.getByText('Pexels')).toBeInTheDocument();
+        expect(undoBtn(container)).toBeDisabled();
 
-      fireEvent.click(screen.getByText('Pexels'));
+        fireEvent.click(screen.getByText('Pexels'));
 
-      // Source selection UI is replaced with Pexels searcher
-      expect(screen.queryByText('Image File')).not.toBeInTheDocument();
-      // Search input (from PexelsSearcher placeholder) is visible — wait for
-      // the lazy chunk to resolve before asserting on its DOM.
-      expect(await screen.findByPlaceholderText(/Search photos/i)).toBeInTheDocument();
-      expect(undoBtn(container)).not.toBeDisabled();
+        // Source selection UI is replaced with Pexels searcher
+        expect(screen.queryByText('Image File')).not.toBeInTheDocument();
+        // Search input (from PexelsSearcher placeholder) is visible — wait for
+        // the lazy chunk to resolve before asserting on its DOM.
+        expect(await screen.findByPlaceholderText(/Search photos/i)).toBeInTheDocument();
+        expect(undoBtn(container)).not.toBeDisabled();
 
-      fireEvent.click(undoBtn(container));
-      expect(screen.getByText('Image File')).toBeInTheDocument();
+        fireEvent.click(undoBtn(container));
+        expect(screen.getByText('Image File')).toBeInTheDocument();
+      }
+      finally {
+        localStorage.removeItem('pexelsApiKey');
+      }
     });
 
     it('detects a Pexels URL in the URL field and switches to Pexels reference', async () => {

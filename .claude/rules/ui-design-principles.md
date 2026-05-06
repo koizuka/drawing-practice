@@ -58,7 +58,8 @@ Same visual element, different roles → use different components. Same role acr
 
 ## 6. Autocomplete + history-dropdown convention
 
-- Use `Autocomplete` with `freeSolo`, `size="small"`, and **`openOnFocus` enabled by default**. Discoverability of past searches matters.
+- Use `Autocomplete` with `freeSolo` and `size="small"`. **Do not enable `openOnFocus`** — focus alone opening the dropdown is surprising, especially on screens that auto-focus the input on mount (Sketchfab/Pexels search), and it would force every entry into the screen to begin with the popper covering the page. Past-search discoverability is preserved through (1) explicit click on the input, (2) the right-edge dropdown arrow, (3) typing, and (4) ↑/↓ arrow keys — all MUI defaults.
+- Auto-focus the search input on entry (Sketchfab/Pexels search screens do this via `inputRef` + a one-shot `useEffect`). Combined with the no-`openOnFocus` rule, this gives keyboard users a ready-to-type field without the dropdown obscuring it.
 - Each row: `<query text> / optional metadata Chip / Trash2 IconButton (delete)`, gap 8.
 - The delete `IconButton` must call `stopPropagation` on **both** `onPointerDown` and `onClick` — touch devices commit option selection on `pointerdown` before `click` fires.
 - Enter submits if the query is non-empty; empty query is a no-op.
