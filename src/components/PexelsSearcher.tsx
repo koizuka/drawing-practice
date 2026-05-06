@@ -37,7 +37,9 @@ import { resetPageZoom } from '../utils/resetPageZoom';
 
 interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void;
-  onOpenApiKeySettings: () => void;
+  /** Fired when the API key is missing or rejected. Must be stable (useCallback) —
+   *  effect deps include this and an unstable identity would re-fire while needsKey stays true. */
+  onApiKeyMissing: () => void;
   initialQuery?: string;
   initialOrientation?: Orientation;
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
@@ -66,7 +68,7 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ];
 
-export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
+export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
   // Restore the prior search so navigating back to the searcher shows results
   // rather than an empty grid. initial* props (passed by the parent when
   // loading from URL history with per-photo context) take precedence over the
@@ -100,14 +102,18 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   const searchInputRef = useRef<HTMLInputElement>(null);
   useEffect(() => { searchInputRef.current?.focus(); }, []);
 
+  useEffect(() => {
+    if (needsKey) onApiKeyMissing();
+  }, [needsKey, onApiKeyMissing]);
+
   const [searchHistory, setSearchHistory] = useState<PexelsSearchHistoryEntry[]>([]);
   const reloadHistory = useCallback(() => {
     getPexelsSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ });
   }, []);
   useEffect(() => { reloadHistory(); }, [reloadHistory]);
 
-  /** Map a Pexels error to (user-visible error text, banner flag). Returns null
-   *  for errors already communicated via the API-key banner. */
+  /** Map a Pexels error to user-visible error text. Returns null for key-related
+   *  errors — those flip needsKey, which fires onApiKeyMissing for parent recovery. */
   const handleError = useCallback((e: unknown): string | null => {
     const key = mapPexelsErrorKey(e);
     if (key === 'pexelsKeyRequired' || key === 'pexelsKeyInvalid') {
@@ -220,20 +226,6 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
 
   return (
     <Box data-allow-page-zoom="true" sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}>
-      {needsKey && (
-        <Alert
-          severity="info"
-          sx={{ mb: 1 }}
-          action={(
-            <Button color="inherit" size="small" onClick={onOpenApiKeySettings}>
-              {t('pexelsApiKeySettings')}
-            </Button>
-          )}
-        >
-          {t('pexelsKeyRequired')}
-        </Alert>
-      )}
-
       {/* Search row — Autocomplete shows the past-searches dropdown. */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
         <Autocomplete<PexelsSearchHistoryEntry, false, false, true>
