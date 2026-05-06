@@ -253,7 +253,7 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
   // every read so we don't need to re-fit on resize.
   useEffect(() => {
     if (!viewTransform || !isFitLeader) return;
-    viewTransform.setHome(0, 0, 1);
+    viewTransform.loadContent(0, 0, 1);
   }, [viewTransform, isFitLeader]);
 
   useEffect(() => {
@@ -308,10 +308,10 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       const focalY = e.clientY - rect.top;
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED;
-        viewTransform.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
+        viewTransform.applyGesture(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
       }
       else {
-        viewTransform.applyPinch(focalX, focalY, 1, -e.deltaX, -e.deltaY, container, baseScale);
+        viewTransform.applyGesture(focalX, focalY, 1, -e.deltaX, -e.deltaY, container, baseScale);
       }
     };
 
@@ -542,7 +542,7 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
         const translateX = midX - pinchRef.current.lastMidX;
         const translateY = midY - pinchRef.current.lastMidY;
 
-        viewTransform.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, container, baseScale);
+        viewTransform.applyGesture(focalX, focalY, scaleDelta, translateX, translateY, container, baseScale);
 
         pinchRef.current.lastDist = dist;
         pinchRef.current.lastMidX = midX;

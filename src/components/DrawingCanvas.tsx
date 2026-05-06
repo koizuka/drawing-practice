@@ -109,9 +109,9 @@ export function DrawingCanvas({
     const dpr = window.devicePixelRatio || 1;
     const container = containerSizeRef.current;
     // Read fitSize directly from props (not via ref) so a redraw triggered by
-    // a shared-camera notification (e.g. ImageViewer's setHome on image load)
-    // uses the latest fitSize even when the parent's setState hasn't been
-    // observed via the ref-update effect yet.
+    // a shared-camera notification (e.g. ImageViewer's loadContent on image
+    // load) uses the latest fitSize even when the parent's setState hasn't
+    // been observed via the ref-update effect yet.
     const baseScale = computeBaseScale(container, fitSize);
 
     // Reset to identity and clear
@@ -225,45 +225,31 @@ export function DrawingCanvas({
   // Reset view when viewResetVersion bumps (user clicked the reset button).
   useEffect(() => {
     if (viewResetVersion > 0) {
-      viewTransformRef.current.reset();
+      viewTransformRef.current.userResetToHome();
       redrawAllRef.current();
     }
   }, [viewResetVersion]);
 
-  // Home is always (0, 0, 1) by ViewTransform's default and gets re-registered
-  // by ImageViewer/YouTubeViewer on actual content load. We deliberately do
-  // NOT call setHome on `isFitLeader` transitions here: those transitions
-  // happen on UI navigation (entering Sketchfab/Pexels search, returning to
-  // the source picker, closing a reference) where the user expects pan/zoom
-  // to be preserved. setHome's snap-to-home side effect would clobber that.
+  // Home is registered by the active fitting viewer (ImageViewer / YouTubeViewer)
+  // via `loadContent` on actual content load — we never register it here.
+  // UI-only transitions (entering search, returning to picker, closing a
+  // reference) deliberately leave the camera alone so pan/zoom survive.
 
-  // When `fitSize` changes, baseScale changes — and since visualScale =
-  // baseScale × zoom, the visual size of strokes around the canvas center
-  // would jump unless we compensate by inversely adjusting camera.zoom.
-  //
-  // Only compensate when transitioning FROM a fitted reference TO non-fitted
-  // (size → null), which is UI navigation: closing the reference, returning
-  // to the source picker, entering search. Transitions that bring in new
-  // content (null → size, or size → size for switching references) must NOT
-  // compensate — the viewer's setHome(0, 0, 1) on image load is the intended
-  // reset, and adjusting zoom here would undo it.
+  // Compensate `zoom` to keep `visualScale = baseScale × zoom` continuous
+  // when the reference is closed (size → null): baseScale jumps from
+  // fit-to-reference to 1 and strokes would otherwise visibly grow. null →
+  // size and size → size are content loads where the viewer's loadContent
+  // reset is intended, so this branch must NOT fire there. adjustForUnfit
+  // notifies with intent null, so no autosave flush is triggered.
   const prevFitSizeRef = useRef(fitSize);
   useEffect(() => {
     const prev = prevFitSizeRef.current;
     prevFitSizeRef.current = fitSize;
-    if (prev === fitSize) return;
-    if (prev?.width === fitSize?.width && prev?.height === fitSize?.height) return;
     if (!prev || fitSize) return;
     const container = containerSizeRef.current;
     const oldBaseScale = computeBaseScale(container, prev);
     const newBaseScale = computeBaseScale(container, fitSize);
-    if (oldBaseScale === newBaseScale || oldBaseScale <= 0 || newBaseScale <= 0) return;
-    const cam = viewTransformRef.current.getCamera();
-    viewTransformRef.current.setCamera(
-      cam.viewCenterX,
-      cam.viewCenterY,
-      cam.zoom * (oldBaseScale / newBaseScale),
-    );
+    viewTransformRef.current.adjustForUnfit(oldBaseScale, newBaseScale);
   }, [fitSize]);
 
   const getCanvasPoint = useCallback((clientX: number, clientY: number): Point => {
@@ -437,12 +423,12 @@ export function DrawingCanvas({
       if (e.ctrlKey) {
         // Pinch zoom on trackpad (ctrlKey is set by the browser for pinch gestures)
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED;
-        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
+        viewTransformRef.current.applyGesture(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
       }
       else {
         // Pan — flip horizontal delta when flipped
         const deltaX = isFlipped ? e.deltaX : -e.deltaX;
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale);
+        viewTransformRef.current.applyGesture(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale);
       }
 
       requestRedraw();
@@ -561,7 +547,7 @@ export function DrawingCanvas({
       const translateX = isFlipped ? -rawTranslateX : rawTranslateX;
       const translateY = midY - pinchRef.current.lastMidY;
 
-      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale());
+      viewTransformRef.current.applyGesture(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale());
 
       pinchRef.current.lastDist = dist;
       pinchRef.current.lastMidX = midX;

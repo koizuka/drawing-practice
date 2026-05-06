@@ -19,6 +19,14 @@ function clampZoom(zoom: number): number {
 }
 
 /**
+ * Mutators carry an intent so SplitLayout can pick the right autosave-flush
+ * policy without reverse-inferring it from state (`isDirty()` post-hoc,
+ * fitSize transition-direction, etc.). {@link adjustForUnfit} notifies with
+ * intent `null` because it's a render-side scale fix-up, not a user action.
+ */
+export type CameraIntent = 'contentLoad' | 'restore' | 'userReset' | 'gesture';
+
+/**
  * Camera-model view transform. State is stored as a viewing center in world
  * coordinates plus a zoom multiplier — both container-independent — so a
  * shared transform can be projected differently into each panel's own canvas
@@ -27,9 +35,10 @@ function clampZoom(zoom: number): number {
  * or 1 for free drawing) are passed into the projection methods at call time
  * rather than stored on the transform.
  *
- * Reset returns the camera to its registered "home" — typically the content
- * center at zoom 1 (image center for an image reference, or world origin for
- * free drawing). Callers wire this via {@link setHome}.
+ * Mutators are named after the UI event they represent ({@link loadContent},
+ * {@link userResetToHome}, {@link restoreCamera}, {@link applyGesture},
+ * {@link adjustForUnfit}); the matching {@link CameraIntent} is forwarded to
+ * subscribers so listeners can branch on intent rather than re-inferring it.
  */
 export class ViewTransform {
   private viewCenterX = 0;
@@ -38,15 +47,15 @@ export class ViewTransform {
   private homeX = 0;
   private homeY = 0;
   private homeZoom = 1;
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(intent: CameraIntent | null) => void>();
 
   /**
-   * Set the home position (and zoom) the camera resets to and snap the camera
-   * to it. Callers invoke this on reference state changes (image load, video
-   * load, reference unload), which the app treats as "view should land at the
-   * new content center" — any prior pan/zoom is intentionally cleared.
+   * The active fitting viewer just loaded new content (image onload, video
+   * mount, fixed-image swap, Fix Angle confirm). Register the content's
+   * center as the new home and snap the camera there — any prior pan/zoom is
+   * intentionally cleared. Emits intent `'contentLoad'`.
    */
-  setHome(centerX: number, centerY: number, zoom = 1): void {
+  loadContent(centerX: number, centerY: number, zoom = 1): void {
     this.homeX = centerX;
     this.homeY = centerY;
     this.homeZoom = zoom;
@@ -56,23 +65,25 @@ export class ViewTransform {
     this.viewCenterX = centerX;
     this.viewCenterY = centerY;
     this.zoom = zoom;
-    this.notify();
+    this.notify('contentLoad');
   }
 
-  reset(): void {
+  /** User clicked the reset-zoom button or pressed Cmd/Ctrl+0. Emits `'userReset'`. */
+  userResetToHome(): void {
     if (this.isAtHomeInternal()) return;
     this.viewCenterX = this.homeX;
     this.viewCenterY = this.homeY;
     this.zoom = this.homeZoom;
-    this.notify();
+    this.notify('userReset');
   }
 
   /**
-   * Set the camera position/zoom directly without changing the registered
-   * home. Used to restore a persisted camera (e.g. after page reload) without
-   * disturbing the reset target. `zoom` is clamped to the same range as pinch.
+   * Restore a persisted camera (e.g. after page reload) without disturbing
+   * the registered home. `zoom` is clamped to the same range as gestures.
+   * Emits `'restore'` — SplitLayout's `suppressAutosaveRef` is up during the
+   * restore window, so this intent does NOT trigger an immediate flush.
    */
-  setCamera(viewCenterX: number, viewCenterY: number, zoom: number): void {
+  restoreCamera(viewCenterX: number, viewCenterY: number, zoom: number): void {
     const clampedZoom = clampZoom(zoom);
     if (this.viewCenterX === viewCenterX
       && this.viewCenterY === viewCenterY
@@ -80,7 +91,24 @@ export class ViewTransform {
     this.viewCenterX = viewCenterX;
     this.viewCenterY = viewCenterY;
     this.zoom = clampedZoom;
-    this.notify();
+    this.notify('restore');
+  }
+
+  /**
+   * Adjust `zoom` so that `visualScale = baseScale × zoom` stays continuous
+   * across a `baseScale` change. Used when the drawing canvas's fit size
+   * disappears (closing a reference): without this the strokes would visibly
+   * jump in size even though the camera state is unchanged numerically.
+   * Notifies with intent `null` — this is a render-side adjustment, not a
+   * user-driven camera move, so SplitLayout's flush listener skips it.
+   */
+  adjustForUnfit(prevBaseScale: number, newBaseScale: number): void {
+    if (prevBaseScale <= 0 || newBaseScale <= 0) return;
+    if (prevBaseScale === newBaseScale) return;
+    const newZoom = clampZoom(this.zoom * (prevBaseScale / newBaseScale));
+    if (newZoom === this.zoom) return;
+    this.zoom = newZoom;
+    this.notify(null);
   }
 
   isDirty(): boolean {
@@ -124,12 +152,14 @@ export class ViewTransform {
   }
 
   /**
-   * Pinch zoom + pan. `(focalX, focalY)` is the pinch focal point in canvas
-   * screen coords; `scaleDelta` is the multiplicative zoom delta;
-   * `(panX, panY)` is an additional screen-space translation applied after
-   * zoom. Container + baseScale are needed to resolve the focal world point.
+   * Pinch zoom + pan (or wheel scroll). `(focalX, focalY)` is the gesture
+   * focal point in canvas screen coords; `scaleDelta` is the multiplicative
+   * zoom delta; `(panX, panY)` is an additional screen-space translation
+   * applied after zoom. Container + baseScale are needed to resolve the focal
+   * world point. Emits `'gesture'` — SplitLayout tail-debounces flush so
+   * one save fires per gesture instead of per frame.
    */
-  applyPinch(
+  applyGesture(
     focalX: number,
     focalY: number,
     scaleDelta: number,
@@ -157,7 +187,7 @@ export class ViewTransform {
     this.viewCenterX = focalWorldX - (targetX - container.width / 2) / newScale;
     this.viewCenterY = focalWorldY - (targetY - container.height / 2) / newScale;
     this.zoom = newZoom;
-    this.notify();
+    this.notify('gesture');
   }
 
   /** Apply the projected transform to a canvas rendering context. */
@@ -176,13 +206,18 @@ export class ViewTransform {
     return { viewCenterX: this.viewCenterX, viewCenterY: this.viewCenterY, zoom: this.zoom };
   }
 
-  /** Subscribe to camera changes. Returns an unsubscribe function. */
-  subscribe(listener: () => void): () => void {
+  /**
+   * Subscribe to camera changes. The listener receives the {@link CameraIntent}
+   * that drove the change, or `null` for render-side adjustments
+   * ({@link adjustForUnfit}) that should not trigger user-intent handling.
+   * Listeners that only care about repainting can ignore the argument.
+   */
+  subscribe(listener: (intent: CameraIntent | null) => void): () => void {
     this.listeners.add(listener);
     return () => { this.listeners.delete(listener); };
   }
 
-  private notify(): void {
-    for (const listener of this.listeners) listener();
+  private notify(intent: CameraIntent | null): void {
+    for (const listener of this.listeners) listener(intent);
   }
 }

@@ -43,14 +43,14 @@ afterEach(() => {
 describe('YouTubeViewer wheel zoom', () => {
   it('applies pinch-scale on ctrlKey wheel (trackpad pinch)', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.wheel(canvas, { clientX: 110, clientY: 100, deltaY: -50, ctrlKey: true });
 
-    expect(applyPinch).toHaveBeenCalledTimes(1);
-    const [focalX, focalY, scaleDelta, translateX, translateY] = applyPinch.mock.calls[0];
+    expect(applyGesture).toHaveBeenCalledTimes(1);
+    const [focalX, focalY, scaleDelta, translateX, translateY] = applyGesture.mock.calls[0];
     expect(focalX).toBeCloseTo(100); // 110 - rect.left=10
     expect(focalY).toBeCloseTo(80); // 100 - rect.top=20
     expect(scaleDelta).toBeGreaterThan(1); // deltaY<0 → zoom in
@@ -60,14 +60,14 @@ describe('YouTubeViewer wheel zoom', () => {
 
   it('applies translate on wheel without ctrlKey (panning)', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.wheel(canvas, { clientX: 110, clientY: 100, deltaX: 20, deltaY: 30 });
 
-    expect(applyPinch).toHaveBeenCalledTimes(1);
-    const [, , scaleDelta, translateX, translateY] = applyPinch.mock.calls[0];
+    expect(applyGesture).toHaveBeenCalledTimes(1);
+    const [, , scaleDelta, translateX, translateY] = applyGesture.mock.calls[0];
     expect(scaleDelta).toBe(1);
     expect(translateX).toBe(-20);
     expect(translateY).toBe(-30);
@@ -75,18 +75,18 @@ describe('YouTubeViewer wheel zoom', () => {
 
   it('skips wheel zoom when in guideMode', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} guideMode="add" viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.wheel(canvas, { clientX: 110, clientY: 100, deltaY: -50, ctrlKey: true });
 
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 
   it('skips wheel zoom when videoInteractMode=true', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(
       <YouTubeViewer {...baseProps} viewTransform={vt} videoInteractMode />,
     );
@@ -94,50 +94,50 @@ describe('YouTubeViewer wheel zoom', () => {
 
     fireEvent.wheel(canvas, { clientX: 110, clientY: 100, deltaY: -50, ctrlKey: true });
 
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 });
 
 describe('YouTubeViewer pinch gesture', () => {
   it('applies pinch on 2-finger touchMove', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100), touch(1, 200, 200)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 80, 80), touch(1, 220, 220)] });
 
-    expect(applyPinch).toHaveBeenCalledTimes(1);
+    expect(applyGesture).toHaveBeenCalledTimes(1);
   });
 
   it('does not apply pinch on single-finger touchMove', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 150, 150)] });
 
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 
   it('stops pinching when one finger lifts', () => {
     const vt = new ViewTransform();
-    const applyPinch = vi.spyOn(vt, 'applyPinch');
+    const applyGesture = vi.spyOn(vt, 'applyGesture');
     const { container } = render(<YouTubeViewer {...baseProps} viewTransform={vt} />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100), touch(1, 200, 200)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 80, 80), touch(1, 220, 220)] });
-    expect(applyPinch).toHaveBeenCalledTimes(1);
+    expect(applyGesture).toHaveBeenCalledTimes(1);
 
     fireEvent.touchEnd(canvas, { changedTouches: [touch(1, 220, 220)] });
-    applyPinch.mockClear();
+    applyGesture.mockClear();
 
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 50, 50)] });
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 });
 
