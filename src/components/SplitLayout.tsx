@@ -549,8 +549,8 @@ function SplitLayoutInner() {
   // child-before-parent ordering ever changes, the pendingCameraRef apply
   // would race with loadContent — re-evaluate then. Cleared on first apply
   // so later reference-size changes (user-driven swaps) don't re-stomp the
-  // camera. restoreCamera emits intent 'restore', which is ignored by the
-  // onIntent flush listener while suppressAutosaveRef is up.
+  // camera. restoreCamera emits intent 'restore', which the subscribe-based
+  // flush listener ignores while suppressAutosaveRef is up.
   useEffect(() => {
     const pending = pendingCameraRef.current;
     if (!pending || !referenceSize) return;
