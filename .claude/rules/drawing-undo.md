@@ -25,7 +25,9 @@ Every `Point` in `currentStroke.points` and `this.strokes[]` is snapped to the 0
 
 ## Reference undo wiring (in SplitLayout)
 
-- All reference mutations go through `changeReference(mutate)` — it records an undo entry, applies the mutation, and bumps `historySyncVersion` so DrawingPanel's `canUndo`/`canRedo` UI refreshes.
+- The `StrokeManager` instance is owned by `SplitLayout` and passed down to `DrawingPanel` / `DrawingCanvas` as a prop. **Why:** autosave restore loads strokes into it during `loadDraft.then`, before the panels are mounted (see the restore-gate invariant in `CLAUDE.md`).
+- `DrawingPanel` reads `canUndo`/`canRedo`/`strokeCount` inline from the `StrokeManager` each render rather than mirroring them into local state. **Why:** state-mirroring needed a follow-up `useEffect([restoreVersion, historySyncVersion])` to resync after restore/reference-change, producing a second commit that flickered the toolbar's enabled state. Inline reads pick up new values on the same commit that bumps `restoreVersion` / `historySyncVersion`.
+- All reference mutations go through `changeReference(mutate)` — it records an undo entry, applies the mutation, and bumps `historySyncVersion` so DrawingPanel re-renders and the inline `canUndo`/`canRedo` reads reflect the new stack state.
 - `captureReferenceSnapshot` / `applyReferenceSnapshot` (registered via `StrokeManager.setReferenceRestorer`) handle the capture+restore roundtrip.
 - Image-load errors use a separate **non-undoable** `onReferenceResetOnError` path. **Why:** a failed load shouldn't pollute history with an unrecoverable state.
 - Reference history is **session-only**, NOT persisted in the autosave draft. **Why:** keeps IndexedDB bounded — after reload only current reference + strokes are restored.

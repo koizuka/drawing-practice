@@ -22,7 +22,7 @@ vi.mock('./Gallery', () => ({
 }));
 
 type StubCanvasProps = {
-  strokeManagerRef: React.RefObject<StrokeManager>;
+  strokeManager: StrokeManager;
   onStrokeCountChange: () => void;
 };
 const canvasPropsRef: { current: StubCanvasProps | null } = { current: null };
@@ -58,9 +58,10 @@ function setup(opts: {
   collapseLocked?: boolean;
   initialReferenceCollapsed?: boolean;
 } = {}) {
+  const sm = new StrokeManager();
   const harness: Harness = {
     timer: null as unknown as TimerHandle,
-    sm: null,
+    sm,
     bumpRestore: () => {},
     bumpHistory: () => {},
     setReferenceCollapsed: () => {},
@@ -94,9 +95,7 @@ function setup(opts: {
         {({ timer, restoreVersion, historySyncVersion, referenceCollapsed }) => (
           <DrawingPanel
             timer={timer}
-            onStrokeManagerReady={(sm) => {
-              harness.sm = sm;
-            }}
+            strokeManager={sm}
             restoreVersion={restoreVersion}
             historySyncVersion={historySyncVersion}
             captureReferenceSnapshot={opts.captureRef}

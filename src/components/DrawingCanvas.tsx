@@ -17,7 +17,7 @@ interface DrawingCanvasProps {
   onHighlightStroke: (index: number | null) => void;
   onDeleteHighlightedStroke?: () => void;
   onStrokeCountChange: () => void;
-  strokeManagerRef: React.RefObject<StrokeManager>;
+  strokeManager: StrokeManager;
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number;
   /** Increment this to reset zoom/pan to home. */
@@ -42,7 +42,7 @@ export function DrawingCanvas({
   onHighlightStroke,
   onDeleteHighlightedStroke,
   onStrokeCountChange,
-  strokeManagerRef,
+  strokeManager,
   redrawVersion,
   viewResetVersion,
   grid,
@@ -125,7 +125,7 @@ export function DrawingCanvas({
       dpr * projected.offsetX, dpr * projected.offsetY,
     );
 
-    const strokes = strokeManagerRef.current.getStrokes();
+    const strokes = strokeManager.getStrokes();
     const lassoSelected = lassoSelectedRef.current;
     if (lassoSelected && lassoSelected.size > 0) {
       // Draw enclosed strokes in the highlight color so the user can see what
@@ -151,7 +151,7 @@ export function DrawingCanvas({
     }
 
     // Draw current in-progress stroke
-    const current = strokeManagerRef.current.getCurrentStroke();
+    const current = strokeManager.getCurrentStroke();
     if (current && current.points.length >= 2) {
       renderer.drawStroke(current);
     }
@@ -173,7 +173,7 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, [highlightedStrokeIndex, strokeManagerRef, grid, guideLines, fitSize]);
+  }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize]);
 
   // Setup canvas with DPR
   const setupCanvas = useCallback(() => {
@@ -340,7 +340,7 @@ export function DrawingCanvas({
       lassoSelectedRef.current = null;
       return;
     }
-    const strokes = strokeManagerRef.current.getStrokes();
+    const strokes = strokeManager.getStrokes();
     const selected = new Set<number>();
     for (let i = 0; i < strokes.length; i++) {
       const pts = strokes[i].points;
@@ -356,7 +356,7 @@ export function DrawingCanvas({
       if (allInside) selected.add(i);
     }
     lassoSelectedRef.current = selected;
-  }, [strokeManagerRef]);
+  }, [strokeManager]);
 
   // Apply the just-drawn lasso path: delete every stroke flagged as enclosed
   // and notify the parent so save/undo state refreshes. Reuses the live
@@ -374,10 +374,10 @@ export function DrawingCanvas({
       return;
     }
     const targets = Array.from(selected).sort((a, b) => a - b);
-    strokeManagerRef.current.lassoDelete(targets);
+    strokeManager.lassoDelete(targets);
     notifyStrokeCount();
     redrawAll();
-  }, [stopMarching, requestRedraw, strokeManagerRef, notifyStrokeCount, redrawAll]);
+  }, [stopMarching, requestRedraw, strokeManager, notifyStrokeCount, redrawAll]);
 
   // Stop the marching animation if the component unmounts mid-lasso.
   useEffect(() => () => stopMarching(), [stopMarching]);
@@ -438,8 +438,12 @@ export function DrawingCanvas({
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [requestRedraw, isFlipped, getBaseScale]);
 
-  // Touch handlers
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+  // Touch handlers — registered as native listeners (see effect below) with
+  // { passive: false } so preventDefault works. React 18 attaches synthetic
+  // touch handlers as passive by default, which would silently ignore our
+  // preventDefault calls and emit "Unable to preventDefault inside passive
+  // event listener" warnings.
+  const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
     // Track all touches
@@ -462,8 +466,8 @@ export function DrawingCanvas({
       // finger often lands a few frames after the first, and the small
       // amount of motion in between would otherwise commit a stray line
       // when the pinch ends.
-      if (mode === 'pen' && strokeManagerRef.current.getCurrentStroke()) {
-        strokeManagerRef.current.cancelStroke();
+      if (mode === 'pen' && strokeManager.getCurrentStroke()) {
+        strokeManager.cancelStroke();
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
@@ -496,7 +500,7 @@ export function DrawingCanvas({
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
     if (mode === 'eraser') {
-      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
+      const index = strokeManager.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
       if (index !== null && index === highlightedStrokeIndex) {
         onDeleteHighlightedStroke?.();
       }
@@ -510,11 +514,11 @@ export function DrawingCanvas({
       requestRedraw();
     }
     else {
-      strokeManagerRef.current.startStroke(point);
+      strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
     // Update tracked touches
@@ -574,13 +578,16 @@ export function DrawingCanvas({
     if (hasStylusRef.current && touch.touchType !== 'stylus') return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
-    if (!strokeManagerRef.current.appendStroke(point)) return;
-    onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
+    if (!strokeManager.appendStroke(point)) return;
+    onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    e.preventDefault();
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    // touchend can fire with cancelable=false during scrolling; guard so we
+    // don't trip an "Ignored attempt to cancel a touchend" intervention
+    // warning (the preventDefault would be a no-op anyway).
+    if (e.cancelable) e.preventDefault();
 
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -597,7 +604,7 @@ export function DrawingCanvas({
     }
 
     if (mode === 'pen') {
-      const stroke = strokeManagerRef.current.endStroke();
+      const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
@@ -611,7 +618,26 @@ export function DrawingCanvas({
         finishLasso();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange, finishLasso]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
+
+  // Register touch listeners natively (not via React's synthetic onTouch*
+  // props) so we can pass { passive: false } and actually preventDefault.
+  // Without this, browsers warn "Unable to preventDefault inside passive
+  // event listener" on every move during a stroke.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
@@ -623,7 +649,7 @@ export function DrawingCanvas({
     const point = getCanvasPoint(e.clientX, e.clientY);
 
     if (mode === 'eraser') {
-      const index = strokeManagerRef.current.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
+      const index = strokeManager.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
       if (index !== null && index === highlightedStrokeIndex) {
         onDeleteHighlightedStroke?.();
       }
@@ -637,9 +663,9 @@ export function DrawingCanvas({
       requestRedraw();
     }
     else {
-      strokeManagerRef.current.startStroke(point);
+      strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManagerRef, getCurrentScale, startMarching, requestRedraw, startLasso]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, startMarching, requestRedraw, startLasso]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current) return;
@@ -653,17 +679,17 @@ export function DrawingCanvas({
     if (mode !== 'pen') return;
 
     const point = getCanvasPoint(e.clientX, e.clientY);
-    if (!strokeManagerRef.current.appendStroke(point)) return;
-    onCurrentStrokeChange?.(strokeManagerRef.current.getCurrentStroke());
+    if (!strokeManager.appendStroke(point)) return;
+    onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManagerRef, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManager, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
 
   const handleMouseUp = useCallback(() => {
     if (!isMouseDownRef.current) return;
     isMouseDownRef.current = false;
 
     if (mode === 'pen') {
-      const stroke = strokeManagerRef.current.endStroke();
+      const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
@@ -673,7 +699,7 @@ export function DrawingCanvas({
     else if (mode === 'lasso' && lassoPointsRef.current) {
       finishLasso();
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManagerRef, onCurrentStrokeChange, finishLasso]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
 
   return (
     <Box
@@ -688,10 +714,6 @@ export function DrawingCanvas({
     >
       <canvas
         ref={canvasRef}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}

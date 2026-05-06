@@ -25,7 +25,13 @@ import type { GuideState } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types';
 
 function SplitLayoutInner() {
-  const hasSessionLock = useSessionLock();
+  const sessionLockStatus = useSessionLock();
+  // `hasSessionLock` reflects optimism: `pending` and `acquired` both look
+  // "ok-to-render" to UI gates that simply ask "should we show the panels?".
+  // The "another tab" Alert and the autosave write-gate use the stricter
+  // `'acquired'` / `'denied'` checks below to avoid races during the
+  // acquisition window.
+  const hasSessionLock = sessionLockStatus !== 'denied';
   const orientation = useOrientation();
   const isLandscape = orientation === 'landscape';
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null);
@@ -36,7 +42,12 @@ function SplitLayoutInner() {
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const strokeManagerRef = useRef<StrokeManager | null>(null);
+  // StrokeManager owned by SplitLayout (not DrawingPanel) so it exists from
+  // mount and can receive `loadState` during draft restore even before the
+  // DrawingPanel is mounted. Conditional-rendering DrawingPanel until
+  // restoreCompleted (to avoid CSS-transition flicker on toolbar buttons)
+  // would otherwise leave loadDraft with no manager to populate.
+  const [strokeManager] = useState(() => new StrokeManager());
 
   // Shared ViewTransform instance for zoom/pan sync between ReferencePanel and DrawingPanel.
   // useState's lazy initializer ensures only one instance is constructed for the lifetime
@@ -146,13 +157,32 @@ function SplitLayoutInner() {
     setChangeVersion(v => v + 1);
   }, [timer]);
 
-  // Suppress autosave during restore or when another tab holds the lock
+  // Autosave suppression: stays true while restore is in flight AND while
+  // the session lock is still `pending`. Setting it false before the lock
+  // confirms could let the restore-triggered `flushVersion` bump (via the
+  // guideVersion render-time pattern below) write to IndexedDB while
+  // another tab still holds the lock — the kind of last-writer-wins race
+  // useSessionLock exists to prevent. loadDraft.then itself no longer
+  // touches this ref; the effect below is the single owner.
   const suppressAutosaveRef = useRef(true);
+
+  // Gate panel mount until restore completes. Earlier attempts with
+  // `visibility: hidden` failed because hidden DOM still runs CSS
+  // transitions on prop changes (e.g. Save button's `color 0.3s` would
+  // animate from disabled-gray to enabled-color the moment the gate
+  // flipped). Conditional rendering means panels mount fresh after
+  // restore, so first paint has every prop at its final value and no
+  // transition kicks off. `restored` falls open when the lock is
+  // definitively denied so the user can still use the app (autosave
+  // disabled) without staring at a blank screen.
+  const [restoreCompleted, setRestoreCompleted] = useState(false);
+  const restored = restoreCompleted || sessionLockStatus === 'denied';
+
+  // Single source of truth for autosave suppression: false only when restore
+  // is done AND the lock is confirmed acquired.
   useEffect(() => {
-    if (!hasSessionLock) {
-      suppressAutosaveRef.current = true;
-    }
-  }, [hasSessionLock]);
+    suppressAutosaveRef.current = !(restoreCompleted && sessionLockStatus === 'acquired');
+  }, [restoreCompleted, sessionLockStatus]);
 
   // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
   // remain a stable callback (prevents unnecessary child re-renders).
@@ -208,7 +238,7 @@ function SplitLayoutInner() {
     // the wrong amount.
     pendingMigrationRef.current = null;
     const prev = captureReferenceSnapshot();
-    strokeManagerRef.current?.recordReferenceChange(prev);
+    strokeManager.recordReferenceChange(prev);
     mutate({
       setSource,
       setReferenceMode,
@@ -219,7 +249,7 @@ function SplitLayoutInner() {
     pauseAndIncrementVersion();
     setHistorySyncVersion(v => v + 1);
     incrementFlushVersion();
-  }, [captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion]);
+  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion]);
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -257,7 +287,7 @@ function SplitLayoutInner() {
       // tag the new state with the current coord version. Read via refs so
       // this callback's identity doesn't churn on every guide update.
       const userHasStarted
-        = (strokeManagerRef.current?.canUndo() ?? false)
+        = strokeManager.canUndo()
           || (guideManagerRef.current?.getLines().length ?? 0) > 0;
       if (userHasStarted) return;
       const dx = -width / 2;
@@ -265,8 +295,8 @@ function SplitLayoutInner() {
       const migratedStrokes = shiftStrokes(pending.strokes, dx, dy);
       const migratedRedo = shiftStrokes(pending.redoStack, dx, dy);
       const migratedGuides = shiftGuideState(pending.guides, dx, dy);
-      if (strokeManagerRef.current && (migratedStrokes.length > 0 || migratedRedo.length > 0)) {
-        strokeManagerRef.current.loadState(migratedStrokes, migratedRedo);
+      if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
+        strokeManager.loadState(migratedStrokes, migratedRedo);
       }
       restoreGuides(migratedGuides);
       // Debounced autosave is fine — the next user interaction will persist
@@ -276,7 +306,7 @@ function SplitLayoutInner() {
     }
     // setRestoreVersion listed only for React Compiler's
     // preserve-manual-memoization check (stable identity, harmless).
-  }, [restoreGuides, incrementChangeVersion, guideManagerRef, setRestoreVersion]);
+  }, [strokeManager, restoreGuides, incrementChangeVersion, guideManagerRef, setRestoreVersion]);
 
   // DrawingCanvas fits only when a viewer is actively the fit leader; raw
   // referenceSize would otherwise leak the previous reference's dimensions
@@ -297,28 +327,29 @@ function SplitLayoutInner() {
   const handleToggleOverlay = useCallback(() => {
     setOverlayActive((prev) => {
       const next = !prev;
-      if (next && strokeManagerRef.current) {
-        setOverlayStrokes([...strokeManagerRef.current.getStrokes()]);
+      if (next) {
+        setOverlayStrokes([...strokeManager.getStrokes()]);
       }
       else {
         setOverlayStrokes(null);
       }
       return next;
     });
-  }, []);
+  }, [strokeManager]);
 
-  const handleStrokeManagerReady = useCallback((sm: StrokeManager) => {
-    strokeManagerRef.current = sm;
-    // Register a stable restorer that always reads the latest closure via ref
-    sm.setReferenceRestorer(snap => applyReferenceSnapshotRef.current(snap));
-  }, []);
+  // Register a stable reference restorer on the StrokeManager. The restorer
+  // reads applyReferenceSnapshotRef.current at call time so it picks up the
+  // latest closure without re-registering on every render.
+  useEffect(() => {
+    strokeManager.setReferenceRestorer(snap => applyReferenceSnapshotRef.current(snap));
+  }, [strokeManager]);
 
   const handleStrokesChanged = useCallback(() => {
-    if (overlayActive && strokeManagerRef.current) {
-      setOverlayStrokes([...strokeManagerRef.current.getStrokes()]);
+    if (overlayActive) {
+      setOverlayStrokes([...strokeManager.getStrokes()]);
     }
     incrementChangeVersion();
-  }, [overlayActive, incrementChangeVersion]);
+  }, [strokeManager, overlayActive, incrementChangeVersion]);
 
   const handleCurrentStrokeChange = useCallback((stroke: Stroke | null) => {
     currentStrokeRef.current = stroke;
@@ -470,8 +501,8 @@ function SplitLayoutInner() {
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
   const getAutosaveState = useCallback(() => ({
-    strokes: strokeManagerRef.current?.getStrokes() ?? [],
-    redoStack: strokeManagerRef.current?.getRedoStack() ?? [],
+    strokes: strokeManager.getStrokes(),
+    redoStack: strokeManager.getRedoStack(),
     elapsedMs: timerElapsedRef.current,
     source,
     referenceInfo,
@@ -485,7 +516,7 @@ function SplitLayoutInner() {
     referenceCollapsed,
     camera: viewTransform.getCamera(),
     flipped: isFlipped,
-  }), [source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
+  }), [strokeManager, source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
@@ -566,8 +597,9 @@ function SplitLayoutInner() {
 
     let cancelled = false;
     loadDraft().then((draft) => {
-      if (cancelled || !draft) {
-        suppressAutosaveRef.current = false;
+      if (cancelled) return;
+      if (!draft) {
+        setRestoreCompleted(true);
         return;
       }
 
@@ -596,8 +628,8 @@ function SplitLayoutInner() {
         };
       }
       else {
-        if (strokeManagerRef.current && (draft.strokes.length > 0 || draft.redoStack.length > 0)) {
-          strokeManagerRef.current.loadState(draft.strokes, draft.redoStack);
+        if (draft.strokes.length > 0 || draft.redoStack.length > 0) {
+          strokeManager.loadState(draft.strokes, draft.redoStack);
         }
         if (draft.guideState) {
           restoreGuides(draft.guideState);
@@ -659,11 +691,24 @@ function SplitLayoutInner() {
         }
       }
 
-      suppressAutosaveRef.current = false;
       setRestoreVersion(v => v + 1);
+      setRestoreCompleted(true);
+    }).catch((err) => {
+      // loadDraft is async IndexedDB — if it rejects, surface the panels
+      // anyway so the user isn't stuck on a blank screen.
+      console.error('loadDraft failed:', err);
+      if (cancelled) return;
+      setRestoreCompleted(true);
     });
 
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      // Reset the gate so a remount (StrictMode dev double-mount, or
+      // hasSessionLock flapping true→false→true) can re-attempt loadDraft.
+      // Without this, the cancelled mount never sets restoreCompleted and the
+      // remount short-circuits, leaving the visibility gate permanently hidden.
+      restoredRef.current = false;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasSessionLock]);
 
@@ -682,56 +727,64 @@ function SplitLayoutInner() {
           {t('autosaveDisabled')}
         </Alert>
       )}
-      <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
-        {/* `collapseLocked` keeps the reference panel visible even when the user
+      {/* Don't render the panels until restore completes. Earlier attempts
+          with `visibility: 'hidden'` failed because CSS transitions (e.g. the
+          Save button's `transition: color 0.3s`) still fired while hidden —
+          once visible, the partial gray-to-color transition was visible.
+          Mounting the panels fresh after restore ensures every prop is at its
+          final value at first paint, so no transition kicks off. */}
+      {restored && (
+        <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
+          {/* `collapseLocked` keeps the reference panel visible even when the user
           asked to collapse it; the toggle button is also disabled in that
           state so the user gets a tooltip instead of a no-op click. */}
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !collapseLocked) ? 'none' : 'block' }}>
-          <ReferencePanel
-            overlayStrokes={overlayStrokes}
-            overlayCurrentStrokeRef={currentStrokeRef}
-            onRegisterOverlayRedraw={handleRegisterOverlayRedraw}
-            onReferenceImageSize={handleReferenceImageSize}
-            overlayActive={overlayActive}
-            onToggleOverlay={handleToggleOverlay}
-            source={source}
-            referenceMode={referenceMode}
-            fixedImageUrl={fixedImageUrl}
-            localImageUrl={localImageUrl}
-            refInfo={referenceInfo}
-            onReferenceChange={changeReference}
-            onReferenceResetOnError={resetReferenceOnError}
-            onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
-            onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
-            onSketchfabViewerStateChange={setSketchfabViewerActive}
-            isFlipped={isFlipped}
-            onToggleFlip={handleToggleFlip}
-            viewTransform={viewTransform}
-            fitLeader={fitLeader}
-          />
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !collapseLocked) ? 'none' : 'block' }}>
+            <ReferencePanel
+              overlayStrokes={overlayStrokes}
+              overlayCurrentStrokeRef={currentStrokeRef}
+              onRegisterOverlayRedraw={handleRegisterOverlayRedraw}
+              onReferenceImageSize={handleReferenceImageSize}
+              overlayActive={overlayActive}
+              onToggleOverlay={handleToggleOverlay}
+              source={source}
+              referenceMode={referenceMode}
+              fixedImageUrl={fixedImageUrl}
+              localImageUrl={localImageUrl}
+              refInfo={referenceInfo}
+              onReferenceChange={changeReference}
+              onReferenceResetOnError={resetReferenceOnError}
+              onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
+              onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
+              onSketchfabViewerStateChange={setSketchfabViewerActive}
+              isFlipped={isFlipped}
+              onToggleFlip={handleToggleFlip}
+              viewTransform={viewTransform}
+              fitLeader={fitLeader}
+            />
+          </Box>
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
+            <DrawingPanel
+              referenceSize={drawingFitSize}
+              referenceInfo={referenceInfo}
+              strokeManager={strokeManager}
+              onStrokesChanged={handleStrokesChanged}
+              onCurrentStrokeChange={handleCurrentStrokeChange}
+              onOverlayClear={() => { setOverlayStrokes(null); }}
+              onLoadReference={handleLoadReference}
+              captureReferenceSnapshot={captureReferenceSnapshot}
+              timer={timer}
+              restoreVersion={restoreVersion}
+              historySyncVersion={historySyncVersion}
+              isFlipped={isFlipped}
+              viewTransform={viewTransform}
+              orientation={orientation}
+              referenceCollapsed={referenceCollapsed}
+              onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
+              collapseLocked={collapseLocked}
+            />
+          </Box>
         </Box>
-        <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
-          <DrawingPanel
-            referenceSize={drawingFitSize}
-            referenceInfo={referenceInfo}
-            onStrokeManagerReady={handleStrokeManagerReady}
-            onStrokesChanged={handleStrokesChanged}
-            onCurrentStrokeChange={handleCurrentStrokeChange}
-            onOverlayClear={() => { setOverlayStrokes(null); }}
-            onLoadReference={handleLoadReference}
-            captureReferenceSnapshot={captureReferenceSnapshot}
-            timer={timer}
-            restoreVersion={restoreVersion}
-            historySyncVersion={historySyncVersion}
-            isFlipped={isFlipped}
-            viewTransform={viewTransform}
-            orientation={orientation}
-            referenceCollapsed={referenceCollapsed}
-            onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
-            collapseLocked={collapseLocked}
-          />
-        </Box>
-      </Box>
+      )}
       <Snackbar
         open={toast !== null}
         autoHideDuration={5000}

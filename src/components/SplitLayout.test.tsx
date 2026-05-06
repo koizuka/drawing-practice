@@ -43,10 +43,11 @@ function pexelsPhoto(id: number, photographer: string) {
 }
 
 describe('SplitLayout', () => {
-  it('renders both panels', () => {
+  it('renders both panels', async () => {
     render(<SplitLayout />);
-    // ReferencePanel renders source buttons in center when no source selected
-    expect(screen.getByText('Sketchfab')).toBeInTheDocument();
+    // Panels mount only after the loadDraft promise resolves (the !draft
+    // branch flips restoreCompleted=true). Wait for the source picker.
+    expect(await screen.findByText('Sketchfab')).toBeInTheDocument();
     expect(screen.getByText('Image File')).toBeInTheDocument();
     // DrawingPanel renders toolbar buttons
     expect(screen.getByLabelText(/^Pen/)).toBeInTheDocument();
@@ -71,11 +72,11 @@ describe('SplitLayout', () => {
     const undoBtn = (c: HTMLElement) => findDrawingToolbarButton(c, 'lucide-undo-2');
     const redoBtn = (c: HTMLElement) => findDrawingToolbarButton(c, 'lucide-redo-2');
 
-    it('enables undo after opening Sketchfab and reverts to none on undo', () => {
+    it('enables undo after opening Sketchfab and reverts to none on undo', async () => {
       const { container } = render(<SplitLayout />);
 
       // Initial state: source selection visible, undo disabled
-      expect(screen.getByText('Image File')).toBeInTheDocument();
+      expect(await screen.findByText('Image File')).toBeInTheDocument();
       expect(undoBtn(container)).toBeDisabled();
 
       // Click the center "Sketchfab" button
@@ -95,8 +96,9 @@ describe('SplitLayout', () => {
       expect(redoBtn(container)).not.toBeDisabled();
     });
 
-    it('restores the previous reference when Close is undone', () => {
+    it('restores the previous reference when Close is undone', async () => {
       const { container } = render(<SplitLayout />);
+      await screen.findByText('Sketchfab');
 
       // Open Sketchfab
       fireEvent.click(screen.getByText('Sketchfab'));
@@ -121,8 +123,9 @@ describe('SplitLayout', () => {
       expect(undoBtn(container)).toBeDisabled();
     });
 
-    it('redo re-applies reference changes', () => {
+    it('redo re-applies reference changes', async () => {
       const { container } = render(<SplitLayout />);
+      await screen.findByText('Sketchfab');
 
       // Sketchfab → none → sketchfab chain via undo/redo
       fireEvent.click(screen.getByText('Sketchfab'));
@@ -136,8 +139,9 @@ describe('SplitLayout', () => {
       expect(redoBtn(container)).toBeDisabled();
     });
 
-    it('a new reference change clears the redo stack', () => {
+    it('a new reference change clears the redo stack', async () => {
       const { container } = render(<SplitLayout />);
+      await screen.findByText('Sketchfab');
 
       // Sketchfab → undo → Sketchfab again
       fireEvent.click(screen.getByText('Sketchfab'));
@@ -149,8 +153,9 @@ describe('SplitLayout', () => {
       expect(redoBtn(container)).toBeDisabled();
     });
 
-    it('detects a YouTube URL in the URL field and switches to YouTube reference', () => {
+    it('detects a YouTube URL in the URL field and switches to YouTube reference', async () => {
       const { container } = render(<SplitLayout />);
+      await screen.findByText('Sketchfab');
       expect(undoBtn(container)).toBeDisabled();
 
       const urlInput = screen.getByPlaceholderText(/YouTube/i) as HTMLInputElement;
@@ -179,6 +184,7 @@ describe('SplitLayout', () => {
       localStorage.setItem('pexelsApiKey', 'test-key');
       try {
         const { container } = render(<SplitLayout />);
+        await screen.findByText('Pexels');
 
         expect(screen.getByText('Pexels')).toBeInTheDocument();
         expect(undoBtn(container)).toBeDisabled();
@@ -204,6 +210,7 @@ describe('SplitLayout', () => {
       getPhotoMock.mockResolvedValueOnce(pexelsPhoto(12345, 'Alice Photographer'));
 
       const { container } = render(<SplitLayout />);
+      await screen.findByText('Sketchfab');
       expect(undoBtn(container)).toBeDisabled();
 
       const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement;
@@ -224,7 +231,8 @@ describe('SplitLayout', () => {
   describe('reference info overlay collapse', () => {
     async function loadPexels(id: number, photographer: string) {
       getPhotoMock.mockResolvedValueOnce(pexelsPhoto(id, photographer));
-      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement;
+      // Wait for the source picker (panels mount post-restore).
+      const urlInput = await screen.findByPlaceholderText(/Pexels/i) as HTMLInputElement;
       fireEvent.change(urlInput, { target: { value: `https://www.pexels.com/photo/sample-${id}/` } });
       fireEvent.click(screen.getByText('Load'));
       await waitFor(() => expect(screen.getByText(photographer)).toBeInTheDocument());
@@ -286,11 +294,12 @@ describe('SplitLayout', () => {
   });
 
   describe('reference panel collapse', () => {
-    it('toggles the reference panel hidden state and swaps the icon', () => {
+    it('toggles the reference panel hidden state and swaps the icon', async () => {
       const { container } = render(<SplitLayout />);
 
-      // Initial: reference panel visible, source picker visible.
-      expect(screen.getByText('Image File')).toBeVisible();
+      // Initial: reference panel visible after restore-gate releases (no draft
+      // resolves the loadDraft promise to undefined and flips restoreCompleted).
+      await waitFor(() => expect(screen.getByText('Image File')).toBeVisible());
       const collapseBtn = screen.getByLabelText(/Hide reference/) as HTMLButtonElement;
       expect(collapseBtn).toBeInTheDocument();
 

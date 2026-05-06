@@ -28,7 +28,12 @@ const FLIP_SCALE_EPSILON = 0.01;
 interface DrawingPanelProps {
   referenceSize?: { width: number; height: number } | null;
   referenceInfo?: ReferenceInfo | null;
-  onStrokeManagerReady?: (sm: StrokeManager) => void;
+  /**
+   * StrokeManager instance owned by SplitLayout. Passed in (rather than
+   * created locally) so it exists from app mount — draft restore can
+   * `loadState` into it before this panel ever renders.
+   */
+  strokeManager: StrokeManager;
   onStrokesChanged?: () => void;
   onOverlayClear?: () => void;
   onLoadReference?: (info: ReferenceInfo) => void;
@@ -65,17 +70,19 @@ interface DrawingPanelProps {
   collapseLocked?: boolean;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerReady, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
-  const strokeManagerRef = useRef(new StrokeManager());
+export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
   // toolbar button shows this icon and a short tap activates this sub-mode;
   // long-press opens a chooser. Not persisted across sessions.
   const [eraseSubmode, setEraseSubmode] = useState<'eraser' | 'lasso'>('eraser');
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null);
-  const [strokeCount, setStrokeCount] = useState(0);
-  const [canUndo, setCanUndo] = useState(false);
-  const [canRedo, setCanRedo] = useState(false);
+  // canUndo/canRedo/strokeCount are computed inline from the strokeManager
+  // instance each render rather than mirrored into state. State-mirroring
+  // required follow-up useEffects after restore/reference-change that produced
+  // a second commit and made the toolbar's undo/redo enabled state flicker.
+  // Inline reads pick up new values on the same commit that bumps
+  // restoreVersion / historySyncVersion.
   const [redrawVersion, setRedrawVersion] = useState(0);
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
@@ -129,11 +136,6 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
 
   const { grid, lines, version: guideVersion } = useGuides();
 
-  // Expose stroke manager to parent
-  useEffect(() => {
-    onStrokeManagerReady?.(strokeManagerRef.current);
-  }, [onStrokeManagerReady]);
-
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
   useEffect(() => {
@@ -143,86 +145,81 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
 
   const resetDisabled = viewTransform ? !viewTransform.isDirty() : false;
 
-  // Sync UI state after restore
-  useEffect(() => {
+  // Force a canvas redraw on parent draft-restore. Render-time prev-prop
+  // pattern (vs a setState-in-effect) keeps react-hooks/set-state-in-effect
+  // happy.
+  const [prevRestoreVersion, setPrevRestoreVersion] = useState(restoreVersion ?? 0);
+  if (prevRestoreVersion !== (restoreVersion ?? 0)) {
+    setPrevRestoreVersion(restoreVersion ?? 0);
     if (restoreVersion && restoreVersion > 0) {
-      setCanUndo(strokeManagerRef.current.canUndo());
-      setCanRedo(strokeManagerRef.current.canRedo());
-      setStrokeCount(strokeManagerRef.current.getStrokes().length);
       setRedrawVersion(v => v + 1);
     }
-  }, [restoreVersion]);
+  }
 
-  // Refresh canUndo/canRedo when the parent records a reference change that
-  // grew the stroke manager's undo stack from outside DrawingPanel.
-  useEffect(() => {
-    if (historySyncVersion && historySyncVersion > 0) {
-      setCanUndo(strokeManagerRef.current.canUndo());
-      setCanRedo(strokeManagerRef.current.canRedo());
-    }
-  }, [historySyncVersion]);
-
-  const syncUndoRedoState = useCallback(() => {
-    setCanUndo(strokeManagerRef.current.canUndo());
-    setCanRedo(strokeManagerRef.current.canRedo());
-    setStrokeCount(strokeManagerRef.current.getStrokes().length);
-  }, []);
+  const canUndo = strokeManager.canUndo();
+  const canRedo = strokeManager.canRedo();
+  const strokeCount = strokeManager.getStrokes().length;
+  // Mark the version props as render dependencies so React Compiler keeps
+  // the inline strokeManager reads above re-evaluating on parent-recorded
+  // reference changes (historySyncVersion) and local stroke mutations
+  // (redrawVersion).
+  void historySyncVersion;
+  void redrawVersion;
 
   const triggerRedraw = useCallback(() => {
-    syncUndoRedoState();
     onStrokesChanged?.();
     setRedrawVersion(v => v + 1);
-  }, [syncUndoRedoState, onStrokesChanged]);
+  }, [onStrokesChanged]);
 
   const handleUndo = useCallback(() => {
-    strokeManagerRef.current.undo(captureReferenceSnapshot);
+    strokeManager.undo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw();
-    if (!strokeManagerRef.current.canUndo()) {
+    if (!strokeManager.canUndo()) {
       timer.reset();
     }
-  }, [triggerRedraw, captureReferenceSnapshot, timer]);
+  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer]);
 
   const handleRedo = useCallback(() => {
-    strokeManagerRef.current.redo(captureReferenceSnapshot);
+    strokeManager.redo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw();
-    if (!timer.isRunning && strokeManagerRef.current.getStrokes().length > 0) {
+    if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
-  }, [triggerRedraw, captureReferenceSnapshot, timer]);
+  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer]);
 
   const handleClear = useCallback(() => {
-    strokeManagerRef.current.clear();
+    strokeManager.clear();
     setHighlightedStrokeIndex(null);
     setMode('pen');
     timer.reset();
     triggerRedraw();
     onOverlayClear?.();
-  }, [triggerRedraw, timer, onOverlayClear]);
+  }, [strokeManager, triggerRedraw, timer, onOverlayClear]);
 
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedStrokeIndex !== null) {
-      strokeManagerRef.current.deleteStroke(highlightedStrokeIndex);
+      strokeManager.deleteStroke(highlightedStrokeIndex);
       setHighlightedStrokeIndex(null);
       triggerRedraw();
     }
-  }, [highlightedStrokeIndex, triggerRedraw]);
+  }, [strokeManager, highlightedStrokeIndex, triggerRedraw]);
 
   const handleCancelHighlight = useCallback(() => {
     setHighlightedStrokeIndex(null);
   }, []);
 
   const handleStrokeCountChange = useCallback(() => {
-    syncUndoRedoState();
+    setRedrawVersion(v => v + 1);
     onStrokesChanged?.();
-    if (!timer.isRunning && strokeManagerRef.current.getStrokes().length > 0) {
+    if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
-  }, [syncUndoRedoState, onStrokesChanged, timer]);
+  }, [strokeManager, onStrokesChanged, timer]);
 
   const handleSave = useCallback(async () => {
-    const strokes = strokeManagerRef.current.getStrokes();
+    const strokes = strokeManager.getStrokes();
     if (strokes.length === 0) return;
     setSaving(true);
     const thumbnail = generateThumbnail(strokes);
@@ -231,7 +228,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
-  }, [referenceInfo, timer]);
+  }, [strokeManager, referenceInfo, timer]);
 
   const handlePenTool = useCallback(() => {
     setMode('pen');
@@ -645,7 +642,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, onStrokeManagerRead
           onHighlightStroke={setHighlightedStrokeIndex}
           onDeleteHighlightedStroke={handleDeleteHighlighted}
           onStrokeCountChange={handleStrokeCountChange}
-          strokeManagerRef={strokeManagerRef}
+          strokeManager={strokeManager}
           redrawVersion={redrawVersion}
           viewResetVersion={viewResetVersion}
           grid={grid}
