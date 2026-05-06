@@ -40,6 +40,12 @@ interface PexelsSearcherProps {
   /** Fired when the API key is missing or rejected. Must be stable (useCallback) —
    *  effect deps include this and an unstable identity would re-fire while needsKey stays true. */
   onApiKeyMissing: () => void;
+  /** True when the search UI is actually visible (browse mode). When false the
+   *  searcher is mounted-but-hidden behind a fixed photo, where API key state
+   *  is irrelevant — onApiKeyMissing is suppressed so the user isn't pulled
+   *  out of fixed-mode viewing into a key dialog. Defaults to true for tests
+   *  that exercise the searcher in isolation. */
+  active?: boolean;
   initialQuery?: string;
   initialOrientation?: Orientation;
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
@@ -68,7 +74,7 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ];
 
-export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
+export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
   // Restore the prior search so navigating back to the searcher shows results
   // rather than an empty grid. initial* props (passed by the parent when
   // loading from URL history with per-photo context) take precedence over the
@@ -103,8 +109,8 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, initialQuery, i
   useEffect(() => { searchInputRef.current?.focus(); }, []);
 
   useEffect(() => {
-    if (needsKey) onApiKeyMissing();
-  }, [needsKey, onApiKeyMissing]);
+    if (active && needsKey) onApiKeyMissing();
+  }, [active, needsKey, onApiKeyMissing]);
 
   const [searchHistory, setSearchHistory] = useState<PexelsSearchHistoryEntry[]>([]);
   const reloadHistory = useCallback(() => {

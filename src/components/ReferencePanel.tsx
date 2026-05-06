@@ -1488,6 +1488,7 @@ export function ReferencePanel({
                   key={pexelsRestore?.token ?? 0}
                   onSelectPhoto={handleSelectPexelsPhoto}
                   onApiKeyMissing={handlePexelsApiKeyMissing}
+                  active={referenceMode === 'browse'}
                   apiKeyVersion={pexelsKeyVersion}
                   initialQuery={pexelsRestore?.query}
                   initialOrientation={pexelsRestore?.orientation}

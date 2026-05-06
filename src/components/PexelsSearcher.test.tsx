@@ -179,4 +179,22 @@ describe('PexelsSearcher API key recovery notification', () => {
 
     await waitFor(() => expect(onRecover).toHaveBeenCalled());
   });
+
+  it('does NOT fire onApiKeyMissing while inactive (fixed-mode hidden mount)', async () => {
+    // Session-restore into fixed mode with a cleared key: the searcher is
+    // mounted-but-hidden behind the loaded photo. Pulling the user into a
+    // key dialog here would interrupt fixed-mode viewing for no reason —
+    // the CDN URL works without the API key.
+    localStorage.removeItem('pexelsApiKey');
+    const onRecover = vi.fn();
+    render(
+      <PexelsSearcher
+        onSelectPhoto={vi.fn()}
+        onApiKeyMissing={onRecover}
+        active={false}
+      />,
+    );
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+    expect(onRecover).not.toHaveBeenCalled();
+  });
 });
