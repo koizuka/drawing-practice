@@ -377,6 +377,11 @@ export function ReferencePanel({
   // of state — no UI depends on it, and avoiding a re-render between the two
   // setStates in handleOpenPexels keeps the dialog open path single-frame.
   const pendingPexelsOpenRef = useRef(false);
+  // Distinguishes "dialog opened because the searcher is stranded on a
+  // disabled screen" from other dialog opens — only this case bounces out
+  // on Cancel. (Every searcher control is `disabled={needsKey}`, so without
+  // an exit the user has no way off the screen.)
+  const pendingPexelsRecoveryRef = useRef(false);
 
   // Per-URL-history-entry Pexels search context restore. Bumping `token`
   // remounts PexelsSearcher with the entry's saved query+orientation so
@@ -742,6 +747,13 @@ export function ReferencePanel({
     }
     enterPexelsBrowse();
   }, [enterPexelsBrowse]);
+
+  // Stable identity required: the searcher's effect deps include this, so a
+  // new identity each render would re-fire while needsKey stays true.
+  const handlePexelsApiKeyMissing = useCallback(() => {
+    pendingPexelsRecoveryRef.current = true;
+    setPexelsKeyDialogOpen(true);
+  }, []);
 
   const handleSelectPexelsPhoto = useCallback((
     info: Extract<ReferenceInfo, { source: 'pexels' }>,
@@ -1475,7 +1487,8 @@ export function ReferencePanel({
                 <PexelsSearcher
                   key={pexelsRestore?.token ?? 0}
                   onSelectPhoto={handleSelectPexelsPhoto}
-                  onOpenApiKeySettings={() => setPexelsKeyDialogOpen(true)}
+                  onApiKeyMissing={handlePexelsApiKeyMissing}
+                  active={referenceMode === 'browse'}
                   apiKeyVersion={pexelsKeyVersion}
                   initialQuery={pexelsRestore?.query}
                   initialOrientation={pexelsRestore?.orientation}
@@ -1549,6 +1562,13 @@ export function ReferencePanel({
           // Cancel drops the pending intent so the next gear-icon opening
           // doesn't get hijacked into navigating to Pexels.
           pendingPexelsOpenRef.current = false;
+          // Recovery flag still set ⇒ user did NOT save a valid key (Cancel or
+          // Clear). Exit via handleClose so it routes through onReferenceChange
+          // and is recorded in undo history.
+          if (pendingPexelsRecoveryRef.current) {
+            pendingPexelsRecoveryRef.current = false;
+            handleClose();
+          }
         }}
         onKeyChanged={() => {
           setPexelsKeyVersion(v => v + 1);
@@ -1557,6 +1577,12 @@ export function ReferencePanel({
           if (pendingPexelsOpenRef.current) {
             pendingPexelsOpenRef.current = false;
             if (getPexelsApiKey() !== '') enterPexelsBrowse();
+          }
+          // Save with a valid key resolves recovery — clear the flag so the
+          // following onClose doesn't bounce the user out. Clear leaves it set,
+          // and onClose will exit (the "give up" path).
+          if (pendingPexelsRecoveryRef.current && getPexelsApiKey() !== '') {
+            pendingPexelsRecoveryRef.current = false;
           }
         }}
       />

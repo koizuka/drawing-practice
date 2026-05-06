@@ -45,7 +45,7 @@ describe('PexelsSearcher history dropdown', () => {
     getPexelsSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: 'pose', query: 'pose' }),
     ]);
-    render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
     // The component auto-focuses the input on mount; that focus alone must not
@@ -62,7 +62,7 @@ describe('PexelsSearcher history dropdown', () => {
       makeEntry({ key: 'pose', query: 'pose' }),
       makeEntry({ key: 'figure', query: 'figure' }),
     ]);
-    render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
     const input = screen.getByRole('combobox');
@@ -89,7 +89,7 @@ describe('PexelsSearcher search error feedback', () => {
     // into the test output.
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
-    render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
     const input = screen.getByRole('combobox');
@@ -107,7 +107,7 @@ describe('PexelsSearcher search error feedback', () => {
       new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
     );
 
-    render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
     const input = screen.getByRole('combobox');
@@ -117,8 +117,84 @@ describe('PexelsSearcher search error feedback', () => {
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
     // Wait one more tick for the success branch to run, then assert no error Alert.
     await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
-    // The needsKey info Alert is gated on missing key — with a key set it should
-    // not be present, so any role="alert" here would be the error banner.
+    // With a key set and fetch succeeding, no error Alert should be present.
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('PexelsSearcher API key recovery notification', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('fires onApiKeyMissing on mount when no API key is set', async () => {
+    // beforeEach sets a key; clear it before this render simulates the
+    // session-restore case where source='pexels' is restored without a key.
+    localStorage.removeItem('pexelsApiKey');
+    const onRecover = vi.fn();
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={onRecover} />);
+    await waitFor(() => expect(onRecover).toHaveBeenCalled());
+  });
+
+  it('fires onApiKeyMissing when a search returns 401 (invalid stored key)', async () => {
+    vi.spyOn(window, 'fetch').mockResolvedValue(
+      new Response('{"error":"unauthorized"}', { status: 401 }),
+    );
+    const onRecover = vi.fn();
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={onRecover} />);
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+    // Initial mount with a stored (but possibly invalid) key — recovery must
+    // not fire yet.
+    expect(onRecover).not.toHaveBeenCalled();
+
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'pose' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => expect(onRecover).toHaveBeenCalled());
+  });
+
+  it('fires onApiKeyMissing when apiKeyVersion bumps and the key is now empty', async () => {
+    const onRecover = vi.fn();
+    const { rerender } = render(
+      <PexelsSearcher
+        onSelectPhoto={vi.fn()}
+        onApiKeyMissing={onRecover}
+        apiKeyVersion={0}
+      />,
+    );
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+    expect(onRecover).not.toHaveBeenCalled();
+
+    // Simulate the user opening the API-key dialog (from elsewhere) and
+    // clearing the key — parent bumps apiKeyVersion to signal re-evaluation.
+    localStorage.removeItem('pexelsApiKey');
+    rerender(
+      <PexelsSearcher
+        onSelectPhoto={vi.fn()}
+        onApiKeyMissing={onRecover}
+        apiKeyVersion={1}
+      />,
+    );
+
+    await waitFor(() => expect(onRecover).toHaveBeenCalled());
+  });
+
+  it('does NOT fire onApiKeyMissing while inactive (fixed-mode hidden mount)', async () => {
+    // Session-restore into fixed mode with a cleared key: the searcher is
+    // mounted-but-hidden behind the loaded photo. Pulling the user into a
+    // key dialog here would interrupt fixed-mode viewing for no reason —
+    // the CDN URL works without the API key.
+    localStorage.removeItem('pexelsApiKey');
+    const onRecover = vi.fn();
+    render(
+      <PexelsSearcher
+        onSelectPhoto={vi.fn()}
+        onApiKeyMissing={onRecover}
+        active={false}
+      />,
+    );
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+    expect(onRecover).not.toHaveBeenCalled();
   });
 });
