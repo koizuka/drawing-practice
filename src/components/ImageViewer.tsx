@@ -225,7 +225,7 @@ export function ImageViewer({
       // World origin is the image center, so home is always (0, 0). Reset /
       // first-load therefore lands on image center regardless of dimensions.
       if (isFitLeader) {
-        viewTransformRef.current.setHome(0, 0, 1);
+        viewTransformRef.current.loadContent(0, 0, 1);
       }
       resizeCanvasRef.current();
     };
@@ -258,7 +258,7 @@ export function ImageViewer({
   // Reset view (button click in toolbar).
   useEffect(() => {
     if (viewResetVersion > 0) {
-      viewTransformRef.current.reset();
+      viewTransformRef.current.userResetToHome();
       redraw();
     }
   }, [viewResetVersion, redraw]);
@@ -293,11 +293,11 @@ export function ImageViewer({
 
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED;
-        viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
+        viewTransformRef.current.applyGesture(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
       }
       else {
         const deltaX = isFlipped ? e.deltaX : -e.deltaX;
-        viewTransformRef.current.applyPinch(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale);
+        viewTransformRef.current.applyGesture(focalX, focalY, 1, deltaX, -e.deltaY, container, baseScale);
       }
       requestRedraw();
     };
@@ -430,7 +430,7 @@ export function ImageViewer({
       const translateX = isFlipped ? -rawTranslateX : rawTranslateX;
       const translateY = midY - pinchRef.current.lastMidY;
 
-      viewTransformRef.current.applyPinch(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale());
+      viewTransformRef.current.applyGesture(focalX, focalY, scaleDelta, translateX, translateY, containerSizeRef.current, getBaseScale());
 
       pinchRef.current.lastDist = dist;
       pinchRef.current.lastMidX = midX;

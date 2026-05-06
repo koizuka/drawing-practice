@@ -9,6 +9,10 @@ export type FitLeader = 'reference' | 'drawing';
  * when there is a content-fitting viewer (image/url/pexels/sketchfab in
  * fixed mode, or YouTube which has its own logical canvas). Otherwise the
  * drawing panel leads.
+ *
+ * Pure function with no React deps — easy to unit-test (see
+ * splitLayoutHelpers.test.ts) and easy to extend if a new source type
+ * arrives. Imported by SplitLayout, where it's the single source of truth.
  */
 export function computeFitLeader(source: ReferenceSource, referenceMode: ReferenceMode): FitLeader {
   if (source === 'youtube') return 'reference';

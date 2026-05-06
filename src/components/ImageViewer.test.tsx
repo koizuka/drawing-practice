@@ -40,36 +40,36 @@ afterEach(() => {
 });
 
 describe('ImageViewer pinch gesture', () => {
-  it('does not call applyPinch on 2-finger touchStart alone (only on move)', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+  it('does not call applyGesture on 2-finger touchStart alone (only on move)', () => {
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100), touch(1, 200, 200)] });
 
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 
-  it('calls applyPinch on 2-finger touchMove', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+  it('calls applyGesture on 2-finger touchMove', () => {
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100), touch(1, 200, 200)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 80, 80), touch(1, 220, 220)] });
 
-    expect(applyPinch).toHaveBeenCalledTimes(1);
+    expect(applyGesture).toHaveBeenCalledTimes(1);
   });
 
-  it('does not call applyPinch on single-finger touchMove', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+  it('does not call applyGesture on single-finger touchMove', () => {
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 150, 150)] });
 
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 
   it('discards in-progress guide drawing when a 2nd finger touches during guideMode=add', () => {
@@ -88,19 +88,19 @@ describe('ImageViewer pinch gesture', () => {
   });
 
   it('stops pinching and ignores remaining finger when one lifts', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100), touch(1, 200, 200)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 80, 80), touch(1, 220, 220)] });
-    expect(applyPinch).toHaveBeenCalledTimes(1);
+    expect(applyGesture).toHaveBeenCalledTimes(1);
 
     fireEvent.touchEnd(canvas, { changedTouches: [touch(1, 220, 220)] });
-    applyPinch.mockClear();
+    applyGesture.mockClear();
 
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 50, 50)] });
-    expect(applyPinch).not.toHaveBeenCalled();
+    expect(applyGesture).not.toHaveBeenCalled();
   });
 
   it('captures canvas rect once at pinch start and reuses it during touchMove', () => {
@@ -123,7 +123,7 @@ describe('ImageViewer pinch gesture', () => {
   });
 
   it('flips focalX and translateX when isFlipped=true', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(
       <ImageViewer {...baseProps} guideMode="none" isFlipped />,
     );
@@ -134,8 +134,8 @@ describe('ImageViewer pinch gesture', () => {
     // expand — midpoint unchanged (still 100, 100), translate should be 0
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 30, 30), touch(1, 170, 170)] });
 
-    expect(applyPinch).toHaveBeenCalledTimes(1);
-    const [focalX, focalY, scaleDelta, translateX, translateY] = applyPinch.mock.calls[0];
+    expect(applyGesture).toHaveBeenCalledTimes(1);
+    const [focalX, focalY, scaleDelta, translateX, translateY] = applyGesture.mock.calls[0];
     // raw focalX = 100 - 10 = 90 → flipped = 400 - 90 = 310
     expect(focalX).toBeCloseTo(310);
     expect(focalY).toBeCloseTo(80);
@@ -145,14 +145,14 @@ describe('ImageViewer pinch gesture', () => {
   });
 
   it('passes non-flipped focalX when isFlipped=false', () => {
-    const applyPinch = vi.spyOn(ViewTransform.prototype, 'applyPinch');
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 50, 50), touch(1, 150, 150)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 30, 30), touch(1, 170, 170)] });
 
-    const [focalX, focalY] = applyPinch.mock.calls[0];
+    const [focalX, focalY] = applyGesture.mock.calls[0];
     expect(focalX).toBeCloseTo(90);
     expect(focalY).toBeCloseTo(80);
   });
