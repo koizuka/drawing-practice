@@ -5,24 +5,33 @@ const LOCK_NAME = 'drawing-practice-autosave';
 const supportsLocks = typeof navigator !== 'undefined' && typeof navigator.locks !== 'undefined';
 
 /**
- * Tries to acquire a Web Locks API lock to ensure only one tab
- * runs autosave at a time. Returns whether this tab holds the lock.
- * Falls back to true (unlocked) in browsers without Web Locks support.
+ * Tri-state lock acquisition status:
+ * - `pending`  — acquisition in flight; callers shouldn't yet decide whether
+ *   to write (no Alert, but also no autosave). Initial value when the Web
+ *   Locks API is supported.
+ * - `acquired` — this tab owns the lock; safe to autosave. Also the initial
+ *   value when the Web Locks API isn't available (graceful degradation).
+ * - `denied`   — another tab holds the lock; show "another tab" Alert and
+ *   keep autosave suppressed.
  */
-// Max retries and delay for acquiring the lock.
-// During HMR the old component's lock is released asynchronously, so a
-// short retry window avoids a false "another tab" warning while still
-// detecting genuinely separate tabs quickly.
+export type SessionLockStatus = 'pending' | 'acquired' | 'denied';
+
+// During HMR the old component's lock is released asynchronously, so a short
+// retry window avoids a false "another tab" warning while still detecting
+// genuinely separate tabs quickly.
 const RETRY_DELAY_MS = 100;
 const MAX_RETRIES = 3;
 
-export function useSessionLock(): boolean {
-  // Optimistically assume we hold the lock until acquisition either succeeds
-  // (no state change) or definitively fails (setHasLock(false) after retries).
-  // Initializing with `false` while supportsLocks=true caused the "another
-  // tab" Alert to flash during the brief window between mount and the locks
-  // API callback, pushing layout down then back up.
-  const [hasLock, setHasLock] = useState(true);
+/**
+ * Acquires a Web Locks API lock to ensure only one tab runs autosave at a
+ * time. Returns the acquisition status as a tri-state so callers can
+ * distinguish "still resolving" from "definitively denied" — important for
+ * the optimistic UX path where the "another tab" Alert should not flash
+ * during the brief acquisition window, and autosave must not write before
+ * the lock is confirmed (otherwise another holder's writes can race).
+ */
+export function useSessionLock(): SessionLockStatus {
+  const [status, setStatus] = useState<SessionLockStatus>(supportsLocks ? 'pending' : 'acquired');
   const releaseRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
@@ -40,12 +49,12 @@ export function useSessionLock(): boolean {
             setTimeout(() => tryAcquire(retriesLeft - 1), RETRY_DELAY_MS);
           }
           else {
-            setHasLock(false);
+            setStatus('denied');
           }
           return Promise.resolve();
         }
 
-        setHasLock(true);
+        setStatus('acquired');
         // Hold the lock until unmount by returning a pending promise
         return new Promise<void>((resolve) => {
           releaseRef.current = resolve;
@@ -61,5 +70,5 @@ export function useSessionLock(): boolean {
     };
   }, []);
 
-  return hasLock;
+  return status;
 }

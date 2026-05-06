@@ -25,7 +25,13 @@ import type { GuideState } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types';
 
 function SplitLayoutInner() {
-  const hasSessionLock = useSessionLock();
+  const sessionLockStatus = useSessionLock();
+  // `hasSessionLock` reflects optimism: `pending` and `acquired` both look
+  // "ok-to-render" to UI gates that simply ask "should we show the panels?".
+  // The "another tab" Alert and the autosave write-gate use the stricter
+  // `'acquired'` / `'denied'` checks below to avoid races during the
+  // acquisition window.
+  const hasSessionLock = sessionLockStatus !== 'denied';
   const orientation = useOrientation();
   const isLandscape = orientation === 'landscape';
   const [overlayStrokes, setOverlayStrokes] = useState<readonly Stroke[] | null>(null);
@@ -151,23 +157,32 @@ function SplitLayoutInner() {
     setChangeVersion(v => v + 1);
   }, [timer]);
 
-  // Suppress autosave during restore or when another tab holds the lock
+  // Autosave suppression: stays true while restore is in flight AND while
+  // the session lock is still `pending`. Setting it false before the lock
+  // confirms could let the restore-triggered `flushVersion` bump (via the
+  // guideVersion render-time pattern below) write to IndexedDB while
+  // another tab still holds the lock — the kind of last-writer-wins race
+  // useSessionLock exists to prevent. loadDraft.then itself no longer
+  // touches this ref; the effect below is the single owner.
   const suppressAutosaveRef = useRef(true);
-  useEffect(() => {
-    if (!hasSessionLock) {
-      suppressAutosaveRef.current = true;
-    }
-  }, [hasSessionLock]);
 
-  // Gate panel visibility until draft restore completes, so the user doesn't
-  // see a frame of default state (source='none', collapsed=false, isFlipped=
-  // false, no toolbar buttons) before the restored values land. The layout is
-  // still computed (visibility:hidden, not display:none) so ResizeObserver and
-  // fit calculations run pre-emptively. `restored` is derived: true once
-  // either restore has completed (`restoreCompleted`) OR there's no session
-  // lock so loadDraft never runs and the panels should appear immediately.
+  // Gate panel mount until restore completes. Earlier attempts with
+  // `visibility: hidden` failed because hidden DOM still runs CSS
+  // transitions on prop changes (e.g. Save button's `color 0.3s` would
+  // animate from disabled-gray to enabled-color the moment the gate
+  // flipped). Conditional rendering means panels mount fresh after
+  // restore, so first paint has every prop at its final value and no
+  // transition kicks off. `restored` falls open when the lock is
+  // definitively denied so the user can still use the app (autosave
+  // disabled) without staring at a blank screen.
   const [restoreCompleted, setRestoreCompleted] = useState(false);
-  const restored = restoreCompleted || !hasSessionLock;
+  const restored = restoreCompleted || sessionLockStatus === 'denied';
+
+  // Single source of truth for autosave suppression: false only when restore
+  // is done AND the lock is confirmed acquired.
+  useEffect(() => {
+    suppressAutosaveRef.current = !(restoreCompleted && sessionLockStatus === 'acquired');
+  }, [restoreCompleted, sessionLockStatus]);
 
   // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
   // remain a stable callback (prevents unnecessary child re-renders).
@@ -584,7 +599,6 @@ function SplitLayoutInner() {
     loadDraft().then((draft) => {
       if (cancelled) return;
       if (!draft) {
-        suppressAutosaveRef.current = false;
         setRestoreCompleted(true);
         return;
       }
@@ -677,7 +691,6 @@ function SplitLayoutInner() {
         }
       }
 
-      suppressAutosaveRef.current = false;
       setRestoreVersion(v => v + 1);
       setRestoreCompleted(true);
     }).catch((err) => {
@@ -685,7 +698,6 @@ function SplitLayoutInner() {
       // anyway so the user isn't stuck on a blank screen.
       console.error('loadDraft failed:', err);
       if (cancelled) return;
-      suppressAutosaveRef.current = false;
       setRestoreCompleted(true);
     });
 
