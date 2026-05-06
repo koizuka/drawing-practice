@@ -17,7 +17,12 @@ const RETRY_DELAY_MS = 100;
 const MAX_RETRIES = 3;
 
 export function useSessionLock(): boolean {
-  const [hasLock, setHasLock] = useState(!supportsLocks);
+  // Optimistically assume we hold the lock until acquisition either succeeds
+  // (no state change) or definitively fails (setHasLock(false) after retries).
+  // Initializing with `false` while supportsLocks=true caused the "another
+  // tab" Alert to flash during the brief window between mount and the locks
+  // API callback, pushing layout down then back up.
+  const [hasLock, setHasLock] = useState(true);
   const releaseRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
