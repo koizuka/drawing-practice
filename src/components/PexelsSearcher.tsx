@@ -97,6 +97,9 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
   const inflightRef = useRef<AbortController | null>(null);
   useEffect(() => () => inflightRef.current?.abort(), []);
 
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { searchInputRef.current?.focus(); }, []);
+
   const [searchHistory, setSearchHistory] = useState<PexelsSearchHistoryEntry[]>([]);
   const reloadHistory = useCallback(() => {
     getPexelsSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ });
@@ -235,7 +238,6 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
         <Autocomplete<PexelsSearchHistoryEntry, false, false, true>
           freeSolo
-          openOnFocus
           size="small"
           sx={{ flex: 1 }}
           fullWidth
@@ -281,6 +283,7 @@ export function PexelsSearcher({ onSelectPhoto, onOpenApiKeySettings, initialQue
           renderInput={params => (
             <TextField
               {...params}
+              inputRef={searchInputRef}
               size="small"
               placeholder={t('pexelsSearchPlaceholder')}
               onKeyDown={(e) => {

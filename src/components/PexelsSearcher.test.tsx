@@ -41,20 +41,32 @@ afterEach(() => {
 });
 
 describe('PexelsSearcher history dropdown', () => {
-  it('opens the dropdown on focus thanks to openOnFocus, listing past queries', async () => {
+  it('does not open the dropdown on focus alone (no openOnFocus)', async () => {
+    getPexelsSearchHistoryMock.mockResolvedValue([
+      makeEntry({ key: 'pose', query: 'pose' }),
+    ]);
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+
+    // The component auto-focuses the input on mount; that focus alone must not
+    // pop the history dropdown — that was the behavior the user found
+    // surprising. The dropdown should only appear in response to an explicit
+    // mouse interaction, typing, or arrow keys.
+    const input = screen.getByRole('combobox');
+    expect(document.activeElement).toBe(input);
+    expect(screen.queryByRole('option')).not.toBeInTheDocument();
+  });
+
+  it('opens the dropdown on explicit mouseDown (history stays discoverable)', async () => {
     getPexelsSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: 'pose', query: 'pose' }),
       makeEntry({ key: 'figure', query: 'figure' }),
     ]);
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onOpenApiKeySettings={vi.fn()} />);
-
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
-    // The placeholder text is the localized search-input prompt — match by role
-    // and aria attributes via the textbox role to avoid coupling to the string.
     const input = screen.getByRole('combobox');
     fireEvent.mouseDown(input);
-    fireEvent.focus(input);
 
     await waitFor(() => {
       expect(screen.getByRole('option', { name: /pose/ })).toBeInTheDocument();
