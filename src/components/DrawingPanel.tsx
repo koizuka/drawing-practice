@@ -220,21 +220,35 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
     }
   }, [strokeManager, onStrokesChanged, timer]);
 
+  // Re-entrancy guard via ref (not `saving` state) so a Cmd/Ctrl+S burst
+  // sees the latched value on the same render, before React commits the
+  // setSaving(true) update.
+  const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
+    if (savingRef.current) return;
     const strokes = strokeManager.getStrokes();
     if (strokes.length === 0) return;
     // Guard: nothing has changed since the last gallery save (also covers
     // the keyboard-shortcut path when the button is visually disabled).
     if (!strokeManager.isDirtySinceGallerySave()) return;
+    savingRef.current = true;
     setSaving(true);
-    const thumbnail = generateThumbnail(strokes);
-    await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs);
-    strokeManager.markSavedToGallery();
-    onGallerySaved?.();
-    timer.pause();
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    try {
+      const thumbnail = generateThumbnail(strokes);
+      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs);
+      strokeManager.markSavedToGallery();
+      onGallerySaved?.();
+      timer.pause();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+    catch (err) {
+      console.error('Gallery save failed:', err);
+    }
+    finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   }, [strokeManager, referenceInfo, timer, onGallerySaved]);
 
   const handlePenTool = useCallback(() => {
