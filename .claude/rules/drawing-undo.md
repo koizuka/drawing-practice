@@ -40,3 +40,9 @@ Every `Point` in `currentStroke.points` and `this.strokes[]` is snapped to the 0
 ## DrawingPanel undo button behavior
 
 Undo/redo handles BOTH strokes and reference changes via the same button. Pass parent's `captureReferenceSnapshot` to `StrokeManager.undo/redo` so the restorer can swap back the previous reference.
+
+## Gallery-save dirty tracking
+
+`StrokeManager` exposes `markSavedToGallery()` / `isDirtySinceGallerySave()`, backed by an internal `mutationCount` bumped via the private `bumpMutation()` funnel on every stroke-modifying transition (endStroke / undo / redo of stroke entries / deleteStroke / lassoDelete / loadState / clear). **Reference-only undo entries deliberately do NOT bump it** — swapping references doesn't change the drawing the user would save. The save button reads `isDirtySinceGallerySave()` inline (same pattern as `canUndo`/`canRedo`) so React commits flow without state-mirroring. **Why:** prevents duplicate gallery entries from accidental save-button or `Cmd/Ctrl+S` repeats.
+
+`loadState` bumps `mutationCount` (it's a stroke-set-replacing mutation), so any restore path that wants to restore a non-dirty state must call `markSavedToGallery()` immediately after `loadState` — see `SplitLayout.loadDraft` and the deferred-migration path in `handleReferenceImageSize`.

@@ -35,6 +35,8 @@ interface DrawingPanelProps {
    */
   strokeManager: StrokeManager;
   onStrokesChanged?: () => void;
+  /** Hook for the parent to flush autosave after a successful gallery save. */
+  onGallerySaved?: () => void;
   onOverlayClear?: () => void;
   onLoadReference?: (info: ReferenceInfo) => void;
   onCurrentStrokeChange?: (stroke: Stroke | null) => void;
@@ -70,7 +72,7 @@ interface DrawingPanelProps {
   collapseLocked?: boolean;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
   // toolbar button shows this icon and a short tap activates this sub-mode;
@@ -218,17 +220,36 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
     }
   }, [strokeManager, onStrokesChanged, timer]);
 
+  // Re-entrancy guard via ref (not `saving` state) so a Cmd/Ctrl+S burst
+  // sees the latched value on the same render, before React commits the
+  // setSaving(true) update.
+  const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
+    if (savingRef.current) return;
     const strokes = strokeManager.getStrokes();
     if (strokes.length === 0) return;
+    // Guard: nothing has changed since the last gallery save (also covers
+    // the keyboard-shortcut path when the button is visually disabled).
+    if (!strokeManager.isDirtySinceGallerySave()) return;
+    savingRef.current = true;
     setSaving(true);
-    const thumbnail = generateThumbnail(strokes);
-    await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs);
-    timer.pause();
-    setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }, [strokeManager, referenceInfo, timer]);
+    try {
+      const thumbnail = generateThumbnail(strokes);
+      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs);
+      strokeManager.markSavedToGallery();
+      onGallerySaved?.();
+      timer.pause();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+    catch (err) {
+      console.error('Gallery save failed:', err);
+    }
+    finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }, [strokeManager, referenceInfo, timer, onGallerySaved]);
 
   const handlePenTool = useCallback(() => {
     setMode('pen');
@@ -588,7 +609,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
                 <IconButton
                   size="small"
                   onClick={handleSave}
-                  disabled={strokeCount === 0 || saving}
+                  disabled={strokeCount === 0 || saving || !strokeManager.isDirtySinceGallerySave()}
                   sx={{
                     'bgcolor': saved ? 'success.main' : 'transparent',
                     'color': saved ? 'white' : 'inherit',

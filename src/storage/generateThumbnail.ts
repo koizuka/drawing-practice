@@ -44,7 +44,10 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   ctx.translate(-minX + padding, -minY + padding);
 
   ctx.strokeStyle = '#000000';
-  ctx.lineWidth = Math.max(STROKE_WIDTH, 0.75 / scale);
+  // Pure scale: 1 world unit, same as the live canvas. The earlier
+  // `0.75 / scale` floor inflated strokes far thicker than the drawing-screen
+  // appearance for any sizable drawing.
+  ctx.lineWidth = STROKE_WIDTH;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 

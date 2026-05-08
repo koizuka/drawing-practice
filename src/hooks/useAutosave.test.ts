@@ -30,6 +30,7 @@ describe('useAutosave', () => {
     lines: [],
     camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
     flipped: false,
+    gallerySaveDirty: true,
     ...overrides,
   });
 
@@ -186,6 +187,29 @@ describe('useAutosave', () => {
     expect(saveDraft).toHaveBeenCalledTimes(1);
     const arg = (saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(arg.camera).toEqual({ viewCenterX: 123, viewCenterY: -45, zoom: 2.5 });
+  });
+
+  it('persists gallerySaveDirty in the saved draft (true and false)', async () => {
+    const suppressRef = { current: false };
+    let dirty = true;
+    const { rerender } = renderHook(
+      ({ flush }) => useAutosave(() => makeState({ gallerySaveDirty: dirty }), 0, flush, suppressRef),
+      { initialProps: { flush: 0 } },
+    );
+
+    await act(async () => {
+      rerender({ flush: 1 });
+    });
+    expect(saveDraft).toHaveBeenCalledTimes(1);
+    expect((saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].gallerySaveDirty).toBe(true);
+
+    // Simulate a successful gallery save: dirty flips to false, then a flush.
+    dirty = false;
+    await act(async () => {
+      rerender({ flush: 2 });
+    });
+    expect(saveDraft).toHaveBeenCalledTimes(2);
+    expect((saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0].gallerySaveDirty).toBe(false);
   });
 
   it('uses latest state on flush (no stale capture)', async () => {
