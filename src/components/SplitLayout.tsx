@@ -218,6 +218,7 @@ function SplitLayoutInner() {
     strokes: Stroke[];
     redoStack: Stroke[];
     guides: GuideState;
+    gallerySaveDirty: boolean;
   } | null>(null);
 
   // Camera state captured from the autosave draft, applied AFTER the active
@@ -297,6 +298,9 @@ function SplitLayoutInner() {
       const migratedGuides = shiftGuideState(pending.guides, dx, dy);
       if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
         strokeManager.loadState(migratedStrokes, migratedRedo);
+        if (!pending.gallerySaveDirty) {
+          strokeManager.markSavedToGallery();
+        }
       }
       restoreGuides(migratedGuides);
       // Debounced autosave is fine — the next user interaction will persist
@@ -516,6 +520,11 @@ function SplitLayoutInner() {
     referenceCollapsed,
     camera: viewTransform.getCamera(),
     flipped: isFlipped,
+    // Read at call time — the dirty flag deliberately is not in the deps.
+    // `useAutosave` re-invokes this getter when `changeVersion` (bumped by
+    // stroke mutations) or `flushVersion` (bumped by `onGallerySaved`)
+    // advances, so the latest value is captured without re-memoizing.
+    gallerySaveDirty: strokeManager.isDirtySinceGallerySave(),
   }), [strokeManager, source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
@@ -620,16 +629,28 @@ function SplitLayoutInner() {
       const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
       const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
 
+      // Pre-feature drafts have no `gallerySaveDirty` field. Default to dirty
+      // so a returning user can still save (matches behavior before the
+      // dirty-tracking feature shipped — never silently disable Save). Only
+      // an explicit `false` disables the button across reload.
+      const restoredDirty = draft.gallerySaveDirty ?? true;
+
       if (deferStrokesForMigration) {
         pendingMigrationRef.current = {
           strokes: draft.strokes,
           redoStack: draft.redoStack,
           guides: draft.guideState ?? { grid: { mode: 'none' }, lines: [] },
+          gallerySaveDirty: restoredDirty,
         };
       }
       else {
         if (draft.strokes.length > 0 || draft.redoStack.length > 0) {
           strokeManager.loadState(draft.strokes, draft.redoStack);
+          // loadState bumps mutationCount, so isDirtySinceGallerySave() is
+          // true here unless we explicitly mark the restored state as saved.
+          if (!restoredDirty) {
+            strokeManager.markSavedToGallery();
+          }
         }
         if (draft.guideState) {
           restoreGuides(draft.guideState);
@@ -768,6 +789,7 @@ function SplitLayoutInner() {
               referenceInfo={referenceInfo}
               strokeManager={strokeManager}
               onStrokesChanged={handleStrokesChanged}
+              onGallerySaved={incrementFlushVersion}
               onCurrentStrokeChange={handleCurrentStrokeChange}
               onOverlayClear={() => { setOverlayStrokes(null); }}
               onLoadReference={handleLoadReference}

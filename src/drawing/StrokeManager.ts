@@ -48,6 +48,24 @@ export class StrokeManager {
   private referenceRestorer: ReferenceRestorer | null = null;
   /** Number of reference entries currently in undoStack. Avoids O(n) scans during pruning. */
   private undoReferenceCount = 0;
+  /**
+   * Monotonic counter bumped on every stroke-modifying transition. Reference
+   * undo entries do NOT bump it — they don't change the drawing the user
+   * would save to the gallery. The gallery save button compares this against
+   * `gallerySavedMutationCount` to decide whether anything has changed since
+   * the last save (dirty check).
+   */
+  private mutationCount = 0;
+  private gallerySavedMutationCount = 0;
+
+  /**
+   * Single funnel for "I just changed strokes." Every stroke-modifying exit
+   * path calls this so future hooks (e.g. emitting a change event) only need
+   * one site to wire into.
+   */
+  private bumpMutation(): void {
+    this.mutationCount++;
+  }
 
   // Invariant: every point stored in `currentStroke.points` and in
   // `this.strokes[]` is already snapped to the 0.1px grid (see ./quantize).
@@ -92,6 +110,7 @@ export class StrokeManager {
     this.undoStack.push({ type: 'add' });
     this.redoStack = [];
     this.currentStroke = null;
+    this.bumpMutation();
     return stroke;
   }
 
@@ -157,11 +176,13 @@ export class StrokeManager {
     if (entry.type === 'add') {
       const stroke = this.strokes.pop()!;
       this.redoStack.push({ type: 'add', stroke });
+      this.bumpMutation();
       return { kind: 'stroke', stroke };
     }
     if (entry.type === 'delete') {
       this.strokes.splice(entry.index, 0, entry.stroke);
       this.redoStack.push({ type: 'delete', stroke: entry.stroke, index: entry.index });
+      this.bumpMutation();
       return { kind: 'stroke', stroke: entry.stroke };
     }
     if (entry.type === 'lasso-delete') {
@@ -173,6 +194,7 @@ export class StrokeManager {
         restored.push(item.stroke);
       }
       this.redoStack.push({ type: 'lasso-delete', items: entry.items });
+      this.bumpMutation();
       return { kind: 'strokes', strokes: restored };
     }
     // entry.type === 'reference'
@@ -199,11 +221,13 @@ export class StrokeManager {
     if (entry.type === 'add') {
       this.strokes.push(entry.stroke);
       this.undoStack.push({ type: 'add' });
+      this.bumpMutation();
       return { kind: 'stroke', stroke: entry.stroke };
     }
     if (entry.type === 'delete') {
       const [removed] = this.strokes.splice(entry.index, 1);
       this.undoStack.push({ type: 'delete', stroke: removed, index: entry.index });
+      this.bumpMutation();
       return { kind: 'stroke', stroke: removed };
     }
     if (entry.type === 'lasso-delete') {
@@ -215,6 +239,7 @@ export class StrokeManager {
         removed.push(s);
       }
       this.undoStack.push({ type: 'lasso-delete', items: entry.items });
+      this.bumpMutation();
       return { kind: 'strokes', strokes: removed };
     }
     // entry.type === 'reference'
@@ -240,6 +265,7 @@ export class StrokeManager {
     const [removed] = this.strokes.splice(index, 1);
     this.undoStack.push({ type: 'delete', stroke: removed, index });
     this.redoStack = [];
+    this.bumpMutation();
     return removed;
   }
 
@@ -266,6 +292,7 @@ export class StrokeManager {
     }
     this.undoStack.push({ type: 'lasso-delete', items });
     this.redoStack = [];
+    this.bumpMutation();
     return items.map(it => it.stroke);
   }
 
@@ -299,6 +326,7 @@ export class StrokeManager {
     this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke: quantizeStroke(stroke) }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;
+    this.bumpMutation();
   }
 
   getRedoStack(): readonly Stroke[] {
@@ -313,5 +341,20 @@ export class StrokeManager {
     this.redoStack = [];
     this.currentStroke = null;
     this.undoReferenceCount = 0;
+    this.bumpMutation();
+  }
+
+  /**
+   * Record that the current stroke set has just been saved to the gallery.
+   * After this call, `isDirtySinceGallerySave()` returns `false` until the
+   * next stroke-modifying mutation.
+   */
+  markSavedToGallery(): void {
+    this.gallerySavedMutationCount = this.mutationCount;
+  }
+
+  /** True when strokes have changed since the last `markSavedToGallery` call. */
+  isDirtySinceGallerySave(): boolean {
+    return this.mutationCount !== this.gallerySavedMutationCount;
   }
 }

@@ -50,6 +50,15 @@ export interface SessionDraft {
   camera?: { viewCenterX: number; viewCenterY: number; zoom: number };
   /** Drawing panel flipped horizontally. Optional for back-compat. */
   flipped?: boolean;
+  /**
+   * Whether the in-memory strokes had unsaved changes (relative to the last
+   * gallery save) at autosave time. Used to restore the save-button enabled
+   * state across reload — `false` means a reload immediately after a gallery
+   * save shouldn't re-enable Save and risk a duplicate. Optional for
+   * back-compat with drafts from before this field existed (defaults to
+   * dirty=true so the user can still save).
+   */
+  gallerySaveDirty?: boolean;
   updatedAt: Date;
   /** See COORD_VERSION_CURRENT. */
   coordVersion?: number;
@@ -221,6 +230,17 @@ db.version(12).stores({
 // v13: no index change — anchors the additive `flipped` field on SessionDraft
 // (persisted horizontal-flip toggle state).
 db.version(13).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+});
+
+// v14: no index change — anchors the additive `gallerySaveDirty` field on
+// SessionDraft (persisted dirty-since-last-gallery-save flag, used to keep
+// the Save button correctly disabled across reload after a save).
+db.version(14).stores({
   drawings: '++id, createdAt',
   session: 'id',
   urlHistory: 'url, lastUsedAt',

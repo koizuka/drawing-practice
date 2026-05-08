@@ -30,6 +30,7 @@ describe('useAutosave', () => {
     lines: [],
     camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
     flipped: false,
+    gallerySaveDirty: true,
     ...overrides,
   });
 
