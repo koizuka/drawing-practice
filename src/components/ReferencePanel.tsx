@@ -1172,20 +1172,6 @@ export function ReferencePanel({
                     </Typography>
                   </Box>
                 </Button>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={handleLoadLocalImage}
-                  startIcon={<FolderOpen size={20} />}
-                  sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                >
-                  <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('image')}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
-                      {t('imageDescription')}
-                    </Typography>
-                  </Box>
-                </Button>
                 <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'stretch' }}>
                   <Button
                     variant="outlined"
@@ -1209,6 +1195,22 @@ export function ReferencePanel({
                       <KeyRound size={18} />
                     </IconButton>
                   </ToolbarTooltip>
+                </Box>
+                <Box sx={{ mt: 0.5 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={handleLoadLocalImage}
+                    startIcon={<FolderOpen size={20} />}
+                    sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+                  >
+                    <Box sx={{ textAlign: 'left' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('image')}</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                        {t('imageDescription')}
+                      </Typography>
+                    </Box>
+                  </Button>
                 </Box>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>

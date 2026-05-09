@@ -36,7 +36,7 @@ const messages = {
     sketchfabDescription: '3D model search',
     imageDescription: 'Open local file',
     pexelsDescription: 'Free photo search',
-    urlSectionLabel: 'URL (Image / YouTube / Pexels)',
+    urlSectionLabel: 'URL (Image / YouTube / Sketchfab / Pexels)',
 
     // SketchfabViewer
     searchModels: 'Search models or paste UID / URL...',
@@ -83,7 +83,7 @@ const messages = {
     exportFailed: 'Export failed.',
     buildDate: 'Build',
     url: 'URL',
-    urlPlaceholder: 'Image, YouTube, or Pexels URL...',
+    urlPlaceholder: 'Image, YouTube, Sketchfab, or Pexels URL...',
     loadUrl: 'Load',
     urlLoadFailed: 'Failed to load image from URL.',
     urlHistoryDelete: 'Remove from history',
@@ -174,7 +174,7 @@ const messages = {
     sketchfabDescription: '3Dモデルを検索',
     imageDescription: 'ローカルファイルを開く',
     pexelsDescription: 'フリー写真を検索',
-    urlSectionLabel: 'URL（画像・YouTube・Pexels）',
+    urlSectionLabel: 'URL（画像・YouTube・Sketchfab・Pexels）',
 
     // SketchfabViewer
     searchModels: 'モデル検索 / UID・URLの貼り付け...',
@@ -221,7 +221,7 @@ const messages = {
     exportFailed: 'エクスポートに失敗しました。',
     buildDate: 'ビルド',
     url: 'URL',
-    urlPlaceholder: '画像・YouTube・PexelsのURL...',
+    urlPlaceholder: '画像・YouTube・Sketchfab・PexelsのURL...',
     loadUrl: '読込',
     urlLoadFailed: 'URLからの画像の読み込みに失敗しました。',
     urlHistoryDelete: '履歴から削除',
