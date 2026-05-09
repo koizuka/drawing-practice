@@ -8,7 +8,7 @@ const QUANTIZE_FACTOR = 10;
  * halves (Math.round(0.5) === 1, Math.round(-0.5) === 0), which would shift
  * strokes toward the origin asymmetrically once world coords can be negative.
  */
-export function quantize(v: number): number {
+function quantize(v: number): number {
   const sign = v < 0 ? -1 : 1;
   return sign * Math.round(Math.abs(v) * QUANTIZE_FACTOR) / QUANTIZE_FACTOR;
 }

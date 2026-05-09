@@ -1,6 +1,6 @@
 export const HISTORY_IMAGE_MAX_EDGE = 2048;
-export const HISTORY_IMAGE_PASSTHROUGH_SIZE = 1.5 * 1024 * 1024;
-export const HISTORY_IMAGE_JPEG_QUALITY = 0.85;
+const HISTORY_IMAGE_PASSTHROUGH_SIZE = 1.5 * 1024 * 1024;
+const HISTORY_IMAGE_JPEG_QUALITY = 0.85;
 
 /**
  * Compute the scaled dimensions that fit within maxEdge on the longest side
