@@ -22,8 +22,6 @@ export const DEFAULT_GUIDE_STATE: GuideState = {
   lines: [],
 };
 
-export const NORMAL_GRID_SPACING = 100;
-
 const GRID_SPACINGS: Record<GridMode, number> = {
   none: 0,
   normal: 100,

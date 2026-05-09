@@ -23,7 +23,7 @@ export function persistGroupMode(mode: GroupMode): void {
 
 const monthFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' });
 
-export function formatYearMonth(date: Date): string {
+function formatYearMonth(date: Date): string {
   return monthFormatter.format(date);
 }
 

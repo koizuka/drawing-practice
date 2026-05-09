@@ -53,7 +53,7 @@ Two overlay modes:
 - **Zoom mode (default)**: `pointer-events: auto`, captures wheel/trackpad/2-finger pinch and drives shared `ViewTransform`. **Why:** prevents browser page-zoom default on `ctrlKey` wheel or iframe pinch. Single tap auto-promotes to video mode.
 - **Video interact mode**: `pointer-events: none` so iframe handles clicks (seek bar, subtitles, settings). Exited via toolbar button in `ReferencePanel`.
 
-Play/pause via YouTube IFrame Player API (`enablejsapi=1` + postMessage; see `YT_EVENT_*` / `YT_CMD_*`). `YouTubeViewer` is `forwardRef` exposing `YouTubePlayerHandle` (`{ play(), pause() }`). Emits `onPlayerStateChange(isPlaying)` with per-transition de-dup (`lastPlayingRef`) so the toolbar icon flips without thrash.
+Play/pause via YouTube IFrame Player API (`enablejsapi=1` + postMessage; see `YT_EVENT_*` / `YT_CMD_*`). `YouTubeViewer` accepts a `ref` prop (React 19+ ref-as-prop pattern) exposing `YouTubePlayerHandle` (`{ play(), pause() }`). Emits `onPlayerStateChange(isPlaying)` with per-transition de-dup (`lastPlayingRef`) so the toolbar icon flips without thrash.
 
 **No video-frame capture** — YouTube iframe content is CORS-protected. Fix/still-frame is intentionally unsupported. **Why:** cross-origin iframe isolation makes wheel/touch events inside the iframe unreachable from the parent; the overlay-and-tap model is the deliberate workaround.
 

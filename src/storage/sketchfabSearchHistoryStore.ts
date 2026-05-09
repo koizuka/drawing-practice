@@ -2,7 +2,7 @@ import { db, type SketchfabSearchHistoryEntry } from './db';
 import { selectKeysToEvict } from './historyEviction';
 import type { SketchfabCategorySlug, SketchfabTimeFilter } from '../utils/sketchfab';
 
-export const SKETCHFAB_SEARCH_HISTORY_LIMIT = 50;
+const SKETCHFAB_SEARCH_HISTORY_LIMIT = 50;
 
 function makeKey(query: string, category?: SketchfabCategorySlug): string {
   return `${query.trim().toLowerCase()}|${category ?? ''}`;

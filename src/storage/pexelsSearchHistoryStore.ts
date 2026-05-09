@@ -2,7 +2,7 @@ import { db, type PexelsSearchHistoryEntry } from './db';
 import { selectKeysToEvict } from './historyEviction';
 import type { PexelsOrientationFilter } from '../utils/pexels';
 
-export const PEXELS_SEARCH_HISTORY_LIMIT = 50;
+const PEXELS_SEARCH_HISTORY_LIMIT = 50;
 
 /**
  * Upsert a search history entry. Deduped by lowercased trimmed query so
