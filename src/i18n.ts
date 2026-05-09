@@ -36,7 +36,7 @@ const messages = {
     sketchfabDescription: '3D model search',
     imageDescription: 'Open local file',
     pexelsDescription: 'Free photo search',
-    urlSectionLabel: 'URL (Image / YouTube / Pexels)',
+    urlSectionLabel: 'URL (Image / YouTube / Sketchfab / Pexels)',
 
     // SketchfabViewer
     searchModels: 'Search models or paste UID / URL...',
@@ -174,7 +174,7 @@ const messages = {
     sketchfabDescription: '3Dモデルを検索',
     imageDescription: 'ローカルファイルを開く',
     pexelsDescription: 'フリー写真を検索',
-    urlSectionLabel: 'URL（画像・YouTube・Pexels）',
+    urlSectionLabel: 'URL（画像・YouTube・Sketchfab・Pexels）',
 
     // SketchfabViewer
     searchModels: 'モデル検索 / UID・URLの貼り付け...',
