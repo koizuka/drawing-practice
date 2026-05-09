@@ -38,6 +38,7 @@ export function useSessionLock(): SessionLockStatus {
     if (!supportsLocks) return;
 
     let unmounted = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     function tryAcquire(retriesLeft: number) {
       navigator.locks.request(LOCK_NAME, { ifAvailable: true }, (lock) => {
@@ -46,7 +47,10 @@ export function useSessionLock(): SessionLockStatus {
         }
         if (!lock) {
           if (retriesLeft > 0) {
-            setTimeout(() => tryAcquire(retriesLeft - 1), RETRY_DELAY_MS);
+            retryTimer = setTimeout(() => {
+              retryTimer = null;
+              tryAcquire(retriesLeft - 1);
+            }, RETRY_DELAY_MS);
           }
           else {
             setStatus('denied');
@@ -66,6 +70,10 @@ export function useSessionLock(): SessionLockStatus {
 
     return () => {
       unmounted = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
       releaseRef.current?.();
     };
   }, []);

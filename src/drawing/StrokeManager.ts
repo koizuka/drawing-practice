@@ -330,9 +330,11 @@ export class StrokeManager {
   }
 
   getRedoStack(): readonly Stroke[] {
-    return this.redoStack
-      .filter((e): e is RedoEntry & { type: 'add' } => e.type === 'add')
-      .map(e => e.stroke);
+    const result: Stroke[] = [];
+    for (const e of this.redoStack) {
+      if (e.type === 'add') result.push(e.stroke);
+    }
+    return result;
   }
 
   clear(): void {

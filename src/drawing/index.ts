@@ -1,7 +1,0 @@
-export { StrokeManager } from './StrokeManager';
-export { CanvasRenderer } from './CanvasRenderer';
-export { ViewTransform } from './ViewTransform';
-export type { Point, Stroke } from './types';
-export type { Transform, ContainerSize } from './ViewTransform';
-export type { CanvasRendererOptions } from './CanvasRenderer';
-export { STROKE_WIDTH, OVERLAY_HALO_MULTIPLIER } from './constants';

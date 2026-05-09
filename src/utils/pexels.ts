@@ -12,7 +12,7 @@ export interface PexelsLastSearch {
   orientation: PexelsOrientationFilter;
 }
 
-export interface PexelsPhotoSrc {
+interface PexelsPhotoSrc {
   original: string;
   large2x: string;
   large: string;

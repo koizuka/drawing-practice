@@ -126,11 +126,11 @@ export function pointsToPathData(stroke: Stroke): string {
 export function exportDrawingAsSvg(drawing: DrawingRecord): Blob {
   const box = paddedBox(computeStrokesBoundingBox(drawing.strokes));
   const viewBox = `${formatNum(box.x)} ${formatNum(box.y)} ${formatNum(box.width)} ${formatNum(box.height)}`;
-  const paths = drawing.strokes
-    .map(s => pointsToPathData(s))
-    .filter(d => d.length > 0)
-    .map(d => `<path d="${d}"/>`)
-    .join('');
+  let paths = '';
+  for (const s of drawing.strokes) {
+    const d = pointsToPathData(s);
+    if (d.length > 0) paths += `<path d="${d}"/>`;
+  }
   const svg
     = `<?xml version="1.0" encoding="UTF-8"?>`
       + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${formatNum(box.width)}" height="${formatNum(box.height)}">`

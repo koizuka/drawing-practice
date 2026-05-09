@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from 'react';
+import { useRef, useEffect, useCallback, useState, useImperativeHandle, type Ref } from 'react';
 import { Box } from '@mui/material';
 import { buildYouTubeEmbedUrl, YOUTUBE_ORIGIN } from '../utils/youtube';
 import { drawGrid, drawGuideLines } from '../guides/drawGuides';
@@ -74,9 +74,10 @@ interface YouTubeViewerProps {
   onRequestVideoInteract?: () => void;
   /** Emits true when the player starts playing, false when it pauses/ends. */
   onPlayerStateChange?: (isPlaying: boolean) => void;
+  ref?: Ref<YouTubePlayerHandle>;
 }
 
-export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>(function YouTubeViewer({
+export function YouTubeViewer({
   videoId, grid, guideLines, guideVersion,
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
   onFitSize,
@@ -86,7 +87,8 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
   videoInteractMode = false,
   onRequestVideoInteract,
   onPlayerStateChange,
-}, ref) {
+  ref,
+}: YouTubeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -644,4 +646,4 @@ export const YouTubeViewer = forwardRef<YouTubePlayerHandle, YouTubeViewerProps>
       />
     </Box>
   );
-});
+}
