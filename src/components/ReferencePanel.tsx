@@ -1196,7 +1196,7 @@ export function ReferencePanel({
                     </IconButton>
                   </ToolbarTooltip>
                 </Box>
-                <Box sx={{ mt: 1 }}>
+                <Box sx={{ mt: 0.5 }}>
                   <Button
                     variant="outlined"
                     fullWidth
