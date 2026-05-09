@@ -16,7 +16,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^9.0.0",
     "dexie": "^4.4.2",
-    "lucide-react": "^1.11.0",
+    "lucide-react": "^1.14.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
