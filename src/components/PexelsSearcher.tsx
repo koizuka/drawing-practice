@@ -76,6 +76,12 @@ function durationLabel(ms: PexelsSessionDurationMs): string {
     case 60_000: return t('gestureSessionDuration60');
     case 90_000: return t('gestureSessionDuration90');
     case 120_000: return t('gestureSessionDuration120');
+    default: {
+      // Compile-time exhaustiveness: if PEXELS_SESSION_DURATIONS_MS adds a
+      // value without a label here, this assignment fails to type-check.
+      const exhaustive: never = ms;
+      throw new Error(`Unhandled session duration: ${exhaustive as number}`);
+    }
   }
 }
 

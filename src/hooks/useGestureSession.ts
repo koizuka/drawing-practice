@@ -62,6 +62,11 @@ export interface GestureSessionState {
   /** True while either the current queue still has items OR another page can
    *  be fetched. Used by the HUD to show "M枚以上残り". */
   hasMoreInBackend: boolean;
+  /** True from the moment time-up fires until a short settling delay after
+   *  the next photo applies. Consumers can freeze drawing input while this
+   *  is set so a reflexive next-stroke from the user doesn't land on the
+   *  wrong photo. */
+  transitioning: boolean;
 }
 
 export interface GestureSessionActions {
@@ -95,7 +100,13 @@ const IDLE_STATE: InternalState = {
   totalShownCount: 0,
   queueRemaining: 0,
   hasMoreInBackend: false,
+  transitioning: false,
 };
+
+/** Settle delay after a swap before drawing input is unfrozen. Long enough to
+ *  reject a reflexive next-stroke from the user (~200ms reaction time leaves
+ *  a comfortable buffer); short enough not to feel like a freeze. */
+const TRANSITION_SETTLE_MS = 400;
 
 function defaultShuffle<T>(items: readonly T[]): T[] {
   const a = [...items];
@@ -134,8 +145,24 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
   // Bumped on start/exit so async advance work can detect that the session
   // it was driving is no longer current.
   const sessionIdRef = useRef<number>(0);
+  // Mirror of state.active for use in exit(); lets exit() short-circuit when
+  // called from the parent's navigation paths even if no session is running.
+  const activeRef = useRef(false);
+  // Pending timeout that flips `transitioning` back to false after the swap
+  // settles. Stored so start/exit/the next swap can cancel a stale one.
+  const settleTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearSettleTimeout = useCallback(() => {
+    if (settleTimeoutRef.current !== null) {
+      clearTimeout(settleTimeoutRef.current);
+      settleTimeoutRef.current = null;
+    }
+  }, []);
 
   const [state, setState] = useState<InternalState>(IDLE_STATE);
+
+  useEffect(() => {
+    activeRef.current = state.active;
+  });
 
   // Tick: decrement remainingMs by TICK_MS while running, and transition
   // straight into 'advancing-save' in the same updater when the countdown
@@ -150,7 +177,9 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
         if (s.status !== 'running') return s;
         const nextRemaining = Math.max(0, s.remainingMs - TICK_MS);
         if (nextRemaining === 0) {
-          return { ...s, remainingMs: 0, status: 'advancing-save' };
+          // Enter the transition window in the same tick so consumers freeze
+          // input immediately at time-up — not after the next render.
+          return { ...s, remainingMs: 0, status: 'advancing-save', transitioning: true };
         }
         return { ...s, remainingMs: nextRemaining };
       });
@@ -240,7 +269,16 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
         totalShownCount: s.totalShownCount + 1,
         queueRemaining: queueRef.current.length,
         hasMoreInBackend: queueRef.current.length > 0 || hasMoreRef.current,
+        // Stays true until the settle timeout below fires, so a reflexive
+        // post-swap pointerdown gets rejected by the consumer freeze.
+        transitioning: true,
       }));
+      clearSettleTimeout();
+      settleTimeoutRef.current = setTimeout(() => {
+        settleTimeoutRef.current = null;
+        if (sessionIdRef.current !== sessionAtStart) return;
+        setState(s => (s.status === 'running' ? { ...s, transitioning: false } : s));
+      }, TRANSITION_SETTLE_MS);
     })();
 
     return () => {
@@ -252,19 +290,23 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
 
-  // Cleanup on unmount: bump session id so any pending async work bails out.
-  // We deliberately bump the LATEST id (not a captured-at-mount value);
-  // capturing would defeat the purpose. The exhaustive-deps warning about
-  // ref-in-cleanup is suppressed for this reason.
+  // Cleanup on unmount: bump session id so any pending async work bails out
+  // (we intentionally bump the LATEST id, hence the lint suppression), and
+  // clear any pending settle timeout so it can't fire after unmount.
   useEffect(() => {
     return () => {
       sessionIdRef.current++; // eslint-disable-line react-hooks/exhaustive-deps -- intentional: latest id
+      if (settleTimeoutRef.current !== null) {
+        clearTimeout(settleTimeoutRef.current);
+        settleTimeoutRef.current = null;
+      }
     };
   }, []);
 
   const start = useCallback((config: GestureSessionStartConfig) => {
     if (config.initialPhotos.length === 0) return;
     sessionIdRef.current++;
+    clearSettleTimeout();
     const shuffler = optsRef.current.shuffle ?? defaultShuffle;
     const queue = shuffler(config.initialPhotos);
     const first = queue.shift()!;
@@ -286,13 +328,16 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
       totalShownCount: 1,
       queueRemaining: queue.length,
       hasMoreInBackend: queue.length > 0 || config.hasMore,
+      transitioning: false,
     });
-  }, []);
+  }, [clearSettleTimeout]);
 
   const skip = useCallback(() => {
     setState((s) => {
       if (s.status !== 'running' && s.status !== 'paused') return s;
-      return { ...s, status: 'advancing-skip', paused: false };
+      // Same as the time-up tick: enter the freeze window immediately so
+      // tapping Skip rapidly twice doesn't queue a stroke onto the new photo.
+      return { ...s, status: 'advancing-skip', paused: false, transitioning: true };
     });
   }, []);
 
@@ -311,14 +356,19 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
   }, []);
 
   const exit = useCallback(() => {
+    // No-op when inactive so the parent can call this unconditionally from
+    // navigation paths (e.g. user pressing "Back to search") without having
+    // to gate on session state itself.
+    if (!activeRef.current) return;
     sessionIdRef.current++;
+    clearSettleTimeout();
     queueRef.current = [];
     queryRef.current = '';
     hasMoreRef.current = false;
     pageRef.current = 0;
     setState(IDLE_STATE);
     optsRef.current.onSessionEnd?.();
-  }, []);
+  }, [clearSettleTimeout]);
 
   return {
     active: state.active,
@@ -331,6 +381,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
     totalShownCount: state.totalShownCount,
     queueRemaining: state.queueRemaining,
     hasMoreInBackend: state.hasMoreInBackend,
+    transitioning: state.transitioning,
     start,
     skip,
     pause,

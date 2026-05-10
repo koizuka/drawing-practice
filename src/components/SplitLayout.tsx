@@ -201,6 +201,13 @@ function SplitLayoutInner() {
     ...referenceStateRef.current,
   }), []);
 
+  // Forward declaration for the gesture-session exit callback. Wired up in
+  // an effect once `gestureSession` exists below; changeReference uses it
+  // to auto-end an active session whenever the user navigates the reference
+  // (Back to search, Close, source switch). The hook's `exit()` is a no-op
+  // when no session is active, so unconditional calls are safe.
+  const gestureSessionExitRef = useRef<() => void>(() => {});
+
   // Restorer invoked by StrokeManager when undo/redo pops a reference entry.
   // Keep it on a ref so we can register a stable callback with StrokeManager.
   const applyReferenceSnapshotRef = useRef<(snap: ReferenceSnapshot) => void>(() => {});
@@ -254,6 +261,10 @@ function SplitLayoutInner() {
     pendingMigrationRef.current = null;
     const recordUndo = opts?.recordUndo !== false;
     if (recordUndo) {
+      // User-initiated reference change → end any active gesture session so
+      // the user isn't left with the HUD over an unrelated reference. The
+      // hook's exit() is a no-op when nothing is active.
+      gestureSessionExitRef.current();
       const prev = captureReferenceSnapshot();
       strokeManager.recordReferenceChange(prev);
       setHistorySyncVersion(v => v + 1);
@@ -442,6 +453,12 @@ function SplitLayoutInner() {
     onTimeUp: handleGestureTimeUp,
     onAdvance: resetForNextPose,
     fetchMore: handleGestureFetchMore,
+  });
+
+  // Expose exit() to the changeReference path (declared above gestureSession,
+  // so it reads the callback through this ref).
+  useEffect(() => {
+    gestureSessionExitRef.current = gestureSession.exit;
   });
 
   // Destructure stable callbacks (useCallback'd inside the hook) so they
@@ -845,6 +862,24 @@ function SplitLayoutInner() {
           {t('autosaveDisabled')}
         </Alert>
       )}
+      {/* Gesture HUD sits above both panels as a normal flex row so the
+          drawing canvas keeps the same height as the reference panel — an
+          earlier overlay-style HUD blocked the top of the canvas. */}
+      <GestureHUD
+        active={gestureSession.active}
+        paused={gestureSession.paused}
+        loadingMore={gestureSession.loadingMore}
+        durationMs={gestureSession.durationMs}
+        remainingMs={gestureSession.remainingMs}
+        completedCount={gestureSession.completedCount}
+        currentIndex={gestureSession.totalShownCount}
+        queueRemaining={gestureSession.queueRemaining}
+        hasMoreInBackend={gestureSession.hasMoreInBackend}
+        onSkip={gestureSession.skip}
+        onPause={gestureSession.pause}
+        onResume={gestureSession.resume}
+        onExit={gestureSession.exit}
+      />
       {/* Don't render the panels until restore completes. Earlier attempts
           with `visibility: 'hidden'` failed because CSS transitions (e.g. the
           Save button's `transition: color 0.3s`) still fired while hidden —
@@ -875,13 +910,14 @@ function SplitLayoutInner() {
               onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
               onSketchfabViewerStateChange={setSketchfabViewerActive}
               onPexelsStartSession={handleStartGestureSession}
+              collapseInfoOverlayByDefault={gestureSession.active}
               isFlipped={isFlipped}
               onToggleFlip={handleToggleFlip}
               viewTransform={viewTransform}
               fitLeader={fitLeader}
             />
           </Box>
-          <Box sx={{ position: 'relative', flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
             <DrawingPanel
               referenceSize={drawingFitSize}
               referenceInfo={referenceInfo}
@@ -901,23 +937,7 @@ function SplitLayoutInner() {
               referenceCollapsed={referenceCollapsed}
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
-            />
-            {/* topOffset clears the 40px DrawingPanel toolbar plus 8px gap. */}
-            <GestureHUD
-              active={gestureSession.active}
-              paused={gestureSession.paused}
-              loadingMore={gestureSession.loadingMore}
-              durationMs={gestureSession.durationMs}
-              remainingMs={gestureSession.remainingMs}
-              completedCount={gestureSession.completedCount}
-              currentIndex={gestureSession.totalShownCount}
-              queueRemaining={gestureSession.queueRemaining}
-              hasMoreInBackend={gestureSession.hasMoreInBackend}
-              topOffset={48}
-              onSkip={gestureSession.skip}
-              onPause={gestureSession.pause}
-              onResume={gestureSession.resume}
-              onExit={gestureSession.exit}
+              inputFrozen={gestureSession.transitioning}
             />
           </Box>
         </Box>

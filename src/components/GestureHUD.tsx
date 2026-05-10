@@ -19,9 +19,6 @@ export interface GestureHUDProps {
   /** True when more pages are still fetchable from the backend. Adds a "+"
    *  hint after the queued count. */
   hasMoreInBackend: boolean;
-  /** Top offset (px) inside the positioned ancestor. Default 8; pass a
-   *  larger value to clear a fixed toolbar above. */
-  topOffset?: number;
   onSkip: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -29,19 +26,16 @@ export interface GestureHUDProps {
 }
 
 function formatRemaining(ms: number): string {
-  // Show whole seconds, rounding UP so the user sees "30" the moment a 30s
-  // pose starts (otherwise the rounded-down value would already read 29).
+  // Round UP so the first frame of a 30s pose reads "30", not "29".
   const seconds = Math.ceil(ms / 1000);
   return String(seconds);
 }
 
 /**
- * Heads-up display overlaid on the drawing panel during a gesture session:
- * countdown bar + skip / pause / exit buttons + "pose N (M queued)" status.
- *
- * The HUD is positioned absolute so it floats over the drawing canvas. Pointer
- * events are scoped to the actual controls so the rest of the canvas remains
- * drawable around it.
+ * Horizontal row rendered above the SplitLayout panels during a gesture
+ * session: countdown bar + skip / pause / exit buttons + "pose N (M queued)"
+ * status. Sized as a normal flex row so it does not obscure the drawing
+ * canvas — the canvas keeps the same height as the reference panel.
  */
 export function GestureHUD({
   active,
@@ -53,7 +47,6 @@ export function GestureHUD({
   currentIndex,
   queueRemaining,
   hasMoreInBackend,
-  topOffset = 8,
   onSkip,
   onPause,
   onResume,
@@ -71,104 +64,87 @@ export function GestureHUD({
     <Box
       data-testid="gesture-hud"
       sx={{
-        position: 'absolute',
-        top: topOffset,
-        left: 8,
-        right: 8,
-        // Don't intercept pointer events on the empty area between controls —
-        // children re-enable auto where needed.
-        pointerEvents: 'none',
+        flexShrink: 0,
         display: 'flex',
-        flexDirection: 'column',
-        gap: 0.5,
-        zIndex: 10,
+        alignItems: 'center',
+        gap: 1,
+        bgcolor: '#fafafa',
+        borderBottom: '1px solid #ddd',
+        px: 1,
+        py: 0.5,
       }}
     >
-      <Box
+      <Typography
+        variant="h6"
         sx={{
-          pointerEvents: 'auto',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 1,
-          bgcolor: 'rgba(255,255,255,0.92)',
-          borderRadius: 1,
-          px: 1,
-          py: 0.5,
-          boxShadow: 1,
+          fontFamily: 'monospace',
+          fontWeight: 700,
+          minWidth: 36,
+          textAlign: 'right',
+          color: remainingMs <= 5000 ? 'error.main' : 'text.primary',
         }}
       >
-        <Typography
-          variant="h6"
+        {formatRemaining(remainingMs)}
+      </Typography>
+
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <LinearProgress
+          variant="determinate"
+          value={progressPct}
           sx={{
-            fontFamily: 'monospace',
-            fontWeight: 700,
-            minWidth: 36,
-            textAlign: 'right',
-            color: remainingMs <= 5000 ? 'error.main' : 'text.primary',
+            'height': 8,
+            'borderRadius': 4,
+            '& .MuiLinearProgress-bar': {
+              bgcolor: remainingMs <= 5000 ? 'error.main' : 'primary.main',
+            },
           }}
+        />
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.2, mt: 0.25 }}
         >
-          {formatRemaining(remainingMs)}
+          {t('gestureSessionPosesLabel')}
+          {' '}
+          {currentIndex}
+          {' '}
+          (
+          {completedCount}
+          {' '}
+          ✓)
+          {' · '}
+          {t('gestureSessionRemainingLabel')}
+          {' '}
+          {queuedHint}
+          {loadingMore && ` · ${t('gestureSessionLoadingMore')}`}
         </Typography>
-
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <LinearProgress
-            variant="determinate"
-            value={progressPct}
-            sx={{
-              'height': 8,
-              'borderRadius': 4,
-              '& .MuiLinearProgress-bar': {
-                bgcolor: remainingMs <= 5000 ? 'error.main' : 'primary.main',
-              },
-            }}
-          />
-          <Typography
-            variant="caption"
-            sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.2, mt: 0.25 }}
-          >
-            {t('gestureSessionPosesLabel')}
-            {' '}
-            {currentIndex}
-            {' '}
-            (
-            {completedCount}
-            {' '}
-            ✓)
-            {' · '}
-            {t('gestureSessionRemainingLabel')}
-            {' '}
-            {queuedHint}
-            {loadingMore && ` · ${t('gestureSessionLoadingMore')}`}
-          </Typography>
-        </Box>
-
-        <ToolbarTooltip title={paused ? t('gestureSessionResume') : t('gestureSessionPause')}>
-          <IconButton
-            size="small"
-            onClick={paused ? onResume : onPause}
-            aria-label={paused ? t('gestureSessionResume') : t('gestureSessionPause')}
-          >
-            {paused ? <Play size={18} /> : <Pause size={18} />}
-          </IconButton>
-        </ToolbarTooltip>
-
-        <ToolbarTooltip title={t('gestureSessionSkip')}>
-          <IconButton size="small" onClick={onSkip} aria-label={t('gestureSessionSkip')}>
-            <SkipForward size={18} />
-          </IconButton>
-        </ToolbarTooltip>
-
-        <ToolbarTooltip title={t('gestureSessionExit')}>
-          <IconButton
-            size="small"
-            onClick={onExit}
-            aria-label={t('gestureSessionExit')}
-            sx={{ color: 'error.main' }}
-          >
-            <X size={18} />
-          </IconButton>
-        </ToolbarTooltip>
       </Box>
+
+      <ToolbarTooltip title={paused ? t('gestureSessionResume') : t('gestureSessionPause')}>
+        <IconButton
+          size="small"
+          onClick={paused ? onResume : onPause}
+          aria-label={paused ? t('gestureSessionResume') : t('gestureSessionPause')}
+        >
+          {paused ? <Play size={18} /> : <Pause size={18} />}
+        </IconButton>
+      </ToolbarTooltip>
+
+      <ToolbarTooltip title={t('gestureSessionSkip')}>
+        <IconButton size="small" onClick={onSkip} aria-label={t('gestureSessionSkip')}>
+          <SkipForward size={18} />
+        </IconButton>
+      </ToolbarTooltip>
+
+      <ToolbarTooltip title={t('gestureSessionExit')}>
+        <IconButton
+          size="small"
+          onClick={onExit}
+          aria-label={t('gestureSessionExit')}
+          sx={{ color: 'error.main' }}
+        >
+          <X size={18} />
+        </IconButton>
+      </ToolbarTooltip>
     </Box>
   );
 }

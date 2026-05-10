@@ -145,8 +145,8 @@ function GridIcon({ mode }: { mode: GridMode }) {
  * component by reference identity, so a new reference remounts it in the
  * expanded state.
  */
-function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
-  const [collapsed, setCollapsed] = useState(false);
+function ReferenceInfoOverlay({ refInfo, initialCollapsed = false }: { refInfo: ReferenceInfo; initialCollapsed?: boolean }) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   return (
     <Box sx={{
       position: 'absolute',
@@ -281,6 +281,10 @@ interface ReferencePanelProps {
   /** Optional: enables the "Start gesture session" control inside Pexels
    *  search. The parent owns the session state (useGestureSession). */
   onPexelsStartSession?: (config: import('./PexelsSearcher').PexelsGestureSessionConfig) => void;
+  /** When true, the photographer/title overlay starts collapsed each time it
+   *  mounts — used during a gesture session so the overlay doesn't cover
+   *  the bottom of the reference image while the user is drawing. */
+  collapseInfoOverlayByDefault?: boolean;
   isFlipped?: boolean;
   onToggleFlip?: () => void;
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -297,6 +301,7 @@ export function ReferencePanel({
   onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
   onSketchfabViewerStateChange,
   onPexelsStartSession,
+  collapseInfoOverlayByDefault = false,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
 }: ReferencePanelProps) {
@@ -1534,6 +1539,7 @@ export function ReferencePanel({
           <ReferenceInfoOverlay
             key={referenceKey(refInfo)}
             refInfo={refInfo}
+            initialCollapsed={collapseInfoOverlayByDefault}
           />
         )}
 
