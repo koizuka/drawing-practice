@@ -42,25 +42,6 @@ interface DrawingCanvasProps {
 
 const ERASER_THRESHOLD = 20;
 
-// Apple Pencil contact area is ~1-2px radius; finger/palm is ~10-30px+.
-// Used as a fallback when iPadOS misclassifies a Pencil touch's `touchType`
-// as 'direct' instead of 'stylus' — without this, sticky `hasStylusRef`-based
-// palm rejection would lock out drawing until the page is reloaded.
-const PALM_RADIUS_THRESHOLD_PX = 6;
-
-/**
- * Reject this touch as a palm/finger when stylus has been seen this session
- * but the current touch is not reported as stylus AND its contact area is
- * too large to be Apple Pencil. iPadOS sometimes misclassifies Pencil
- * touches; the radius check rescues those cases.
- */
-function shouldRejectAsPalm(hasStylus: boolean, touch: Touch & { touchType?: string }): boolean {
-  if (!hasStylus) return false;
-  if (touch.touchType === 'stylus') return false;
-  const r = Math.max(touch.radiusX ?? 0, touch.radiusY ?? 0);
-  return r > PALM_RADIUS_THRESHOLD_PX;
-}
-
 export function DrawingCanvas({
   mode,
   highlightedStrokeIndex,
@@ -531,7 +512,7 @@ export function DrawingCanvas({
 
     // Single touch: drawing
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+    if (hasStylusRef.current && touch.touchType !== 'stylus') return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
@@ -600,7 +581,7 @@ export function DrawingCanvas({
     // Lasso path drawing
     if (mode === 'lasso' && lassoPointsRef.current) {
       const touch = e.changedTouches[0] as Touch & { touchType?: string };
-      if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+      if (hasStylusRef.current && touch.touchType !== 'stylus') return;
       const point = getCanvasPoint(touch.clientX, touch.clientY);
       appendLasso(point);
       recomputeLassoSelection();
@@ -611,7 +592,7 @@ export function DrawingCanvas({
     // Drawing
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+    if (hasStylusRef.current && touch.touchType !== 'stylus') return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
     if (!strokeManager.appendStroke(point)) return;
