@@ -637,24 +637,42 @@ export function DrawingCanvas({
     }
   }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
 
+  // Latest-handler refs so the native listeners below can stay attached for
+  // the life of the canvas. The handlers themselves have many transitive
+  // useCallback deps (mode, fitSize, redrawAll, …) and would otherwise churn
+  // on every photo swap / prop change, causing the listener-attach effect to
+  // detach and re-attach. The ref-bridge keeps listener identity stable.
+  const handleTouchStartRef = useRef(handleTouchStart);
+  const handleTouchMoveRef = useRef(handleTouchMove);
+  const handleTouchEndRef = useRef(handleTouchEnd);
+  useEffect(() => { handleTouchStartRef.current = handleTouchStart; });
+  useEffect(() => { handleTouchMoveRef.current = handleTouchMove; });
+  useEffect(() => { handleTouchEndRef.current = handleTouchEnd; });
+
   // Register touch listeners natively (not via React's synthetic onTouch*
   // props) so we can pass { passive: false } and actually preventDefault.
   // Without this, browsers warn "Unable to preventDefault inside passive
   // event listener" on every move during a stroke.
+  // Effect deps are intentionally [] so the listeners are attached exactly
+  // once per canvas mount; the ref bridge above forwards to the latest
+  // handler closure on each event.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    const onStart = (e: Event) => handleTouchStartRef.current(e as TouchEvent);
+    const onMove = (e: Event) => handleTouchMoveRef.current(e as TouchEvent);
+    const onEnd = (e: Event) => handleTouchEndRef.current(e as TouchEvent);
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onEnd, { passive: false });
     return () => {
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+      canvas.removeEventListener('touchcancel', onEnd);
     };
-  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, []);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
@@ -741,6 +759,17 @@ export function DrawingCanvas({
           width: '100%',
           height: '100%',
           touchAction: 'none',
+          // iOS Safari workaround: promote the canvas to its own composited
+          // layer so updates to its bitmap are always pushed to the screen.
+          // Without this hint, after some sequence of events (gesture-session
+          // photo swap + many strokes seems to trigger it) the compositor
+          // stops pulling new canvas content even though redrawAll() is
+          // running and writing pixels — manifesting as "drawing committed
+          // but nothing visible". Any layout-touching DOM change (tapping a
+          // button, OS task switch) restored the display, confirming a
+          // compositor issue rather than a draw-pipeline one.
+          transform: 'translateZ(0)',
+          backfaceVisibility: 'hidden',
         }}
       />
     </Box>

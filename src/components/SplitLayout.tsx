@@ -396,8 +396,15 @@ function SplitLayoutInner() {
    *  advance. */
   const resetForNextPose = useCallback(() => {
     strokeManager.clear();
+    // strokeManager.clear() nulls its internal currentStroke, but the SplitLayout-side
+    // `currentStrokeRef` is a separate ref updated only via onCurrentStrokeChange.
+    // If a stroke was in flight at time-up, its Stroke object lingers in this ref
+    // and gets repainted on the new photo as overlay (ImageViewer's overlay redraw
+    // is not gated on overlayActive — it always renders ref content if non-null).
+    currentStrokeRef.current = null;
     timer.reset();
     setOverlayStrokes(null);
+    overlayRedrawFnRef.current?.();
     setRestoreVersion(v => v + 1);
     setHistorySyncVersion(v => v + 1);
   }, [strokeManager, timer, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes]);
