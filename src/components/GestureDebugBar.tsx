@@ -16,10 +16,11 @@ export interface GestureDebugBarProps {
 
 /**
  * Diagnostic-only HUD for the gesture-session "can't draw" investigation.
- * Shown above the panels while a session is active so the user can read off
- * internal state (input-frozen flag, active-touch count, pinch arming, last
- * touchType, etc.) when the bug reproduces. Polls the DrawingCanvas snapshot
- * getter every 200ms — no React state changes inside the canvas.
+ * Compact 2-line layout optimized for hand-copying values from iPad.
+ * Items previously confirmed always-default (mode=pen, frz=0, pin=0,
+ * rejP=0, rejS=0) have been pruned. Only `ago` and the event-flow counters
+ * (ts/mv/end/strk/pe) remain on line 2 for narrowing down where touch
+ * input flow is breaking.
  */
 export function GestureDebugBar({ active, status, transitioning, debugSnapshotRef }: GestureDebugBarProps) {
   const [snap, setSnap] = useState<DrawingCanvasDebugSnapshot | null>(null);
@@ -35,13 +36,13 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
 
   if (!active) return null;
 
-  const dc = snap
-    ? `mode=${snap.mode} frz=${snap.inputFrozen ? 1 : 0} ats=${snap.activeTouchesSize} pin=${snap.pinchActive ? 1 : 0} sty=${snap.hasStylus ? 1 : 0} lastT=${snap.lastTouchType}`
-    : 'mode=? frz=? ats=? pin=? sty=? lastT=?';
+  const line1 = snap
+    ? `tx=${transitioning ? 1 : 0} st=${status} ats=${snap.activeTouchesSize} sty=${snap.hasStylus ? 1 : 0} lastT=${snap.lastTouchType} ago=${snap.secsSinceLastStart < 0 ? '-' : `${snap.secsSinceLastStart}s`}`
+    : `tx=${transitioning ? 1 : 0} st=${status} (snap=null)`;
 
-  const ev = snap
-    ? `ts=${snap.touchStartCount} rejF=${snap.rejFrozen} rejP=${snap.rejPalm} rejS=${snap.rejStylusFilter} ago=${snap.secsSinceLastStart < 0 ? '-' : snap.secsSinceLastStart}s`
-    : 'ts=? rejF=? rejP=? rejS=? ago=?';
+  const line2 = snap
+    ? `ts=${snap.touchStartCount} mv=${snap.touchMoveCount} end=${snap.touchEndCount} strk=${snap.startStrokeCount}/${snap.endStrokeCommittedCount}:${snap.endStrokeNullCount} pe=${snap.enteredPinchCount} rejF=${snap.rejFrozen}`
+    : '';
 
   return (
     <Box
@@ -50,25 +51,19 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
         flexShrink: 0,
         fontFamily: 'monospace',
         fontSize: 11,
+        lineHeight: 1.3,
         bgcolor: '#222',
         color: '#0f0',
         px: 1,
         py: 0.25,
-        whiteSpace: 'nowrap',
+        whiteSpace: 'pre',
         overflow: 'hidden',
-        textOverflow: 'ellipsis',
         borderBottom: '1px solid #444',
       }}
     >
-      GS: tx=
-      {transitioning ? 1 : 0}
-      {' '}
-      st=
-      {status}
-      {' | DC: '}
-      {dc}
-      {' | EV: '}
-      {ev}
+      {line1}
+      {line2 && '\n'}
+      {line2}
     </Box>
   );
 }

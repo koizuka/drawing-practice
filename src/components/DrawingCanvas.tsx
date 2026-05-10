@@ -34,6 +34,19 @@ export interface DrawingCanvasDebugSnapshot {
   rejStylusFilter: number;
   /** Seconds since the last native touchstart (rounded). */
   secsSinceLastStart: number;
+  /** Cumulative count of native touchmove events received on the canvas. */
+  touchMoveCount: number;
+  /** Cumulative count of native touchend / touchcancel events. */
+  touchEndCount: number;
+  /** Count of `strokeManager.startStroke()` calls (i.e. touchstart that
+   *  passed all filters and entered pen mode). */
+  startStrokeCount: number;
+  /** Count of `endStroke` calls that returned a committed stroke. */
+  endStrokeCommittedCount: number;
+  /** Count of `endStroke` calls that returned null (stroke too short). */
+  endStrokeNullCount: number;
+  /** Count of touchstart events that armed pinch (2-finger). */
+  enteredPinchCount: number;
 }
 
 interface DrawingCanvasProps {
@@ -146,6 +159,12 @@ export function DrawingCanvas({
   const diagRejPalmRef = useRef(0);
   const diagRejStylusFilterRef = useRef(0);
   const diagLastTouchStartAtRef = useRef<number>(0);
+  const diagTouchMoveCountRef = useRef(0);
+  const diagTouchEndCountRef = useRef(0);
+  const diagStartStrokeCountRef = useRef(0);
+  const diagEndStrokeCommittedRef = useRef(0);
+  const diagEndStrokeNullRef = useRef(0);
+  const diagEnteredPinchRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -188,6 +207,12 @@ export function DrawingCanvas({
       rejPalm: diagRejPalmRef.current,
       rejStylusFilter: diagRejStylusFilterRef.current,
       secsSinceLastStart: last === 0 ? -1 : Math.round((Date.now() - last) / 1000),
+      touchMoveCount: diagTouchMoveCountRef.current,
+      touchEndCount: diagTouchEndCountRef.current,
+      startStrokeCount: diagStartStrokeCountRef.current,
+      endStrokeCommittedCount: diagEndStrokeCommittedRef.current,
+      endStrokeNullCount: diagEndStrokeNullRef.current,
+      enteredPinchCount: diagEnteredPinchRef.current,
     };
   }, []);
   useEffect(() => {
@@ -614,6 +639,7 @@ export function DrawingCanvas({
         lastMidY: (t1.y + t2.y) / 2,
       };
       pinchActiveDiagRef.current = true;
+      diagEnteredPinchRef.current++;
       pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
       return;
     }
@@ -643,11 +669,13 @@ export function DrawingCanvas({
     }
     else {
       strokeManager.startStroke(point);
+      diagStartStrokeCountRef.current++;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
+    diagTouchMoveCountRef.current++;
 
     // Update tracked touches
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -723,6 +751,7 @@ export function DrawingCanvas({
     // don't trip an "Ignored attempt to cancel a touchend" intervention
     // warning (the preventDefault would be a no-op anyway).
     if (e.cancelable) e.preventDefault();
+    diagTouchEndCountRef.current++;
 
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -743,9 +772,13 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManager.endStroke();
       if (stroke) {
+        diagEndStrokeCommittedRef.current++;
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
+      }
+      else {
+        diagEndStrokeNullRef.current++;
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
@@ -829,9 +862,13 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManager.endStroke();
       if (stroke) {
+        diagEndStrokeCommittedRef.current++;
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
+      }
+      else {
+        diagEndStrokeNullRef.current++;
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
