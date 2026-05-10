@@ -38,3 +38,8 @@ export async function getAllDrawings(): Promise<DrawingRecord[]> {
 export async function deleteDrawing(id: number): Promise<void> {
   await db.drawings.delete(id);
 }
+
+export async function bulkDeleteDrawings(ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.drawings.bulkDelete([...ids]);
+}

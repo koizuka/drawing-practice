@@ -5,12 +5,12 @@ import type { ReferenceInfo } from '../types';
 import { GROUP_MODE_STORAGE_KEY } from './galleryGrouping';
 
 const getAllDrawingsMock = vi.fn<() => Promise<DrawingRecord[]>>();
-const deleteDrawingMock = vi.fn<(id: number) => Promise<void>>();
+const bulkDeleteDrawingsMock = vi.fn<(ids: readonly number[]) => Promise<void>>();
 const getUrlHistoryEntryMock = vi.fn<(url: string) => Promise<UrlHistoryEntry | undefined>>();
 
 vi.mock('../storage', () => ({
   getAllDrawings: () => getAllDrawingsMock(),
-  deleteDrawing: (id: number) => deleteDrawingMock(id),
+  bulkDeleteDrawings: (ids: readonly number[]) => bulkDeleteDrawingsMock(ids),
   computeStorageUsage: () => Promise.resolve({
     drawings: { strokes: 0, thumbnails: 0, sketchfabImages: 0 },
     urlHistoryImageBytes: 0,
@@ -66,8 +66,8 @@ beforeEach(() => {
   nextId = 1;
   localStorage.clear();
   getAllDrawingsMock.mockReset();
-  deleteDrawingMock.mockReset();
-  deleteDrawingMock.mockResolvedValue(undefined);
+  bulkDeleteDrawingsMock.mockReset();
+  bulkDeleteDrawingsMock.mockResolvedValue(undefined);
   getUrlHistoryEntryMock.mockReset();
   getUrlHistoryEntryMock.mockResolvedValue(undefined);
 });
@@ -172,7 +172,7 @@ describe('Gallery', () => {
 
     // No bulk-delete button exists when nothing is selected.
     expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull();
-    expect(deleteDrawingMock).not.toHaveBeenCalled();
+    expect(bulkDeleteDrawingsMock).not.toHaveBeenCalled();
   });
 
   it('selects via checkbox and bulk-deletes via the delete button', async () => {
@@ -190,7 +190,7 @@ describe('Gallery', () => {
     const bulkButton = await screen.findByRole('button', { name: 'Delete (1)' });
     fireEvent.click(bulkButton);
 
-    await waitFor(() => expect(deleteDrawingMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bulkDeleteDrawingsMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(screen.getAllByRole('checkbox', { name: 'Select this drawing' })).toHaveLength(1),
     );
@@ -214,7 +214,7 @@ describe('Gallery', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull(),
     );
-    expect(deleteDrawingMock).not.toHaveBeenCalled();
+    expect(bulkDeleteDrawingsMock).not.toHaveBeenCalled();
   });
 
   it('renders an "Other" group for legacy drawings without a structured reference in ref modes', async () => {

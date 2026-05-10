@@ -4,7 +4,7 @@ import { ToolbarTooltip } from './ToolbarTooltip';
 import { X, Trash2, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import {
   getAllDrawings,
-  deleteDrawing,
+  bulkDeleteDrawings,
   computeStorageUsage,
   formatBytes,
   type DrawingRecord,
@@ -125,7 +125,14 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
   const handleBulkDelete = useCallback(async () => {
     if (selectedIds.size === 0) return;
     const idsSnapshot = new Set(selectedIds);
-    await Promise.all([...idsSnapshot].map(id => deleteDrawing(id)));
+    try {
+      await bulkDeleteDrawings([...idsSnapshot]);
+    }
+    catch (err) {
+      console.error('Failed to bulk-delete drawings', err);
+      if (mountedRef.current) alert(t('deleteFailed'));
+      return;
+    }
     if (!mountedRef.current) return;
     const remaining = drawings.filter(d => d.id == null || !idsSnapshot.has(d.id));
     setDrawings(remaining);
