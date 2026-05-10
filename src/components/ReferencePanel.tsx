@@ -286,9 +286,12 @@ interface ReferencePanelProps {
    *  the bottom of the reference image while the user is drawing. */
   collapseInfoOverlayByDefault?: boolean;
   /** When true, suppress guide-line drag interactions on the reference
-   *  viewer. Used during the gesture-session swap window so a reflexive
-   *  stroke that lands on the reference panel does not become a guide. */
-  inputFrozen?: boolean;
+   *  viewer for the duration of a session — guide editing doesn't fit a
+   *  rapid-pose flow, and a leftover-from-before guide-add mode would
+   *  otherwise interpret a reflexive reference-panel stroke as a guide.
+   *  Also disables the guide-add/delete toolbar buttons so the user can't
+   *  accidentally toggle into guide mode mid-session. */
+  suppressGuideEditing?: boolean;
   isFlipped?: boolean;
   onToggleFlip?: () => void;
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -306,7 +309,7 @@ export function ReferencePanel({
   onSketchfabViewerStateChange,
   onPexelsStartSession,
   collapseInfoOverlayByDefault = false,
-  inputFrozen = false,
+  suppressGuideEditing = false,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
 }: ReferencePanelProps) {
@@ -315,11 +318,11 @@ export function ReferencePanel({
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none');
-  // Effective guide mode passed to viewers — forced to 'none' while frozen
-  // so a reflexive stroke during the gesture-session swap doesn't land as a
-  // guide line. The user's selected guideMode is preserved in state and
-  // restored automatically when the freeze ends.
-  const effectiveGuideMode: GuideInteractionMode = inputFrozen ? 'none' : guideMode;
+  // Effective guide mode passed to viewers — forced to 'none' while a gesture
+  // session is active so any reflexive reference-panel stroke can't be
+  // interpreted as a guide-line drag. The user's selected guideMode is
+  // preserved in state and restored automatically when the session ends.
+  const effectiveGuideMode: GuideInteractionMode = suppressGuideEditing ? 'none' : guideMode;
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -1010,17 +1013,20 @@ export function ReferencePanel({
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
             <ToolbarTooltip title={t('addGuideLine')}>
-              <IconButton
-                size="small"
-                onClick={() => toggleGuideMode('add')}
-                sx={{
-                  'bgcolor': guideMode === 'add' ? 'error.main' : 'transparent',
-                  'color': guideMode === 'add' ? 'white' : 'inherit',
-                  '&:hover': { bgcolor: guideMode === 'add' ? 'error.dark' : 'action.hover' },
-                }}
-              >
-                <PenLine size={20} />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => toggleGuideMode('add')}
+                  disabled={suppressGuideEditing}
+                  sx={{
+                    'bgcolor': effectiveGuideMode === 'add' ? 'error.main' : 'transparent',
+                    'color': effectiveGuideMode === 'add' ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: effectiveGuideMode === 'add' ? 'error.dark' : 'action.hover' },
+                  }}
+                >
+                  <PenLine size={20} />
+                </IconButton>
+              </span>
             </ToolbarTooltip>
 
             <ToolbarTooltip title={t('deleteGuideLine')}>
@@ -1028,11 +1034,11 @@ export function ReferencePanel({
                 <IconButton
                   size="small"
                   onClick={() => toggleGuideMode('delete')}
-                  disabled={lines.length === 0}
+                  disabled={lines.length === 0 || suppressGuideEditing}
                   sx={{
-                    'bgcolor': guideMode === 'delete' ? 'error.main' : 'transparent',
-                    'color': guideMode === 'delete' ? 'white' : 'inherit',
-                    '&:hover': { bgcolor: guideMode === 'delete' ? 'error.dark' : 'action.hover' },
+                    'bgcolor': effectiveGuideMode === 'delete' ? 'error.main' : 'transparent',
+                    'color': effectiveGuideMode === 'delete' ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: effectiveGuideMode === 'delete' ? 'error.dark' : 'action.hover' },
                   }}
                 >
                   <CircleX size={20} />

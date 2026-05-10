@@ -911,7 +911,7 @@ function SplitLayoutInner() {
               onSketchfabViewerStateChange={setSketchfabViewerActive}
               onPexelsStartSession={handleStartGestureSession}
               collapseInfoOverlayByDefault={gestureSession.active}
-              inputFrozen={gestureSession.transitioning}
+              suppressGuideEditing={gestureSession.active}
               isFlipped={isFlipped}
               onToggleFlip={handleToggleFlip}
               viewTransform={viewTransform}
