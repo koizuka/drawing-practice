@@ -300,6 +300,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
           inputValue={query}
           onInputChange={(_, value, reason) => {
             if (reason === 'input' || reason === 'clear') setQuery(value);
+            if (reason === 'clear') setPexelsLastSearch('', orientation);
           }}
           onChange={(_, value, reason) => {
             if (reason === 'selectOption' && value && typeof value !== 'string') {
@@ -398,7 +399,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
         </Box>
       )}
 
-      {!loading && photos.length > 0 && onStartSession && (
+      {!loading && onStartSession && (
         <Box
           sx={{
             display: 'flex',
@@ -432,7 +433,12 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
             ))}
           </ToggleButtonGroup>
           <Box sx={{ flex: 1 }} />
-          <Button size="small" variant="contained" onClick={handleStartSession}>
+          <Button
+            size="small"
+            variant="contained"
+            onClick={handleStartSession}
+            disabled={photos.length === 0 || !activeQuery}
+          >
             {t('gestureSessionStartShort')}
           </Button>
         </Box>

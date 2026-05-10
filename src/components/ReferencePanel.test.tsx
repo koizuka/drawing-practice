@@ -157,11 +157,11 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     render(<SplitLayout />);
     // Source-selection screen has rendered; URL input is now in the DOM.
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/URL/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/https:\/\//i)).toBeInTheDocument();
     });
 
     // Open the Autocomplete popup so the option (and its <img>) render.
-    const input = screen.getByPlaceholderText(/URL/i) as HTMLInputElement;
+    const input = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
     fireEvent.mouseDown(input);
     fireEvent.focus(input);
 
