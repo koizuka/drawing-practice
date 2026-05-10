@@ -972,6 +972,17 @@ export function DrawingCanvas({
           width: '100%',
           height: '100%',
           touchAction: 'none',
+          // iOS Safari workaround: promote the canvas to its own composited
+          // layer so updates to its bitmap are always pushed to the screen.
+          // Without this hint, after some sequence of events (gesture-session
+          // photo swap + many strokes seems to trigger it) the compositor
+          // stops pulling new canvas content even though redrawAll() is
+          // running and writing pixels — manifesting as "drawing committed
+          // but nothing visible". Any layout-touching DOM change (tapping a
+          // button, OS task switch) restored the display, confirming a
+          // compositor issue rather than a draw-pipeline one.
+          transform: 'translateZ(0)',
+          backfaceVisibility: 'hidden',
         }}
       />
     </Box>
