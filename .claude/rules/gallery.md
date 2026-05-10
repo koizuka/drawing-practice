@@ -41,6 +41,14 @@ Drawings without a structured `reference` field fall into a single legacy `そ�
 
 Per-card menu via `exportDrawing` — supports SVG / PNG / JPEG with auto-generated filename.
 
+## Selection / bulk delete
+
+Cards are deleted via a select-then-delete flow rather than a per-card trash icon. **Why:** removing a card immediately on tap caused the grid to reflow under the user's finger, so a mistap deleted the next card. Deferring deletion until an explicit button press eliminates that class of mistake.
+
+- Each card has a checkbox overlay at the top-right of the thumbnail. Tapping toggles selection (no immediate effect).
+- When `selectedIds.size > 0`, a `Delete (N)` Button (`variant="contained" color="error"`) appears in the header next to the grouping toggle. Pressing it `deleteDrawing`s the selected ids in parallel, removes them from local state, recomputes storage usage, and clears the selection.
+- Closing the dialog without pressing the button discards the selection — nothing is deleted. There is no separate confirmation dialog; the two-step selection itself is the friction.
+
 ## Storage usage row
 
 Header shows a collapsible storage usage breakdown (default collapsed; expanded state in `localStorage['gallery.storageUsageExpanded']`). When expanded, derives averages (points/stroke, bytes/stroke, strokes/drawing) from `computeStorageUsage` counters so users can triage stroke bloat. See `storage.md` for the underlying computation.

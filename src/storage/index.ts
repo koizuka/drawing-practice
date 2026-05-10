@@ -1,4 +1,4 @@
-export { saveDrawing, getAllDrawings, deleteDrawing } from './drawingStore';
+export { saveDrawing, getAllDrawings, deleteDrawing, bulkDeleteDrawings } from './drawingStore';
 export { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory } from './urlHistoryStore';
 export type { AddUrlHistoryOptions } from './urlHistoryStore';
 export { addPexelsSearchHistory, getPexelsSearchHistory, deletePexelsSearchHistory } from './pexelsSearchHistoryStore';
