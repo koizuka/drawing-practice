@@ -32,6 +32,12 @@ interface DrawingCanvasProps {
   onCurrentStrokeChange?: (stroke: Stroke | null) => void;
   /** Optional shared ViewTransform instance. If provided, used instead of a private one (enables zoom sync with ReferencePanel). */
   viewTransform?: ViewTransform;
+  /** When true, swallow new pointerdown events (touch + mouse) so a stroke
+   *  cannot start. Used during the gesture-session swap window so a
+   *  reflexive next-stroke from the user does not land on the wrong photo.
+   *  In-flight strokes (started before the freeze) are NOT cancelled here —
+   *  the caller's clear-strokes step handles that. */
+  inputFrozen?: boolean;
 }
 
 const ERASER_THRESHOLD = 20;
@@ -52,7 +58,12 @@ export function DrawingCanvas({
   isFlipped,
   onCurrentStrokeChange,
   viewTransform,
+  inputFrozen = false,
 }: DrawingCanvasProps) {
+  const inputFrozenRef = useRef(inputFrozen);
+  useEffect(() => {
+    inputFrozenRef.current = inputFrozen;
+  });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CanvasRenderer | null>(null);
@@ -446,6 +457,12 @@ export function DrawingCanvas({
   const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
+    // Gesture-session swap window: reject the new touch entirely (no stroke
+    // start, no pinch arming) so a reflexive post-swap tap is dropped. We
+    // still preventDefault above so the browser doesn't fall back to default
+    // touch behavior (scroll, etc.).
+    if (inputFrozenRef.current) return;
+
     // Track all touches
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -644,6 +661,7 @@ export function DrawingCanvas({
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (hasStylusRef.current) return;
+    if (inputFrozenRef.current) return;
     isMouseDownRef.current = true;
 
     const point = getCanvasPoint(e.clientX, e.clientY);

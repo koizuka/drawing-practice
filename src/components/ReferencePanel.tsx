@@ -145,8 +145,8 @@ function GridIcon({ mode }: { mode: GridMode }) {
  * component by reference identity, so a new reference remounts it in the
  * expanded state.
  */
-function ReferenceInfoOverlay({ refInfo }: { refInfo: ReferenceInfo }) {
-  const [collapsed, setCollapsed] = useState(false);
+function ReferenceInfoOverlay({ refInfo, initialCollapsed = false }: { refInfo: ReferenceInfo; initialCollapsed?: boolean }) {
+  const [collapsed, setCollapsed] = useState(initialCollapsed);
   return (
     <Box sx={{
       position: 'absolute',
@@ -278,6 +278,20 @@ interface ReferencePanelProps {
   onRegisterReloadUrlHistory?: (fn: () => void) => void;
   /** Notifies the parent when the Sketchfab 3D viewer iframe is mounted/unmounted. */
   onSketchfabViewerStateChange?: (active: boolean) => void;
+  /** Optional: enables the "Start gesture session" control inside Pexels
+   *  search. The parent owns the session state (useGestureSession). */
+  onPexelsStartSession?: (config: import('./PexelsSearcher').PexelsGestureSessionConfig) => void;
+  /** When true, the photographer/title overlay starts collapsed each time it
+   *  mounts — used during a gesture session so the overlay doesn't cover
+   *  the bottom of the reference image while the user is drawing. */
+  collapseInfoOverlayByDefault?: boolean;
+  /** When true, suppress guide-line drag interactions on the reference
+   *  viewer for the duration of a session — guide editing doesn't fit a
+   *  rapid-pose flow, and a leftover-from-before guide-add mode would
+   *  otherwise interpret a reflexive reference-panel stroke as a guide.
+   *  Also disables the guide-add/delete toolbar buttons so the user can't
+   *  accidentally toggle into guide mode mid-session. */
+  suppressGuideEditing?: boolean;
   isFlipped?: boolean;
   onToggleFlip?: () => void;
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -293,6 +307,9 @@ export function ReferencePanel({
   onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
   onSketchfabViewerStateChange,
+  onPexelsStartSession,
+  collapseInfoOverlayByDefault = false,
+  suppressGuideEditing = false,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
 }: ReferencePanelProps) {
@@ -301,6 +318,11 @@ export function ReferencePanel({
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none');
+  // Effective guide mode passed to viewers — forced to 'none' while a gesture
+  // session is active so any reflexive reference-panel stroke can't be
+  // interpreted as a guide-line drag. The user's selected guideMode is
+  // preserved in state and restored automatically when the session ends.
+  const effectiveGuideMode: GuideInteractionMode = suppressGuideEditing ? 'none' : guideMode;
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -991,17 +1013,20 @@ export function ReferencePanel({
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
             <ToolbarTooltip title={t('addGuideLine')}>
-              <IconButton
-                size="small"
-                onClick={() => toggleGuideMode('add')}
-                sx={{
-                  'bgcolor': guideMode === 'add' ? 'error.main' : 'transparent',
-                  'color': guideMode === 'add' ? 'white' : 'inherit',
-                  '&:hover': { bgcolor: guideMode === 'add' ? 'error.dark' : 'action.hover' },
-                }}
-              >
-                <PenLine size={20} />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => toggleGuideMode('add')}
+                  disabled={suppressGuideEditing}
+                  sx={{
+                    'bgcolor': effectiveGuideMode === 'add' ? 'error.main' : 'transparent',
+                    'color': effectiveGuideMode === 'add' ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: effectiveGuideMode === 'add' ? 'error.dark' : 'action.hover' },
+                  }}
+                >
+                  <PenLine size={20} />
+                </IconButton>
+              </span>
             </ToolbarTooltip>
 
             <ToolbarTooltip title={t('deleteGuideLine')}>
@@ -1009,11 +1034,11 @@ export function ReferencePanel({
                 <IconButton
                   size="small"
                   onClick={() => toggleGuideMode('delete')}
-                  disabled={lines.length === 0}
+                  disabled={lines.length === 0 || suppressGuideEditing}
                   sx={{
-                    'bgcolor': guideMode === 'delete' ? 'error.main' : 'transparent',
-                    'color': guideMode === 'delete' ? 'white' : 'inherit',
-                    '&:hover': { bgcolor: guideMode === 'delete' ? 'error.dark' : 'action.hover' },
+                    'bgcolor': effectiveGuideMode === 'delete' ? 'error.main' : 'transparent',
+                    'color': effectiveGuideMode === 'delete' ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: effectiveGuideMode === 'delete' ? 'error.dark' : 'action.hover' },
                   }}
                 >
                   <CircleX size={20} />
@@ -1494,6 +1519,7 @@ export function ReferencePanel({
                   apiKeyVersion={pexelsKeyVersion}
                   initialQuery={pexelsRestore?.query}
                   initialOrientation={pexelsRestore?.orientation}
+                  onStartSession={onPexelsStartSession}
                 />
               </Suspense>
             </LazyErrorBoundary>
@@ -1512,7 +1538,7 @@ export function ReferencePanel({
             overlayCurrentStrokeRef={overlayCurrentStrokeRef}
             onRegisterOverlayRedraw={onRegisterOverlayRedraw}
             onFitSize={onReferenceImageSize}
-            guideMode={guideMode}
+            guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
@@ -1529,6 +1555,7 @@ export function ReferencePanel({
           <ReferenceInfoOverlay
             key={referenceKey(refInfo)}
             refInfo={refInfo}
+            initialCollapsed={collapseInfoOverlayByDefault}
           />
         )}
 
@@ -1545,7 +1572,7 @@ export function ReferencePanel({
             onRegisterOverlayRedraw={onRegisterOverlayRedraw}
             onImageLoaded={onReferenceImageSize}
             onImageError={handleImageError}
-            guideMode={guideMode}
+            guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}

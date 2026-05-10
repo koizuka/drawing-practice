@@ -4,10 +4,12 @@ import { useOrientation } from '../hooks/useOrientation';
 import { useTimer } from '../hooks/useTimer';
 import { useAutosave } from '../hooks/useAutosave';
 import { useSessionLock } from '../hooks/useSessionLock';
+import { useGestureSession } from '../hooks/useGestureSession';
 import { GuideProvider } from '../guides/GuideContext';
 import { useGuides } from '../guides/useGuides';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
+import { GestureHUD } from './GestureHUD';
 import { computeFitLeader, resolveDrawingFitSize } from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
@@ -15,10 +17,14 @@ import { loadDraft } from '../storage/sessionStore';
 import { cleanupStalePrDatabases, COORD_VERSION_CURRENT } from '../storage/db';
 import { shiftStrokes, shiftGuideState } from '../storage/coordMigration';
 import { addUrlHistory, getUrlHistoryEntry } from '../storage/urlHistoryStore';
+import { saveDrawing } from '../storage';
+import { generateThumbnail } from '../storage/generateThumbnail';
 import { buildYouTubeCanonicalUrl } from '../utils/youtube';
 import { canonicalSketchfabUrl } from '../utils/sketchfab';
 import { dataUrlToJpegBlob } from '../utils/imageResize';
+import { buildPexelsReferenceInfo, searchPhotos, type PexelsOrientationFilter, type PexelsPhoto } from '../utils/pexels';
 import type { SketchfabModelMeta } from './SketchfabViewer';
+import type { PexelsGestureSessionConfig } from './PexelsSearcher';
 import { t } from '../i18n';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 import type { GuideState } from '../guides/types';
@@ -195,6 +201,13 @@ function SplitLayoutInner() {
     ...referenceStateRef.current,
   }), []);
 
+  // Forward declaration for the gesture-session exit callback. Wired up in
+  // an effect once `gestureSession` exists below; changeReference uses it
+  // to auto-end an active session whenever the user navigates the reference
+  // (Back to search, Close, source switch). The hook's `exit()` is a no-op
+  // when no session is active, so unconditional calls are safe.
+  const gestureSessionExitRef = useRef<() => void>(() => {});
+
   // Restorer invoked by StrokeManager when undo/redo pops a reference entry.
   // Keep it on a ref so we can register a stable callback with StrokeManager.
   const applyReferenceSnapshotRef = useRef<(snap: ReferenceSnapshot) => void>(() => {});
@@ -231,15 +244,31 @@ function SplitLayoutInner() {
    * mutation. Used for all user-initiated reference changes (Fix Angle, image
    * swap, Close, Gallery load). Routing every mutation through this helper
    * ensures individual setter calls can't bypass history recording.
+   *
+   * Pass `{ recordUndo: false }` for non-undoable swaps (e.g. the gesture
+   * session, which advances through dozens of photos — recording each as
+   * an undoable swap would let Undo walk back through arbitrary photos and
+   * also blow past the 20-entry reference-history cap within seconds).
    */
-  const changeReference = useCallback((mutate: (setters: ReferenceSetters) => void) => {
+  const changeReference = useCallback((
+    mutate: (setters: ReferenceSetters) => void,
+    opts?: { recordUndo?: boolean },
+  ) => {
     // Cancel any pending coord migration: the legacy strokes were sized to
     // the OUTGOING reference. The next onReferenceImageSize will report the
     // new reference's dimensions, which would shift the legacy strokes by
     // the wrong amount.
     pendingMigrationRef.current = null;
-    const prev = captureReferenceSnapshot();
-    strokeManager.recordReferenceChange(prev);
+    const recordUndo = opts?.recordUndo !== false;
+    if (recordUndo) {
+      // User-initiated reference change → end any active gesture session so
+      // the user isn't left with the HUD over an unrelated reference. The
+      // hook's exit() is a no-op when nothing is active.
+      gestureSessionExitRef.current();
+      const prev = captureReferenceSnapshot();
+      strokeManager.recordReferenceChange(prev);
+      setHistorySyncVersion(v => v + 1);
+    }
     mutate({
       setSource,
       setReferenceMode,
@@ -248,9 +277,10 @@ function SplitLayoutInner() {
       setReferenceInfo,
     });
     pauseAndIncrementVersion();
-    setHistorySyncVersion(v => v + 1);
     incrementFlushVersion();
-  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion]);
+    // setState identities are stable; listed only to satisfy React Compiler's
+    // preserve-manual-memoization check.
+  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion, setHistorySyncVersion]);
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -354,6 +384,90 @@ function SplitLayoutInner() {
     }
     incrementChangeVersion();
   }, [strokeManager, overlayActive, incrementChangeVersion]);
+
+  // ── Gesture-drawing session ───────────────────────────────────────────────
+  // Driven by useGestureSession. Sequence per pose: countdown → onTimeUp
+  // (save current drawing) → onAdvance (clear strokes + reset timer) →
+  // onPhotoChange (swap reference without undo entry).
+
+  /** Wipe strokes / timer / overlay so a fresh pose starts on a clean canvas.
+   *  Bumps restoreVersion so DrawingPanel's canvas re-runs its initial-draw
+   *  effect with the empty stroke set. Shared by session start and per-pose
+   *  advance. */
+  const resetForNextPose = useCallback(() => {
+    strokeManager.clear();
+    timer.reset();
+    setOverlayStrokes(null);
+    setRestoreVersion(v => v + 1);
+    setHistorySyncVersion(v => v + 1);
+  }, [strokeManager, timer, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes]);
+
+  /** referenceInfo is the source of truth for what we save: the hook awaits
+   *  onTimeUp BEFORE calling onPhotoChange, so this closure still sees the
+   *  previous photo's info. Read elapsed via ref to keep the callback stable
+   *  across the per-RAF timer.elapsedMs updates. */
+  const handleGestureTimeUp = useCallback(async () => {
+    const strokes = strokeManager.getStrokes();
+    if (strokes.length === 0) return;
+    if (!strokeManager.isDirtySinceGallerySave()) return;
+    try {
+      const thumbnail = generateThumbnail(strokes);
+      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timerElapsedRef.current);
+      strokeManager.markSavedToGallery();
+    }
+    catch (err) {
+      console.error('Gesture session save failed:', err);
+    }
+  }, [strokeManager, referenceInfo]);
+
+  const handleGesturePhotoChange = useCallback((photo: PexelsPhoto) => {
+    const info = buildPexelsReferenceInfo(photo);
+    changeReference((s) => {
+      s.setSource('pexels');
+      s.setReferenceMode('fixed');
+      s.setFixedImageUrl(info.pexelsImageUrl);
+      s.setLocalImageUrl(null);
+      s.setReferenceInfo(info);
+    }, { recordUndo: false });
+  }, [changeReference]);
+
+  const handleGestureFetchMore = useCallback(async (
+    query: string,
+    orientation: PexelsOrientationFilter,
+    nextPage: number,
+  ) => {
+    const res = await searchPhotos({
+      query,
+      page: nextPage,
+      orientation: orientation === 'all' ? undefined : orientation,
+    });
+    return {
+      photos: res.photos,
+      page: nextPage,
+      hasMore: !!res.next_page && res.photos.length > 0,
+    };
+  }, []);
+
+  const gestureSession = useGestureSession({
+    onPhotoChange: handleGesturePhotoChange,
+    onTimeUp: handleGestureTimeUp,
+    onAdvance: resetForNextPose,
+    fetchMore: handleGestureFetchMore,
+  });
+
+  // Expose exit() to the changeReference path (declared above gestureSession,
+  // so it reads the callback through this ref).
+  useEffect(() => {
+    gestureSessionExitRef.current = gestureSession.exit;
+  });
+
+  // Destructure stable callbacks (useCallback'd inside the hook) so they
+  // don't keep handleStartGestureSession's deps changing every render.
+  const { start: startGestureSessionRaw } = gestureSession;
+  const handleStartGestureSession = useCallback((config: PexelsGestureSessionConfig) => {
+    resetForNextPose();
+    startGestureSessionRaw(config);
+  }, [startGestureSessionRaw, resetForNextPose]);
 
   const handleCurrentStrokeChange = useCallback((stroke: Stroke | null) => {
     currentStrokeRef.current = stroke;
@@ -748,6 +862,24 @@ function SplitLayoutInner() {
           {t('autosaveDisabled')}
         </Alert>
       )}
+      {/* Gesture HUD sits above both panels as a normal flex row so the
+          drawing canvas keeps the same height as the reference panel — an
+          earlier overlay-style HUD blocked the top of the canvas. */}
+      <GestureHUD
+        active={gestureSession.active}
+        paused={gestureSession.paused}
+        loadingMore={gestureSession.loadingMore}
+        durationMs={gestureSession.durationMs}
+        remainingMs={gestureSession.remainingMs}
+        completedCount={gestureSession.completedCount}
+        currentIndex={gestureSession.totalShownCount}
+        queueRemaining={gestureSession.queueRemaining}
+        hasMoreInBackend={gestureSession.hasMoreInBackend}
+        onSkip={gestureSession.skip}
+        onPause={gestureSession.pause}
+        onResume={gestureSession.resume}
+        onExit={gestureSession.exit}
+      />
       {/* Don't render the panels until restore completes. Earlier attempts
           with `visibility: 'hidden'` failed because CSS transitions (e.g. the
           Save button's `transition: color 0.3s`) still fired while hidden —
@@ -777,6 +909,9 @@ function SplitLayoutInner() {
               onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
               onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
               onSketchfabViewerStateChange={setSketchfabViewerActive}
+              onPexelsStartSession={handleStartGestureSession}
+              collapseInfoOverlayByDefault={gestureSession.active}
+              suppressGuideEditing={gestureSession.active}
               isFlipped={isFlipped}
               onToggleFlip={handleToggleFlip}
               viewTransform={viewTransform}
@@ -803,6 +938,7 @@ function SplitLayoutInner() {
               referenceCollapsed={referenceCollapsed}
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
+              inputFrozen={gestureSession.transitioning}
             />
           </Box>
         </Box>

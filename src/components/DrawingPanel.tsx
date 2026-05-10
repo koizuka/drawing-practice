@@ -70,9 +70,12 @@ interface DrawingPanelProps {
    * user sees on Fix Angle).
    */
   collapseLocked?: boolean;
+  /** Pass-through to DrawingCanvas: when true, new strokes can't start. Used
+   *  during the gesture-session swap window to swallow reflexive taps. */
+  inputFrozen?: boolean;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
   // toolbar button shows this icon and a short tap activates this sub-mode;
@@ -673,6 +676,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
           isFlipped={isFlipped}
           onCurrentStrokeChange={onCurrentStrokeChange}
           viewTransform={viewTransform}
+          inputFrozen={inputFrozen}
         />
       </Box>
 

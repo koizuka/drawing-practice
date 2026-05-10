@@ -130,6 +130,34 @@ export function setPexelsLastSearch(query: string, orientation: PexelsOrientatio
   }
 }
 
+/** Allowed gesture-session per-pose durations (ms). Closed set so the
+ *  Pexels search UI can render an exclusive ToggleButtonGroup. */
+export const PEXELS_SESSION_DURATIONS_MS = [30_000, 60_000, 90_000, 120_000] as const;
+export type PexelsSessionDurationMs = typeof PEXELS_SESSION_DURATIONS_MS[number];
+export const DEFAULT_PEXELS_SESSION_DURATION_MS: PexelsSessionDurationMs = 30_000;
+export const PEXELS_SESSION_DURATION_STORAGE_KEY = 'pexels.gestureSessionDuration';
+
+export function getPexelsSessionDuration(): PexelsSessionDurationMs {
+  try {
+    const raw = localStorage.getItem(PEXELS_SESSION_DURATION_STORAGE_KEY);
+    const n = raw === null ? NaN : Number(raw);
+    if ((PEXELS_SESSION_DURATIONS_MS as readonly number[]).includes(n)) return n as PexelsSessionDurationMs;
+  }
+  catch {
+    // localStorage disabled / unavailable
+  }
+  return DEFAULT_PEXELS_SESSION_DURATION_MS;
+}
+
+export function setPexelsSessionDuration(ms: PexelsSessionDurationMs): void {
+  try {
+    localStorage.setItem(PEXELS_SESSION_DURATION_STORAGE_KEY, String(ms));
+  }
+  catch {
+    // localStorage disabled / unavailable
+  }
+}
+
 async function pexelsFetch(url: string, signal?: AbortSignal): Promise<Response> {
   const key = getPexelsApiKey();
   if (!key) throw new PexelsKeyMissingError();

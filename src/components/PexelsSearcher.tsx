@@ -17,12 +17,16 @@ import {
   buildPexelsReferenceInfo,
   getPexelsApiKey,
   getPexelsLastSearch,
+  getPexelsSessionDuration,
   isAbortError,
   mapPexelsErrorKey,
+  PEXELS_SESSION_DURATIONS_MS,
   searchPhotos,
   setPexelsLastSearch,
+  setPexelsSessionDuration,
   type PexelsOrientationFilter as Orientation,
   type PexelsPhoto,
+  type PexelsSessionDurationMs,
 } from '../utils/pexels';
 import {
   addPexelsSearchHistory,
@@ -34,6 +38,17 @@ import type { ReferenceInfo } from '../types';
 import { t } from '../i18n';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { resetPageZoom } from '../utils/resetPageZoom';
+
+/** Config payload for starting a gesture-drawing session from the search
+ *  results. The parent shuffles + drives the session via useGestureSession. */
+export interface PexelsGestureSessionConfig {
+  query: string;
+  orientation: Orientation;
+  initialPhotos: PexelsPhoto[];
+  page: number;
+  hasMore: boolean;
+  durationMs: number;
+}
 
 interface PexelsSearcherProps {
   onSelectPhoto: (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => void;
@@ -50,6 +65,24 @@ interface PexelsSearcherProps {
   initialOrientation?: Orientation;
   /** Bumped by parent when the API key changes so the searcher re-evaluates key state. */
   apiKeyVersion?: number;
+  /** Optional: when supplied, a "Start session" control appears once results
+   *  exist. Parent owns the session state and reference-swap side effects. */
+  onStartSession?: (config: PexelsGestureSessionConfig) => void;
+}
+
+function durationLabel(ms: PexelsSessionDurationMs): string {
+  switch (ms) {
+    case 30_000: return t('gestureSessionDuration30');
+    case 60_000: return t('gestureSessionDuration60');
+    case 90_000: return t('gestureSessionDuration90');
+    case 120_000: return t('gestureSessionDuration120');
+    default: {
+      // Compile-time exhaustiveness: if PEXELS_SESSION_DURATIONS_MS adds a
+      // value without a label here, this assignment fails to type-check.
+      const exhaustive: never = ms;
+      throw new Error(`Unhandled session duration: ${exhaustive as number}`);
+    }
+  }
 }
 
 function orientationLabel(o: Orientation): string {
@@ -74,7 +107,7 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ];
 
-export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, initialQuery, initialOrientation, apiKeyVersion = 0 }: PexelsSearcherProps) {
+export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, initialQuery, initialOrientation, apiKeyVersion = 0, onStartSession }: PexelsSearcherProps) {
   // Restore the prior search so navigating back to the searcher shows results
   // rather than an empty grid. initial* props (passed by the parent when
   // loading from URL history with per-photo context) take precedence over the
@@ -91,6 +124,9 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsKey, setNeedsKey] = useState(() => getPexelsApiKey() === '');
+  // Per-pose duration for the gesture session "Start" control. Persisted so
+  // the user's last choice survives reloads and source toggles.
+  const [sessionDurationMs, setSessionDurationMs] = useState<PexelsSessionDurationMs>(() => getPexelsSessionDuration());
   // Re-check needsKey when the parent bumps apiKeyVersion (e.g. after the
   // settings dialog stores a new key). Using the render-time prev-prop pattern
   // instead of an effect so we don't violate react-hooks/set-state-in-effect.
@@ -220,6 +256,24 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
     void runSearch(preset, orientation);
   }, [runSearch, orientation]);
 
+  const handleStartSession = useCallback(() => {
+    if (!onStartSession || photos.length === 0 || !activeQuery) return;
+    onStartSession({
+      query: activeQuery,
+      orientation: activeOrientation,
+      // Pass a snapshot — the parent shuffles + owns the queue from here.
+      initialPhotos: [...photos],
+      page: currentPage,
+      hasMore,
+      durationMs: sessionDurationMs,
+    });
+  }, [onStartSession, photos, activeQuery, activeOrientation, currentPage, hasMore, sessionDurationMs]);
+
+  const handleChangeSessionDuration = useCallback((value: PexelsSessionDurationMs) => {
+    setSessionDurationMs(value);
+    setPexelsSessionDuration(value);
+  }, []);
+
   const handleSelectHistory = useCallback((entry: PexelsSearchHistoryEntry) => {
     setQuery(entry.query);
     setOrientation(entry.orientation);
@@ -341,6 +395,46 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
       {loading && (
         <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
           <CircularProgress size={28} />
+        </Box>
+      )}
+
+      {!loading && photos.length > 0 && onStartSession && (
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1,
+            mb: 1,
+            p: 1,
+            border: '1px solid #ddd',
+            borderRadius: 1,
+            bgcolor: '#fafafa',
+          }}
+        >
+          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+            {t('gestureSessionDurationLabel')}
+          </Typography>
+          <ToggleButtonGroup
+            value={sessionDurationMs}
+            exclusive
+            size="small"
+            onChange={(_e, val) => {
+              if (val === null) return;
+              handleChangeSessionDuration(val as PexelsSessionDurationMs);
+            }}
+            aria-label={t('gestureSessionDurationLabel')}
+          >
+            {PEXELS_SESSION_DURATIONS_MS.map(ms => (
+              <ToggleButton key={ms} value={ms} aria-label={durationLabel(ms)}>
+                {durationLabel(ms)}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+          <Box sx={{ flex: 1 }} />
+          <Button size="small" variant="contained" onClick={handleStartSession}>
+            {t('gestureSessionStartShort')}
+          </Button>
         </Box>
       )}
 

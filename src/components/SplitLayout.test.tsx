@@ -1,7 +1,8 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { vi } from 'vitest';
 import { SplitLayout } from './SplitLayout';
 import { loadDraft, saveDraft } from '../storage/sessionStore';
+import { saveDrawing } from '../storage';
 import type { SessionDraft } from '../storage/db';
 
 vi.mock('../storage/sessionStore', () => ({
@@ -10,12 +11,22 @@ vi.mock('../storage/sessionStore', () => ({
   clearDraft: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../storage', async () => {
+  const actual = await vi.importActual<typeof import('../storage')>('../storage');
+  return {
+    ...actual,
+    saveDrawing: vi.fn().mockResolvedValue(1),
+  };
+});
+
 const getPhotoMock = vi.fn();
+const searchPhotosMock = vi.fn();
 vi.mock('../utils/pexels', async () => {
   const actual = await vi.importActual<typeof import('../utils/pexels')>('../utils/pexels');
   return {
     ...actual,
     getPhoto: (id: number) => getPhotoMock(id),
+    searchPhotos: (...args: unknown[]) => searchPhotosMock(...args),
   };
 });
 
@@ -500,6 +511,93 @@ describe('SplitLayout', () => {
       finally {
         vi.useRealTimers();
       }
+    });
+  });
+
+  describe('gesture-drawing session', () => {
+    const loadDraftMock = vi.mocked(loadDraft);
+    const saveDrawingMock = vi.mocked(saveDrawing);
+
+    beforeEach(() => {
+      saveDrawingMock.mockReset().mockResolvedValue(1);
+      searchPhotosMock.mockReset();
+      // Always return a small page; tests that need exhaustion vary the next_page.
+      searchPhotosMock.mockResolvedValue({
+        photos: [pexelsPhoto(1001, 'Sess Alice'), pexelsPhoto(1002, 'Sess Bob')],
+        page: 1,
+        per_page: 24,
+        total_results: 2,
+        next_page: undefined,
+      });
+      // Pexels API key required by the searcher's "browse" mode rendering.
+      localStorage.setItem('pexelsApiKey', 'test-key');
+    });
+
+    afterEach(() => {
+      localStorage.removeItem('pexelsApiKey');
+      localStorage.removeItem('pexels.gestureSessionDuration');
+      loadDraftMock.mockResolvedValue(undefined);
+    });
+
+    /** Helper: open Pexels source, run a search, and return the rendered container. */
+    async function openPexelsSearch(query: string) {
+      // Wait for source picker (panels mount post-restore).
+      await screen.findByText('Pexels');
+      fireEvent.click(screen.getByText('Pexels'));
+      const input = await screen.findByPlaceholderText(/Search photos/i);
+      fireEvent.change(input, { target: { value: query } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await screen.findByText('Sess Alice');
+    }
+
+    it('shows the Start session control on Pexels search results', async () => {
+      render(<SplitLayout />);
+      await openPexelsSearch('pose');
+      expect(screen.getByRole('button', { name: /start session/i })).toBeInTheDocument();
+      // Default duration buttons are present.
+      expect(screen.getByRole('button', { name: '30s' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '2 min' })).toBeInTheDocument();
+    });
+
+    it('mounts the HUD on session start and unmounts it on Exit', async () => {
+      render(<SplitLayout />);
+      await openPexelsSearch('pose');
+
+      fireEvent.click(screen.getByRole('button', { name: /start session/i }));
+
+      // HUD appears with countdown controls.
+      const hud = await screen.findByTestId('gesture-hud');
+      expect(hud).toBeInTheDocument();
+      // Pause + Skip + Exit are all present.
+      expect(screen.getByLabelText('Pause')).toBeInTheDocument();
+      expect(screen.getByLabelText('Skip')).toBeInTheDocument();
+      const exitBtn = screen.getByLabelText('Exit session');
+      expect(exitBtn).toBeInTheDocument();
+
+      fireEvent.click(exitBtn);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('gesture-hud')).not.toBeInTheDocument();
+      });
+    });
+
+    it('Skip discards the current pose without calling saveDrawing', async () => {
+      render(<SplitLayout />);
+      await openPexelsSearch('pose');
+
+      fireEvent.click(screen.getByRole('button', { name: /start session/i }));
+      await screen.findByTestId('gesture-hud');
+
+      const skipBtn = screen.getByLabelText('Skip');
+      await act(async () => {
+        fireEvent.click(skipBtn);
+      });
+
+      // Skip path: no save fires (drawing was empty anyway, but the contract
+      // is "skip never saves regardless of stroke state").
+      expect(saveDrawingMock).not.toHaveBeenCalled();
+      // HUD is still active for the next pose.
+      expect(screen.getByTestId('gesture-hud')).toBeInTheDocument();
     });
   });
 });
