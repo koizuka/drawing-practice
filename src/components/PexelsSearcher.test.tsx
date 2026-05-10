@@ -277,7 +277,7 @@ describe('PexelsSearcher gesture-session start UI', () => {
     expect(screen.queryByRole('button', { name: /start session/i })).not.toBeInTheDocument();
   });
 
-  it('hides the Start session control before any results exist', () => {
+  it('shows the Start session control disabled before any results exist', () => {
     render(
       <PexelsSearcher
         onSelectPhoto={vi.fn()}
@@ -285,7 +285,9 @@ describe('PexelsSearcher gesture-session start UI', () => {
         onStartSession={vi.fn<(config: PexelsGestureSessionConfig) => void>()}
       />,
     );
-    expect(screen.queryByRole('button', { name: /start session/i })).not.toBeInTheDocument();
+    const startBtn = screen.getByRole('button', { name: /start session/i });
+    expect(startBtn).toBeInTheDocument();
+    expect(startBtn).toBeDisabled();
   });
 
   it('shows the Start session control once results exist and fires onStartSession with the current results', async () => {

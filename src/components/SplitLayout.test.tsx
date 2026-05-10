@@ -169,7 +169,7 @@ describe('SplitLayout', () => {
       await screen.findByText('Sketchfab');
       expect(undoBtn(container)).toBeDisabled();
 
-      const urlInput = screen.getByPlaceholderText(/YouTube/i) as HTMLInputElement;
+      const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
       fireEvent.change(urlInput, { target: { value: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } });
       fireEvent.click(screen.getByText('Load'));
 
@@ -224,7 +224,7 @@ describe('SplitLayout', () => {
       await screen.findByText('Sketchfab');
       expect(undoBtn(container)).toBeDisabled();
 
-      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement;
+      const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
       fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-12345/' } });
       fireEvent.click(screen.getByText('Load'));
 
@@ -243,7 +243,7 @@ describe('SplitLayout', () => {
     async function loadPexels(id: number, photographer: string) {
       getPhotoMock.mockResolvedValueOnce(pexelsPhoto(id, photographer));
       // Wait for the source picker (panels mount post-restore).
-      const urlInput = await screen.findByPlaceholderText(/Pexels/i) as HTMLInputElement;
+      const urlInput = await screen.findByPlaceholderText(/https:\/\//i) as HTMLInputElement;
       fireEvent.change(urlInput, { target: { value: `https://www.pexels.com/photo/sample-${id}/` } });
       fireEvent.click(screen.getByText('Load'));
       await waitFor(() => expect(screen.getByText(photographer)).toBeInTheDocument());
@@ -469,7 +469,7 @@ describe('SplitLayout', () => {
       });
       saveDraftMock.mockClear();
 
-      const urlInput = screen.getByPlaceholderText(/Pexels/i) as HTMLInputElement;
+      const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
       fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-67890/' } });
       fireEvent.click(screen.getByText('Load'));
 
