@@ -11,6 +11,19 @@ import type { GridSettings, GuideLine } from '../guides/types';
 
 export type DrawingMode = 'pen' | 'eraser' | 'lasso';
 
+/** Snapshot of internal touch / mode state for the diagnostic overlay used
+ *  during gesture-session debugging. Only consumed by `GestureDebugBar` —
+ *  not part of the regular drawing API. */
+export interface DrawingCanvasDebugSnapshot {
+  mode: DrawingMode;
+  inputFrozen: boolean;
+  activeTouchesSize: number;
+  pinchActive: boolean;
+  hasStylus: boolean;
+  /** `touchType` string of the most recent touchstart, or '-' when none. */
+  lastTouchType: string;
+}
+
 interface DrawingCanvasProps {
   mode: DrawingMode;
   highlightedStrokeIndex: number | null;
@@ -38,6 +51,11 @@ interface DrawingCanvasProps {
    *  In-flight strokes (started before the freeze) are NOT cancelled here —
    *  the caller's clear-strokes step handles that. */
   inputFrozen?: boolean;
+  /** Diagnostic-only: parent passes a ref slot that DrawingCanvas fills with
+   *  a snapshot getter. Used by `GestureDebugBar` to read internal state
+   *  (active touch count, pinch flag, last touchType) without needing to
+   *  expose individual refs. Optional — never used in production paths. */
+  debugSnapshotRef?: React.RefObject<(() => DrawingCanvasDebugSnapshot) | null>;
 }
 
 const ERASER_THRESHOLD = 20;
@@ -59,10 +77,15 @@ export function DrawingCanvas({
   onCurrentStrokeChange,
   viewTransform,
   inputFrozen = false,
+  debugSnapshotRef,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
     inputFrozenRef.current = inputFrozen;
+  });
+  const modeRef = useRef(mode);
+  useEffect(() => {
+    modeRef.current = mode;
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +98,15 @@ export function DrawingCanvas({
     viewTransformRef.current = viewTransform ?? new ViewTransform();
   }
   const hasStylusRef = useRef(false);
+  // Diagnostic only — written by handleTouchStart, read by GestureDebugBar.
+  const lastTouchTypeRef = useRef<string>('-');
+  // Diagnostic-only mirrors of `pinchRef !== null` and `activeTouchesRef.size`.
+  // Kept as separate primitive refs so the snapshot getter does not capture
+  // the underlying mutable refs — referencing `pinchRef` from a closure that
+  // gets passed to `useEffect` would trigger the React Compiler immutability
+  // rule on every existing `pinchRef.current = ...` assignment.
+  const pinchActiveDiagRef = useRef(false);
+  const activeTouchesCountDiagRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -97,6 +129,27 @@ export function DrawingCanvas({
   const containerSizeRef = useRef<ContainerSize>({ width: 0, height: 0 });
   const fitSizeRef = useRef(fitSize);
   useEffect(() => { fitSizeRef.current = fitSize; });
+
+  // Diagnostic snapshot getter built once and installed via the parent ref
+  // when present. Defined as `useCallback` (not inside an effect) so the
+  // React Compiler immutability rule does not treat pinchRef / activeTouchesRef
+  // as "read in an effect" — those refs are mutated heavily elsewhere in this
+  // file, and reading them inside an effect would lock down those writes.
+  const getDebugSnapshot = useCallback((): DrawingCanvasDebugSnapshot => ({
+    mode: modeRef.current,
+    inputFrozen: inputFrozenRef.current,
+    activeTouchesSize: activeTouchesCountDiagRef.current,
+    pinchActive: pinchActiveDiagRef.current,
+    hasStylus: hasStylusRef.current,
+    lastTouchType: lastTouchTypeRef.current,
+  }), []);
+  useEffect(() => {
+    if (!debugSnapshotRef) return;
+    debugSnapshotRef.current = getDebugSnapshot;
+    return () => {
+      debugSnapshotRef.current = null;
+    };
+  }, [debugSnapshotRef, getDebugSnapshot]);
 
   const getBaseScale = useCallback(() => computeBaseScale(containerSizeRef.current, fitSizeRef.current), []);
 
@@ -468,6 +521,7 @@ export function DrawingCanvas({
       const touch = e.changedTouches[i];
       activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
     }
+    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Detect stylus
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -475,6 +529,7 @@ export function DrawingCanvas({
       if (touch.touchType === 'stylus') {
         hasStylusRef.current = true;
       }
+      lastTouchTypeRef.current = touch.touchType ?? 'direct';
     }
 
     // 2-finger pinch
@@ -506,6 +561,7 @@ export function DrawingCanvas({
         lastMidX: (t1.x + t2.x) / 2,
         lastMidY: (t1.y + t2.y) / 2,
       };
+      pinchActiveDiagRef.current = true;
       pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
       return;
     }
@@ -543,6 +599,7 @@ export function DrawingCanvas({
       const touch = e.changedTouches[i];
       activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
     }
+    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Pinch zoom/pan
     if (pinchRef.current) {
@@ -610,12 +667,14 @@ export function DrawingCanvas({
       const touch = e.changedTouches[i];
       activeTouchesRef.current.delete(touch.identifier);
     }
+    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Clear pinch if one of the pinch fingers lifted
     if (pinchRef.current) {
       if (!activeTouchesRef.current.has(pinchRef.current.id1)
         || !activeTouchesRef.current.has(pinchRef.current.id2)) {
         pinchRef.current = null;
+        pinchActiveDiagRef.current = false;
         pinchRectRef.current = null;
       }
     }

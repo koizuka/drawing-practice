@@ -67,6 +67,9 @@ export interface GestureSessionState {
    *  is set so a reflexive next-stroke from the user doesn't land on the
    *  wrong photo. */
   transitioning: boolean;
+  /** Internal state-machine status. Exposed for diagnostic UI; consumers
+   *  should prefer `active` / `paused` / `transitioning` for behavior. */
+  status: GestureSessionStatus;
 }
 
 export interface GestureSessionActions {
@@ -77,16 +80,14 @@ export interface GestureSessionActions {
   exit: () => void;
 }
 
-type Status
+export type GestureSessionStatus
   = 'idle'
     | 'running'
     | 'paused'
     | 'advancing-save'
     | 'advancing-skip';
 
-interface InternalState extends GestureSessionState {
-  status: Status;
-}
+type InternalState = GestureSessionState;
 
 const IDLE_STATE: InternalState = {
   status: 'idle',
@@ -382,6 +383,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
     queueRemaining: state.queueRemaining,
     hasMoreInBackend: state.hasMoreInBackend,
     transitioning: state.transitioning,
+    status: state.status,
     start,
     skip,
     pause,

@@ -4,7 +4,7 @@ import { ToolbarTooltip } from './ToolbarTooltip';
 import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
 import { useLongPress } from '../hooks/useLongPress';
 import type { Orientation } from '../hooks/useOrientation';
-import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
+import { DrawingCanvas, type DrawingMode, type DrawingCanvasDebugSnapshot } from './DrawingCanvas';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
@@ -73,9 +73,11 @@ interface DrawingPanelProps {
   /** Pass-through to DrawingCanvas: when true, new strokes can't start. Used
    *  during the gesture-session swap window to swallow reflexive taps. */
   inputFrozen?: boolean;
+  /** Diagnostic-only pass-through to DrawingCanvas. */
+  debugSnapshotRef?: React.RefObject<(() => DrawingCanvasDebugSnapshot) | null>;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false }: DrawingPanelProps) {
+export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false, debugSnapshotRef }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
   // toolbar button shows this icon and a short tap activates this sub-mode;
@@ -677,6 +679,7 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
           onCurrentStrokeChange={onCurrentStrokeChange}
           viewTransform={viewTransform}
           inputFrozen={inputFrozen}
+          debugSnapshotRef={debugSnapshotRef}
         />
       </Box>
 

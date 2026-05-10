@@ -10,6 +10,8 @@ import { useGuides } from '../guides/useGuides';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
+import { GestureDebugBar } from './GestureDebugBar';
+import type { DrawingCanvasDebugSnapshot } from './DrawingCanvas';
 import { computeFitLeader, resolveDrawingFitSize } from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
@@ -44,6 +46,8 @@ function SplitLayoutInner() {
   const [overlayActive, setOverlayActive] = useState(false);
   const currentStrokeRef = useRef<Stroke | null>(null);
   const overlayRedrawFnRef = useRef<(() => void) | null>(null);
+  // Diagnostic-only: filled by DrawingCanvas, polled by GestureDebugBar.
+  const drawingDebugSnapshotRef = useRef<(() => DrawingCanvasDebugSnapshot) | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
@@ -396,8 +400,15 @@ function SplitLayoutInner() {
    *  advance. */
   const resetForNextPose = useCallback(() => {
     strokeManager.clear();
+    // strokeManager.clear() nulls its internal currentStroke, but the SplitLayout-side
+    // `currentStrokeRef` is a separate ref updated only via onCurrentStrokeChange.
+    // If a stroke was in flight at time-up, its Stroke object lingers in this ref
+    // and gets repainted on the new photo as overlay (ImageViewer's overlay redraw
+    // is not gated on overlayActive — it always renders ref content if non-null).
+    currentStrokeRef.current = null;
     timer.reset();
     setOverlayStrokes(null);
+    overlayRedrawFnRef.current?.();
     setRestoreVersion(v => v + 1);
     setHistorySyncVersion(v => v + 1);
   }, [strokeManager, timer, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes]);
@@ -865,6 +876,12 @@ function SplitLayoutInner() {
       {/* Gesture HUD sits above both panels as a normal flex row so the
           drawing canvas keeps the same height as the reference panel — an
           earlier overlay-style HUD blocked the top of the canvas. */}
+      <GestureDebugBar
+        active={gestureSession.active}
+        status={gestureSession.status}
+        transitioning={gestureSession.transitioning}
+        debugSnapshotRef={drawingDebugSnapshotRef}
+      />
       <GestureHUD
         active={gestureSession.active}
         paused={gestureSession.paused}
@@ -939,6 +956,7 @@ function SplitLayoutInner() {
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
               inputFrozen={gestureSession.transitioning}
+              debugSnapshotRef={drawingDebugSnapshotRef}
             />
           </Box>
         </Box>
