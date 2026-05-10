@@ -127,6 +127,22 @@ const messages = {
     collapseReferenceInfo: 'Collapse info',
     expandReferenceInfo: 'Show info',
 
+    // Gesture-drawing session
+    gestureSessionStart: 'Start gesture session',
+    gestureSessionStartShort: 'Start session',
+    gestureSessionDurationLabel: 'Time per pose',
+    gestureSessionDuration30: '30s',
+    gestureSessionDuration60: '60s',
+    gestureSessionDuration90: '90s',
+    gestureSessionDuration120: '2 min',
+    gestureSessionSkip: 'Skip',
+    gestureSessionPause: 'Pause',
+    gestureSessionResume: 'Resume',
+    gestureSessionExit: 'Exit session',
+    gestureSessionLoadingMore: 'Loading more photos…',
+    gestureSessionPosesLabel: 'Pose',
+    gestureSessionRemainingLabel: 'queued',
+
     // YouTube
     youtubePlay: 'Play',
     youtubePause: 'Pause',
@@ -264,6 +280,22 @@ const messages = {
     pexelsSearchHistoryDelete: '履歴から削除',
     collapseReferenceInfo: '情報を畳む',
     expandReferenceInfo: '情報を表示',
+
+    // Gesture-drawing session
+    gestureSessionStart: 'ジェスチャーセッション開始',
+    gestureSessionStartShort: 'セッション開始',
+    gestureSessionDurationLabel: '1ポーズあたり',
+    gestureSessionDuration30: '30秒',
+    gestureSessionDuration60: '60秒',
+    gestureSessionDuration90: '90秒',
+    gestureSessionDuration120: '2分',
+    gestureSessionSkip: 'スキップ',
+    gestureSessionPause: '一時停止',
+    gestureSessionResume: '再開',
+    gestureSessionExit: 'セッション終了',
+    gestureSessionLoadingMore: '次のページを読み込み中…',
+    gestureSessionPosesLabel: 'ポーズ',
+    gestureSessionRemainingLabel: '残り',
 
     // YouTube
     youtubePlay: '再生',

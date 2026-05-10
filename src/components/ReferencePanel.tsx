@@ -278,6 +278,9 @@ interface ReferencePanelProps {
   onRegisterReloadUrlHistory?: (fn: () => void) => void;
   /** Notifies the parent when the Sketchfab 3D viewer iframe is mounted/unmounted. */
   onSketchfabViewerStateChange?: (active: boolean) => void;
+  /** Optional: enables the "Start gesture session" control inside Pexels
+   *  search. The parent owns the session state (useGestureSession). */
+  onPexelsStartSession?: (config: import('./PexelsSearcher').PexelsGestureSessionConfig) => void;
   isFlipped?: boolean;
   onToggleFlip?: () => void;
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -293,6 +296,7 @@ export function ReferencePanel({
   onReferenceChange, onReferenceResetOnError,
   onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
   onSketchfabViewerStateChange,
+  onPexelsStartSession,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
 }: ReferencePanelProps) {
@@ -1494,6 +1498,7 @@ export function ReferencePanel({
                   apiKeyVersion={pexelsKeyVersion}
                   initialQuery={pexelsRestore?.query}
                   initialOrientation={pexelsRestore?.orientation}
+                  onStartSession={onPexelsStartSession}
                 />
               </Suspense>
             </LazyErrorBoundary>

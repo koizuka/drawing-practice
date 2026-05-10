@@ -44,7 +44,7 @@ These apply codebase-wide. Violating them breaks alignment, persistence, or undo
 - **Overlay comparison passes stroke DATA, not screenshots** — strokes are re-rendered in the reference panel's coordinate space so grid positions align.
 - **DPR**: every canvas operation must multiply by `window.devicePixelRatio`.
 - **Viewport sizing uses `100dvh`, not `100vh`** — required for iPad Safari's dynamic toolbar.
-- **All reference mutations go through `changeReference(mutate)`** in `SplitLayout`. This records an undo entry, applies the mutation, pauses the timer, and bumps `historySyncVersion`. Image-load errors take a separate non-undoable `onReferenceResetOnError` path.
+- **All reference mutations go through `changeReference(mutate, opts?)`** in `SplitLayout`. This records an undo entry, applies the mutation, pauses the timer, and bumps `historySyncVersion`. Pass `{ recordUndo: false }` to skip the undo bookkeeping (used by the gesture-drawing session, which advances through dozens of photos and would otherwise blow past the 20-entry reference-history cap and let Undo walk back through arbitrary photos). Image-load errors take a separate non-undoable `onReferenceResetOnError` path.
 - **Pexels API key lives in `localStorage['pexelsApiKey']`** — each user supplies their own. Never bundle a key into the build.
 - **PR preview DBs are isolated by `BASE_URL`**: main = `DrawingPracticeDB`, previews = `DrawingPracticeDB_{basePath}`. Don't change `db.ts` naming without considering the cleanup path in `indexedDB.databases()` for stale previews.
 
