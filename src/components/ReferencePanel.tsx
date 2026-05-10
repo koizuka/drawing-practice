@@ -285,6 +285,10 @@ interface ReferencePanelProps {
    *  mounts — used during a gesture session so the overlay doesn't cover
    *  the bottom of the reference image while the user is drawing. */
   collapseInfoOverlayByDefault?: boolean;
+  /** When true, suppress guide-line drag interactions on the reference
+   *  viewer. Used during the gesture-session swap window so a reflexive
+   *  stroke that lands on the reference panel does not become a guide. */
+  inputFrozen?: boolean;
   isFlipped?: boolean;
   onToggleFlip?: () => void;
   /** Optional shared ViewTransform for zoom sync with DrawingPanel. */
@@ -302,6 +306,7 @@ export function ReferencePanel({
   onSketchfabViewerStateChange,
   onPexelsStartSession,
   collapseInfoOverlayByDefault = false,
+  inputFrozen = false,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
 }: ReferencePanelProps) {
@@ -310,6 +315,11 @@ export function ReferencePanel({
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
   const [guideMode, setGuideMode] = useState<GuideInteractionMode>('none');
+  // Effective guide mode passed to viewers — forced to 'none' while frozen
+  // so a reflexive stroke during the gesture-session swap doesn't land as a
+  // guide line. The user's selected guideMode is preserved in state and
+  // restored automatically when the freeze ends.
+  const effectiveGuideMode: GuideInteractionMode = inputFrozen ? 'none' : guideMode;
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -1522,7 +1532,7 @@ export function ReferencePanel({
             overlayCurrentStrokeRef={overlayCurrentStrokeRef}
             onRegisterOverlayRedraw={onRegisterOverlayRedraw}
             onFitSize={onReferenceImageSize}
-            guideMode={guideMode}
+            guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
@@ -1556,7 +1566,7 @@ export function ReferencePanel({
             onRegisterOverlayRedraw={onRegisterOverlayRedraw}
             onImageLoaded={onReferenceImageSize}
             onImageError={handleImageError}
-            guideMode={guideMode}
+            guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
