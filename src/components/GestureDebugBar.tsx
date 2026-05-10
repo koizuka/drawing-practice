@@ -134,8 +134,7 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
     setCopyState('idle');
   }, [snap, delta, status, transitioning]);
 
-  const handleCopy = useCallback(async (e: React.MouseEvent) => {
-    e.stopPropagation(); // don't toggle freeze
+  const handleCopy = useCallback(async () => {
     const src = frozen ?? (snap ? { snap, delta, status, transitioning } : null);
     if (!src) return;
     const text = buildLines(src.transitioning, src.status, src.snap, src.delta).join('\n');
@@ -158,47 +157,73 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
   return (
     <Box
       data-testid="gesture-debug-bar"
-      onClick={handleToggleFreeze}
       sx={{
         flexShrink: 0,
-        fontFamily: 'monospace',
-        fontSize: 11,
-        lineHeight: 1.3,
+        display: 'flex',
+        alignItems: 'stretch',
         bgcolor: frozen ? '#553300' : '#222',
         color: frozen ? '#ffcc66' : '#0f0',
-        px: 1,
-        py: 0.25,
-        whiteSpace: 'pre',
-        overflow: 'hidden',
         borderBottom: '1px solid #444',
-        cursor: 'pointer',
         userSelect: 'none',
-        position: 'relative',
       }}
     >
       <Box
-        component="span"
-        onClick={handleCopy}
+        component="pre"
         sx={{
-          position: 'absolute',
-          top: 2,
-          right: 4,
-          fontSize: 10,
-          bgcolor: copyState === 'copied' ? '#2a8' : copyState === 'failed' ? '#a22' : '#444',
-          color: '#fff',
-          px: 0.75,
-          py: 0.125,
-          borderRadius: 0.5,
+          flex: 1,
+          minWidth: 0,
+          fontFamily: 'monospace',
+          fontSize: 11,
+          lineHeight: 1.3,
+          margin: 0,
+          px: 1,
+          py: 0.25,
+          whiteSpace: 'pre',
+          overflow: 'hidden',
         }}
       >
-        {copyState === 'copied' ? 'COPIED' : copyState === 'failed' ? 'COPY FAIL' : 'COPY'}
+        {lines.join('\n')}
       </Box>
-      {frozen && (
-        <Box component="span" sx={{ position: 'absolute', top: 2, right: 56, fontSize: 10, color: '#ffcc66' }}>
-          [FROZEN — tap to unfreeze]
-        </Box>
-      )}
-      {lines.join('\n')}
+      <Box
+        component="button"
+        type="button"
+        onClick={handleToggleFreeze}
+        sx={{
+          flexShrink: 0,
+          minWidth: 56,
+          px: 0.5,
+          fontFamily: 'monospace',
+          fontSize: 11,
+          fontWeight: 700,
+          bgcolor: frozen ? '#ffcc66' : '#444',
+          color: frozen ? '#000' : '#fff',
+          border: 'none',
+          borderLeft: '1px solid #666',
+          cursor: 'pointer',
+        }}
+      >
+        {frozen ? 'UNFREEZE' : 'FREEZE'}
+      </Box>
+      <Box
+        component="button"
+        type="button"
+        onClick={handleCopy}
+        sx={{
+          flexShrink: 0,
+          minWidth: 56,
+          px: 0.5,
+          fontFamily: 'monospace',
+          fontSize: 11,
+          fontWeight: 700,
+          bgcolor: copyState === 'copied' ? '#2a8' : copyState === 'failed' ? '#a22' : '#444',
+          color: '#fff',
+          border: 'none',
+          borderLeft: '1px solid #666',
+          cursor: 'pointer',
+        }}
+      >
+        {copyState === 'copied' ? 'COPIED' : copyState === 'failed' ? 'FAIL' : 'COPY'}
+      </Box>
     </Box>
   );
 }
