@@ -22,6 +22,18 @@ export interface DrawingCanvasDebugSnapshot {
   hasStylus: boolean;
   /** `touchType` string of the most recent touchstart, or '-' when none. */
   lastTouchType: string;
+  /** Cumulative count of native touchstart events received on the canvas
+   *  since mount. If this stops incrementing while the user taps, native
+   *  listeners are no longer dispatching. */
+  touchStartCount: number;
+  /** touchstart events rejected by the inputFrozen gate. */
+  rejFrozen: number;
+  /** touchstart events rejected by the palm-rejection (post stylus). */
+  rejPalm: number;
+  /** touchstart events rejected by hasStylus filter on touchmove. */
+  rejStylusFilter: number;
+  /** Seconds since the last native touchstart (rounded). */
+  secsSinceLastStart: number;
 }
 
 interface DrawingCanvasProps {
@@ -126,6 +138,14 @@ export function DrawingCanvas({
   // rule on every existing `pinchRef.current = ...` assignment.
   const pinchActiveDiagRef = useRef(false);
   const activeTouchesCountDiagRef = useRef(0);
+  // Diagnostic counters — incremented at the relevant event sites so the
+  // debug bar can show whether touchstart is firing at all (vs. being
+  // dropped by iOS) and which filter rejected it when one fires.
+  const diagTouchStartCountRef = useRef(0);
+  const diagRejFrozenRef = useRef(0);
+  const diagRejPalmRef = useRef(0);
+  const diagRejStylusFilterRef = useRef(0);
+  const diagLastTouchStartAtRef = useRef<number>(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -154,14 +174,22 @@ export function DrawingCanvas({
   // React Compiler immutability rule does not treat pinchRef / activeTouchesRef
   // as "read in an effect" — those refs are mutated heavily elsewhere in this
   // file, and reading them inside an effect would lock down those writes.
-  const getDebugSnapshot = useCallback((): DrawingCanvasDebugSnapshot => ({
-    mode: modeRef.current,
-    inputFrozen: inputFrozenRef.current,
-    activeTouchesSize: activeTouchesCountDiagRef.current,
-    pinchActive: pinchActiveDiagRef.current,
-    hasStylus: hasStylusRef.current,
-    lastTouchType: lastTouchTypeRef.current,
-  }), []);
+  const getDebugSnapshot = useCallback((): DrawingCanvasDebugSnapshot => {
+    const last = diagLastTouchStartAtRef.current;
+    return {
+      mode: modeRef.current,
+      inputFrozen: inputFrozenRef.current,
+      activeTouchesSize: activeTouchesCountDiagRef.current,
+      pinchActive: pinchActiveDiagRef.current,
+      hasStylus: hasStylusRef.current,
+      lastTouchType: lastTouchTypeRef.current,
+      touchStartCount: diagTouchStartCountRef.current,
+      rejFrozen: diagRejFrozenRef.current,
+      rejPalm: diagRejPalmRef.current,
+      rejStylusFilter: diagRejStylusFilterRef.current,
+      secsSinceLastStart: last === 0 ? -1 : Math.round((Date.now() - last) / 1000),
+    };
+  }, []);
   useEffect(() => {
     if (!debugSnapshotRef) return;
     debugSnapshotRef.current = getDebugSnapshot;
@@ -528,12 +556,17 @@ export function DrawingCanvas({
   // event listener" warnings.
   const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
+    diagTouchStartCountRef.current++;
+    diagLastTouchStartAtRef.current = Date.now();
 
     // Gesture-session swap window: reject the new touch entirely (no stroke
     // start, no pinch arming) so a reflexive post-swap tap is dropped. We
     // still preventDefault above so the browser doesn't fall back to default
     // touch behavior (scroll, etc.).
-    if (inputFrozenRef.current) return;
+    if (inputFrozenRef.current) {
+      diagRejFrozenRef.current++;
+      return;
+    }
 
     // Track all touches
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -587,7 +620,10 @@ export function DrawingCanvas({
 
     // Single touch: drawing
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+    if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
+      diagRejPalmRef.current++;
+      return;
+    }
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
@@ -657,7 +693,10 @@ export function DrawingCanvas({
     // Lasso path drawing
     if (mode === 'lasso' && lassoPointsRef.current) {
       const touch = e.changedTouches[0] as Touch & { touchType?: string };
-      if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+      if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
+        diagRejStylusFilterRef.current++;
+        return;
+      }
       const point = getCanvasPoint(touch.clientX, touch.clientY);
       appendLasso(point);
       recomputeLassoSelection();
@@ -668,7 +707,10 @@ export function DrawingCanvas({
     // Drawing
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
+    if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
+      diagRejStylusFilterRef.current++;
+      return;
+    }
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
     if (!strokeManager.appendStroke(point)) return;

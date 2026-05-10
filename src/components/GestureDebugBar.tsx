@@ -39,6 +39,10 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
     ? `mode=${snap.mode} frz=${snap.inputFrozen ? 1 : 0} ats=${snap.activeTouchesSize} pin=${snap.pinchActive ? 1 : 0} sty=${snap.hasStylus ? 1 : 0} lastT=${snap.lastTouchType}`
     : 'mode=? frz=? ats=? pin=? sty=? lastT=?';
 
+  const ev = snap
+    ? `ts=${snap.touchStartCount} rejF=${snap.rejFrozen} rejP=${snap.rejPalm} rejS=${snap.rejStylusFilter} ago=${snap.secsSinceLastStart < 0 ? '-' : snap.secsSinceLastStart}s`
+    : 'ts=? rejF=? rejP=? rejS=? ago=?';
+
   return (
     <Box
       data-testid="gesture-debug-bar"
@@ -63,6 +67,8 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
       {status}
       {' | DC: '}
       {dc}
+      {' | EV: '}
+      {ev}
     </Box>
   );
 }
