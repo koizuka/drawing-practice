@@ -90,7 +90,7 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
 
   const d = delta ?? { ts: 0, mv: 0, end: 0, strk: 0 };
   const line2 = snap
-    ? `ts=${snap.touchStartCount}(+${d.ts}) mv=${snap.touchMoveCount}(+${d.mv}) end=${snap.touchEndCount}(+${d.end}) strk=${snap.startStrokeCount}(+${d.strk})/${snap.endStrokeCommittedCount}:${snap.endStrokeNullCount} pe=${snap.enteredPinchCount} rejF=${snap.rejFrozen}`
+    ? `ts=${snap.touchStartCount}(+${d.ts}) mv=${snap.touchMoveCount}(+${d.mv}) end=${snap.touchEndCount}(+${d.end}) strk=${snap.startStrokeCount}(+${d.strk})/${snap.endStrokeCommittedCount}:${snap.endStrokeNullCount} pe=${snap.enteredPinchCount} rejF=${snap.rejFrozen} att=${snap.listenerAttachCount}`
     : '';
 
   return (

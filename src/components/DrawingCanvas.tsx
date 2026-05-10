@@ -47,6 +47,9 @@ export interface DrawingCanvasDebugSnapshot {
   endStrokeNullCount: number;
   /** Count of touchstart events that armed pinch (2-finger). */
   enteredPinchCount: number;
+  /** Cumulative count of `addEventListener('touchstart', ...)` calls — i.e.
+   *  how many times the native listener attachment effect has re-run. */
+  listenerAttachCount: number;
 }
 
 interface DrawingCanvasProps {
@@ -165,6 +168,7 @@ export function DrawingCanvas({
   const diagEndStrokeCommittedRef = useRef(0);
   const diagEndStrokeNullRef = useRef(0);
   const diagEnteredPinchRef = useRef(0);
+  const diagListenerAttachRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -213,6 +217,7 @@ export function DrawingCanvas({
       endStrokeCommittedCount: diagEndStrokeCommittedRef.current,
       endStrokeNullCount: diagEndStrokeNullRef.current,
       enteredPinchCount: diagEnteredPinchRef.current,
+      listenerAttachCount: diagListenerAttachRef.current,
     };
   }, []);
   useEffect(() => {
@@ -790,24 +795,44 @@ export function DrawingCanvas({
     }
   }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
 
+  // Latest-handler refs so the native listeners below can stay attached for
+  // the life of the canvas. Re-attaching listeners on every prop change
+  // (the previous pattern) created brief gaps during which iOS Safari
+  // would silently drop the canvas as a touch target — manifesting as the
+  // "draw one stroke after a photo swap, then no more touches reach the
+  // canvas" bug. Reload or task-switch round-trip restored routing.
+  const handleTouchStartRef = useRef(handleTouchStart);
+  const handleTouchMoveRef = useRef(handleTouchMove);
+  const handleTouchEndRef = useRef(handleTouchEnd);
+  useEffect(() => { handleTouchStartRef.current = handleTouchStart; });
+  useEffect(() => { handleTouchMoveRef.current = handleTouchMove; });
+  useEffect(() => { handleTouchEndRef.current = handleTouchEnd; });
+
   // Register touch listeners natively (not via React's synthetic onTouch*
   // props) so we can pass { passive: false } and actually preventDefault.
   // Without this, browsers warn "Unable to preventDefault inside passive
   // event listener" on every move during a stroke.
+  // Effect deps are intentionally [] so the listeners are attached exactly
+  // once per canvas mount; the ref bridge above forwards to the latest
+  // handler closure on each event.
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+    diagListenerAttachRef.current++;
+    const onStart = (e: Event) => handleTouchStartRef.current(e as TouchEvent);
+    const onMove = (e: Event) => handleTouchMoveRef.current(e as TouchEvent);
+    const onEnd = (e: Event) => handleTouchEndRef.current(e as TouchEvent);
+    canvas.addEventListener('touchstart', onStart, { passive: false });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd, { passive: false });
+    canvas.addEventListener('touchcancel', onEnd, { passive: false });
     return () => {
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+      canvas.removeEventListener('touchcancel', onEnd);
     };
-  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, []);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
