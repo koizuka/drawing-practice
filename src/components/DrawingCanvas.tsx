@@ -66,6 +66,15 @@ export interface DrawingCanvasDebugSnapshot {
   mvIntoPinch: number;
   /** Current point count of the in-flight stroke (0 when none). */
   curStrokePoints: number;
+  /** Cumulative completion count of `redrawAll`. */
+  redrawCount: number;
+  /** Number of `redrawAll` runs that actually drew an in-progress stroke
+   *  (current was non-null AND length >= 2). */
+  inProgDrawnCount: number;
+  /** Number of times `setupCanvas` ran (resize / mount). Setting canvas.width
+   *  resets the 2D context — useful to know if the canvas is being reset
+   *  out from under in-progress drawing. */
+  setupCanvasCount: number;
 }
 
 interface DrawingCanvasProps {
@@ -189,6 +198,9 @@ export function DrawingCanvas({
   const diagMvAppendOkRef = useRef(0);
   const diagMvAppendSkipRef = useRef(0);
   const diagMvIntoPinchRef = useRef(0);
+  const diagRedrawCountRef = useRef(0);
+  const diagInProgDrawnRef = useRef(0);
+  const diagSetupCanvasRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -243,6 +255,9 @@ export function DrawingCanvas({
       mvAppendSkip: diagMvAppendSkipRef.current,
       mvIntoPinch: diagMvIntoPinchRef.current,
       curStrokePoints: strokeManager.getCurrentStroke()?.points.length ?? 0,
+      redrawCount: diagRedrawCountRef.current,
+      inProgDrawnCount: diagInProgDrawnRef.current,
+      setupCanvasCount: diagSetupCanvasRef.current,
     };
   }, [strokeManager]);
   useEffect(() => {
@@ -320,6 +335,7 @@ export function DrawingCanvas({
     const current = strokeManager.getCurrentStroke();
     if (current && current.points.length >= 2) {
       renderer.drawStroke(current);
+      diagInProgDrawnRef.current++;
     }
 
     // Grid + guide lines in canvas (world) coordinate space.
@@ -339,6 +355,7 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    diagRedrawCountRef.current++;
   }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize]);
 
   // Setup canvas with DPR
@@ -346,6 +363,7 @@ export function DrawingCanvas({
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
+    diagSetupCanvasRef.current++;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();

@@ -33,6 +33,9 @@ interface DeltaSample {
   strk: number;
   comm: number;
   nul: number;
+  rdr: number;
+  inProg: number;
+  setup: number;
 }
 
 interface DeltaValues {
@@ -45,6 +48,9 @@ interface DeltaValues {
   strk: number;
   comm: number;
   nul: number;
+  rdr: number;
+  inProg: number;
+  setup: number;
 }
 
 function buildLines(
@@ -54,11 +60,12 @@ function buildLines(
   delta: DeltaValues | null,
 ): string[] {
   if (!snap) return [`tx=${transitioning ? 1 : 0} st=${status} (no snap)`];
-  const d = delta ?? { ts: 0, mv: 0, mvOk: 0, mvSkip: 0, mvPin: 0, end: 0, strk: 0, comm: 0, nul: 0 };
+  const d = delta ?? { ts: 0, mv: 0, mvOk: 0, mvSkip: 0, mvPin: 0, end: 0, strk: 0, comm: 0, nul: 0, rdr: 0, inProg: 0, setup: 0 };
   return [
     `tx=${transitioning ? 1 : 0} st=${status} ats=${snap.activeTouchesSize} sty=${snap.hasStylus ? 1 : 0} lastT=${snap.lastTouchType} ago=${snap.secsSinceLastStart < 0 ? '-' : `${snap.secsSinceLastStart}s`}`,
     `ts=${snap.touchStartCount}(+${d.ts}) mv=${snap.touchMoveCount}(+${d.mv}) end=${snap.touchEndCount}(+${d.end}) strk=${snap.startStrokeCount}(+${d.strk}) com=${snap.endStrokeCommittedCount}(+${d.comm}) nul=${snap.endStrokeNullCount}(+${d.nul})`,
     `mvOk=${snap.mvAppendOk}(+${d.mvOk}) mvSkip=${snap.mvAppendSkip}(+${d.mvSkip}) mvPin=${snap.mvIntoPinch}(+${d.mvPin}) cur=${snap.curStrokePoints}`,
+    `rdr=${snap.redrawCount}(+${d.rdr}) inProg=${snap.inProgDrawnCount}(+${d.inProg}) setup=${snap.setupCanvasCount}(+${d.setup})`,
     `pe=${snap.enteredPinchCount} cnc=${snap.cancelStrokeCount} rejF=${snap.rejFrozen} rejP=${snap.rejPalm} rejS=${snap.rejStylusFilter} att=${snap.listenerAttachCount}`,
   ];
 }
@@ -96,6 +103,9 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
         strk: next.startStrokeCount,
         comm: next.endStrokeCommittedCount,
         nul: next.endStrokeNullCount,
+        rdr: next.redrawCount,
+        inProg: next.inProgDrawnCount,
+        setup: next.setupCanvasCount,
       });
       const cutoff = now - DELTA_WINDOW_MS * 2;
       while (samplesRef.current.length > 0 && samplesRef.current[0].at < cutoff) {
@@ -119,6 +129,9 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
           strk: next.startStrokeCount - base.strk,
           comm: next.endStrokeCommittedCount - base.comm,
           nul: next.endStrokeNullCount - base.nul,
+          rdr: next.redrawCount - base.rdr,
+          inProg: next.inProgDrawnCount - base.inProg,
+          setup: next.setupCanvasCount - base.setup,
         });
       }
     }, POLL_INTERVAL_MS);
