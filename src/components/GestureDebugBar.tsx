@@ -29,11 +29,13 @@ interface DeltaSample {
   mv: number;
   end: number;
   strk: number;
+  comm: number;
+  nul: number;
 }
 
 export function GestureDebugBar({ active, status, transitioning, debugSnapshotRef }: GestureDebugBarProps) {
   const [snap, setSnap] = useState<DrawingCanvasDebugSnapshot | null>(null);
-  const [delta, setDelta] = useState<{ ts: number; mv: number; end: number; strk: number } | null>(null);
+  const [delta, setDelta] = useState<{ ts: number; mv: number; end: number; strk: number; comm: number; nul: number } | null>(null);
   // Rolling window of recent samples; we compute "5s ago" by binary-search-ish
   // scan. Capped to ~50 entries (10s at 5Hz polling) to bound memory.
   const samplesRef = useRef<DeltaSample[]>([]);
@@ -55,6 +57,8 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
         mv: next.touchMoveCount,
         end: next.touchEndCount,
         strk: next.startStrokeCount,
+        comm: next.endStrokeCommittedCount,
+        nul: next.endStrokeNullCount,
       });
       // Prune samples older than 2× window (keeps the "5s ago" lookup cheap).
       const cutoff = now - DELTA_WINDOW_MS * 2;
@@ -76,6 +80,8 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
           mv: next.touchMoveCount - base.mv,
           end: next.touchEndCount - base.end,
           strk: next.startStrokeCount - base.strk,
+          comm: next.endStrokeCommittedCount - base.comm,
+          nul: next.endStrokeNullCount - base.nul,
         });
       }
     }, POLL_INTERVAL_MS);
@@ -88,9 +94,13 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
     ? `tx=${transitioning ? 1 : 0} st=${status} ats=${snap.activeTouchesSize} sty=${snap.hasStylus ? 1 : 0} lastT=${snap.lastTouchType} ago=${snap.secsSinceLastStart < 0 ? '-' : `${snap.secsSinceLastStart}s`}`
     : `tx=${transitioning ? 1 : 0} st=${status} (snap=null)`;
 
-  const d = delta ?? { ts: 0, mv: 0, end: 0, strk: 0 };
+  const d = delta ?? { ts: 0, mv: 0, end: 0, strk: 0, comm: 0, nul: 0 };
   const line2 = snap
-    ? `ts=${snap.touchStartCount}(+${d.ts}) mv=${snap.touchMoveCount}(+${d.mv}) end=${snap.touchEndCount}(+${d.end}) strk=${snap.startStrokeCount}(+${d.strk})/${snap.endStrokeCommittedCount}:${snap.endStrokeNullCount} pe=${snap.enteredPinchCount} rejF=${snap.rejFrozen} att=${snap.listenerAttachCount}`
+    ? `ts=${snap.touchStartCount}(+${d.ts}) mv=${snap.touchMoveCount}(+${d.mv}) end=${snap.touchEndCount}(+${d.end}) strk=${snap.startStrokeCount}(+${d.strk}) com=${snap.endStrokeCommittedCount}(+${d.comm}) nul=${snap.endStrokeNullCount}(+${d.nul})`
+    : '';
+
+  const line3 = snap
+    ? `pe=${snap.enteredPinchCount} cnc=${snap.cancelStrokeCount} rejF=${snap.rejFrozen} rejP=${snap.rejPalm} rejS=${snap.rejStylusFilter} att=${snap.listenerAttachCount}`
     : '';
 
   return (
@@ -113,6 +123,8 @@ export function GestureDebugBar({ active, status, transitioning, debugSnapshotRe
       {line1}
       {line2 && '\n'}
       {line2}
+      {line3 && '\n'}
+      {line3}
     </Box>
   );
 }

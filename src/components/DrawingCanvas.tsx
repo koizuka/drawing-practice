@@ -50,6 +50,9 @@ export interface DrawingCanvasDebugSnapshot {
   /** Cumulative count of `addEventListener('touchstart', ...)` calls — i.e.
    *  how many times the native listener attachment effect has re-run. */
   listenerAttachCount: number;
+  /** Count of `strokeManager.cancelStroke()` calls (pinch arming cancels
+   *  any in-flight stroke). */
+  cancelStrokeCount: number;
 }
 
 interface DrawingCanvasProps {
@@ -169,6 +172,7 @@ export function DrawingCanvas({
   const diagEndStrokeNullRef = useRef(0);
   const diagEnteredPinchRef = useRef(0);
   const diagListenerAttachRef = useRef(0);
+  const diagCancelStrokeRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -218,6 +222,7 @@ export function DrawingCanvas({
       endStrokeNullCount: diagEndStrokeNullRef.current,
       enteredPinchCount: diagEnteredPinchRef.current,
       listenerAttachCount: diagListenerAttachRef.current,
+      cancelStrokeCount: diagCancelStrokeRef.current,
     };
   }, []);
   useEffect(() => {
@@ -622,6 +627,7 @@ export function DrawingCanvas({
       // when the pinch ends.
       if (mode === 'pen' && strokeManager.getCurrentStroke()) {
         strokeManager.cancelStroke();
+        diagCancelStrokeRef.current++;
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
