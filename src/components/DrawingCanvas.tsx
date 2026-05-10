@@ -11,72 +11,6 @@ import type { GridSettings, GuideLine } from '../guides/types';
 
 export type DrawingMode = 'pen' | 'eraser' | 'lasso';
 
-/** Snapshot of internal touch / mode state for the diagnostic overlay used
- *  during gesture-session debugging. Only consumed by `GestureDebugBar` —
- *  not part of the regular drawing API. */
-export interface DrawingCanvasDebugSnapshot {
-  mode: DrawingMode;
-  inputFrozen: boolean;
-  activeTouchesSize: number;
-  pinchActive: boolean;
-  hasStylus: boolean;
-  /** `touchType` string of the most recent touchstart, or '-' when none. */
-  lastTouchType: string;
-  /** Cumulative count of native touchstart events received on the canvas
-   *  since mount. If this stops incrementing while the user taps, native
-   *  listeners are no longer dispatching. */
-  touchStartCount: number;
-  /** touchstart events rejected by the inputFrozen gate. */
-  rejFrozen: number;
-  /** touchstart events rejected by the palm-rejection (post stylus). */
-  rejPalm: number;
-  /** touchstart events rejected by hasStylus filter on touchmove. */
-  rejStylusFilter: number;
-  /** Seconds since the last native touchstart (rounded). */
-  secsSinceLastStart: number;
-  /** Cumulative count of native touchmove events received on the canvas. */
-  touchMoveCount: number;
-  /** Cumulative count of native touchend / touchcancel events. */
-  touchEndCount: number;
-  /** Count of `strokeManager.startStroke()` calls (i.e. touchstart that
-   *  passed all filters and entered pen mode). */
-  startStrokeCount: number;
-  /** Count of `endStroke` calls that returned a committed stroke. */
-  endStrokeCommittedCount: number;
-  /** Count of `endStroke` calls that returned null (stroke too short). */
-  endStrokeNullCount: number;
-  /** Count of touchstart events that armed pinch (2-finger). */
-  enteredPinchCount: number;
-  /** Cumulative count of `addEventListener('touchstart', ...)` calls — i.e.
-   *  how many times the native listener attachment effect has re-run. */
-  listenerAttachCount: number;
-  /** Count of `strokeManager.cancelStroke()` calls (pinch arming cancels
-   *  any in-flight stroke). */
-  cancelStrokeCount: number;
-  /** touchmove that reached the pen-drawing branch (passed pinch/lasso/palm
-   *  filters AND mode==='pen') AND `appendStroke` returned true (point
-   *  actually pushed). */
-  mvAppendOk: number;
-  /** touchmove that reached the pen-drawing branch but `appendStroke`
-   *  returned false (no currentStroke, or new point collapses onto the
-   *  previous after quantize). */
-  mvAppendSkip: number;
-  /** touchmove that was diverted into the pinch branch (pinchRef !== null
-   *  at touchmove time). */
-  mvIntoPinch: number;
-  /** Current point count of the in-flight stroke (0 when none). */
-  curStrokePoints: number;
-  /** Cumulative completion count of `redrawAll`. */
-  redrawCount: number;
-  /** Number of `redrawAll` runs that actually drew an in-progress stroke
-   *  (current was non-null AND length >= 2). */
-  inProgDrawnCount: number;
-  /** Number of times `setupCanvas` ran (resize / mount). Setting canvas.width
-   *  resets the 2D context — useful to know if the canvas is being reset
-   *  out from under in-progress drawing. */
-  setupCanvasCount: number;
-}
-
 interface DrawingCanvasProps {
   mode: DrawingMode;
   highlightedStrokeIndex: number | null;
@@ -104,11 +38,6 @@ interface DrawingCanvasProps {
    *  In-flight strokes (started before the freeze) are NOT cancelled here —
    *  the caller's clear-strokes step handles that. */
   inputFrozen?: boolean;
-  /** Diagnostic-only: parent passes a ref slot that DrawingCanvas fills with
-   *  a snapshot getter. Used by `GestureDebugBar` to read internal state
-   *  (active touch count, pinch flag, last touchType) without needing to
-   *  expose individual refs. Optional — never used in production paths. */
-  debugSnapshotRef?: React.RefObject<(() => DrawingCanvasDebugSnapshot) | null>;
 }
 
 const ERASER_THRESHOLD = 20;
@@ -149,15 +78,10 @@ export function DrawingCanvas({
   onCurrentStrokeChange,
   viewTransform,
   inputFrozen = false,
-  debugSnapshotRef,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
     inputFrozenRef.current = inputFrozen;
-  });
-  const modeRef = useRef(mode);
-  useEffect(() => {
-    modeRef.current = mode;
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -170,37 +94,6 @@ export function DrawingCanvas({
     viewTransformRef.current = viewTransform ?? new ViewTransform();
   }
   const hasStylusRef = useRef(false);
-  // Diagnostic only — written by handleTouchStart, read by GestureDebugBar.
-  const lastTouchTypeRef = useRef<string>('-');
-  // Diagnostic-only mirrors of `pinchRef !== null` and `activeTouchesRef.size`.
-  // Kept as separate primitive refs so the snapshot getter does not capture
-  // the underlying mutable refs — referencing `pinchRef` from a closure that
-  // gets passed to `useEffect` would trigger the React Compiler immutability
-  // rule on every existing `pinchRef.current = ...` assignment.
-  const pinchActiveDiagRef = useRef(false);
-  const activeTouchesCountDiagRef = useRef(0);
-  // Diagnostic counters — incremented at the relevant event sites so the
-  // debug bar can show whether touchstart is firing at all (vs. being
-  // dropped by iOS) and which filter rejected it when one fires.
-  const diagTouchStartCountRef = useRef(0);
-  const diagRejFrozenRef = useRef(0);
-  const diagRejPalmRef = useRef(0);
-  const diagRejStylusFilterRef = useRef(0);
-  const diagLastTouchStartAtRef = useRef<number>(0);
-  const diagTouchMoveCountRef = useRef(0);
-  const diagTouchEndCountRef = useRef(0);
-  const diagStartStrokeCountRef = useRef(0);
-  const diagEndStrokeCommittedRef = useRef(0);
-  const diagEndStrokeNullRef = useRef(0);
-  const diagEnteredPinchRef = useRef(0);
-  const diagListenerAttachRef = useRef(0);
-  const diagCancelStrokeRef = useRef(0);
-  const diagMvAppendOkRef = useRef(0);
-  const diagMvAppendSkipRef = useRef(0);
-  const diagMvIntoPinchRef = useRef(0);
-  const diagRedrawCountRef = useRef(0);
-  const diagInProgDrawnRef = useRef(0);
-  const diagSetupCanvasRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -223,50 +116,6 @@ export function DrawingCanvas({
   const containerSizeRef = useRef<ContainerSize>({ width: 0, height: 0 });
   const fitSizeRef = useRef(fitSize);
   useEffect(() => { fitSizeRef.current = fitSize; });
-
-  // Diagnostic snapshot getter built once and installed via the parent ref
-  // when present. Defined as `useCallback` (not inside an effect) so the
-  // React Compiler immutability rule does not treat pinchRef / activeTouchesRef
-  // as "read in an effect" — those refs are mutated heavily elsewhere in this
-  // file, and reading them inside an effect would lock down those writes.
-  const getDebugSnapshot = useCallback((): DrawingCanvasDebugSnapshot => {
-    const last = diagLastTouchStartAtRef.current;
-    return {
-      mode: modeRef.current,
-      inputFrozen: inputFrozenRef.current,
-      activeTouchesSize: activeTouchesCountDiagRef.current,
-      pinchActive: pinchActiveDiagRef.current,
-      hasStylus: hasStylusRef.current,
-      lastTouchType: lastTouchTypeRef.current,
-      touchStartCount: diagTouchStartCountRef.current,
-      rejFrozen: diagRejFrozenRef.current,
-      rejPalm: diagRejPalmRef.current,
-      rejStylusFilter: diagRejStylusFilterRef.current,
-      secsSinceLastStart: last === 0 ? -1 : Math.round((Date.now() - last) / 1000),
-      touchMoveCount: diagTouchMoveCountRef.current,
-      touchEndCount: diagTouchEndCountRef.current,
-      startStrokeCount: diagStartStrokeCountRef.current,
-      endStrokeCommittedCount: diagEndStrokeCommittedRef.current,
-      endStrokeNullCount: diagEndStrokeNullRef.current,
-      enteredPinchCount: diagEnteredPinchRef.current,
-      listenerAttachCount: diagListenerAttachRef.current,
-      cancelStrokeCount: diagCancelStrokeRef.current,
-      mvAppendOk: diagMvAppendOkRef.current,
-      mvAppendSkip: diagMvAppendSkipRef.current,
-      mvIntoPinch: diagMvIntoPinchRef.current,
-      curStrokePoints: strokeManager.getCurrentStroke()?.points.length ?? 0,
-      redrawCount: diagRedrawCountRef.current,
-      inProgDrawnCount: diagInProgDrawnRef.current,
-      setupCanvasCount: diagSetupCanvasRef.current,
-    };
-  }, [strokeManager]);
-  useEffect(() => {
-    if (!debugSnapshotRef) return;
-    debugSnapshotRef.current = getDebugSnapshot;
-    return () => {
-      debugSnapshotRef.current = null;
-    };
-  }, [debugSnapshotRef, getDebugSnapshot]);
 
   const getBaseScale = useCallback(() => computeBaseScale(containerSizeRef.current, fitSizeRef.current), []);
 
@@ -335,7 +184,6 @@ export function DrawingCanvas({
     const current = strokeManager.getCurrentStroke();
     if (current && current.points.length >= 2) {
       renderer.drawStroke(current);
-      diagInProgDrawnRef.current++;
     }
 
     // Grid + guide lines in canvas (world) coordinate space.
@@ -355,7 +203,6 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    diagRedrawCountRef.current++;
   }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize]);
 
   // Setup canvas with DPR
@@ -363,7 +210,6 @@ export function DrawingCanvas({
     const canvas = canvasRef.current;
     const container = containerRef.current;
     if (!canvas || !container) return;
-    diagSetupCanvasRef.current++;
 
     const dpr = window.devicePixelRatio || 1;
     const rect = container.getBoundingClientRect();
@@ -629,24 +475,18 @@ export function DrawingCanvas({
   // event listener" warnings.
   const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
-    diagTouchStartCountRef.current++;
-    diagLastTouchStartAtRef.current = Date.now();
 
     // Gesture-session swap window: reject the new touch entirely (no stroke
     // start, no pinch arming) so a reflexive post-swap tap is dropped. We
     // still preventDefault above so the browser doesn't fall back to default
     // touch behavior (scroll, etc.).
-    if (inputFrozenRef.current) {
-      diagRejFrozenRef.current++;
-      return;
-    }
+    if (inputFrozenRef.current) return;
 
     // Track all touches
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
     }
-    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Detect stylus
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -654,7 +494,6 @@ export function DrawingCanvas({
       if (touch.touchType === 'stylus') {
         hasStylusRef.current = true;
       }
-      lastTouchTypeRef.current = touch.touchType ?? 'direct';
     }
 
     // 2-finger pinch
@@ -665,7 +504,6 @@ export function DrawingCanvas({
       // when the pinch ends.
       if (mode === 'pen' && strokeManager.getCurrentStroke()) {
         strokeManager.cancelStroke();
-        diagCancelStrokeRef.current++;
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
@@ -687,18 +525,13 @@ export function DrawingCanvas({
         lastMidX: (t1.x + t2.x) / 2,
         lastMidY: (t1.y + t2.y) / 2,
       };
-      pinchActiveDiagRef.current = true;
-      diagEnteredPinchRef.current++;
       pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
       return;
     }
 
     // Single touch: drawing
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
-      diagRejPalmRef.current++;
-      return;
-    }
+    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
@@ -718,24 +551,20 @@ export function DrawingCanvas({
     }
     else {
       strokeManager.startStroke(point);
-      diagStartStrokeCountRef.current++;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
-    diagTouchMoveCountRef.current++;
 
     // Update tracked touches
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
     }
-    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Pinch zoom/pan
     if (pinchRef.current) {
-      diagMvIntoPinchRef.current++;
       const t1 = activeTouchesRef.current.get(pinchRef.current.id1);
       const t2 = activeTouchesRef.current.get(pinchRef.current.id2);
       if (!t1 || !t2) return;
@@ -771,10 +600,7 @@ export function DrawingCanvas({
     // Lasso path drawing
     if (mode === 'lasso' && lassoPointsRef.current) {
       const touch = e.changedTouches[0] as Touch & { touchType?: string };
-      if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
-        diagRejStylusFilterRef.current++;
-        return;
-      }
+      if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
       const point = getCanvasPoint(touch.clientX, touch.clientY);
       appendLasso(point);
       recomputeLassoSelection();
@@ -785,17 +611,10 @@ export function DrawingCanvas({
     // Drawing
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (shouldRejectAsPalm(hasStylusRef.current, touch)) {
-      diagRejStylusFilterRef.current++;
-      return;
-    }
+    if (shouldRejectAsPalm(hasStylusRef.current, touch)) return;
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
-    if (!strokeManager.appendStroke(point)) {
-      diagMvAppendSkipRef.current++;
-      return;
-    }
-    diagMvAppendOkRef.current++;
+    if (!strokeManager.appendStroke(point)) return;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
@@ -805,20 +624,17 @@ export function DrawingCanvas({
     // don't trip an "Ignored attempt to cancel a touchend" intervention
     // warning (the preventDefault would be a no-op anyway).
     if (e.cancelable) e.preventDefault();
-    diagTouchEndCountRef.current++;
 
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
       activeTouchesRef.current.delete(touch.identifier);
     }
-    activeTouchesCountDiagRef.current = activeTouchesRef.current.size;
 
     // Clear pinch if one of the pinch fingers lifted
     if (pinchRef.current) {
       if (!activeTouchesRef.current.has(pinchRef.current.id1)
         || !activeTouchesRef.current.has(pinchRef.current.id2)) {
         pinchRef.current = null;
-        pinchActiveDiagRef.current = false;
         pinchRectRef.current = null;
       }
     }
@@ -826,13 +642,9 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManager.endStroke();
       if (stroke) {
-        diagEndStrokeCommittedRef.current++;
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
-      }
-      else {
-        diagEndStrokeNullRef.current++;
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
@@ -845,11 +657,10 @@ export function DrawingCanvas({
   }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
 
   // Latest-handler refs so the native listeners below can stay attached for
-  // the life of the canvas. Re-attaching listeners on every prop change
-  // (the previous pattern) created brief gaps during which iOS Safari
-  // would silently drop the canvas as a touch target — manifesting as the
-  // "draw one stroke after a photo swap, then no more touches reach the
-  // canvas" bug. Reload or task-switch round-trip restored routing.
+  // the life of the canvas. The handlers themselves have many transitive
+  // useCallback deps (mode, fitSize, redrawAll, …) and would otherwise churn
+  // on every photo swap / prop change, causing the listener-attach effect to
+  // detach and re-attach. The ref-bridge keeps listener identity stable.
   const handleTouchStartRef = useRef(handleTouchStart);
   const handleTouchMoveRef = useRef(handleTouchMove);
   const handleTouchEndRef = useRef(handleTouchEnd);
@@ -867,7 +678,6 @@ export function DrawingCanvas({
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    diagListenerAttachRef.current++;
     const onStart = (e: Event) => handleTouchStartRef.current(e as TouchEvent);
     const onMove = (e: Event) => handleTouchMoveRef.current(e as TouchEvent);
     const onEnd = (e: Event) => handleTouchEndRef.current(e as TouchEvent);
@@ -936,13 +746,9 @@ export function DrawingCanvas({
     if (mode === 'pen') {
       const stroke = strokeManager.endStroke();
       if (stroke) {
-        diagEndStrokeCommittedRef.current++;
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
-      }
-      else {
-        diagEndStrokeNullRef.current++;
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {

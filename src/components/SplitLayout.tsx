@@ -10,8 +10,6 @@ import { useGuides } from '../guides/useGuides';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
-import { GestureDebugBar } from './GestureDebugBar';
-import type { DrawingCanvasDebugSnapshot } from './DrawingCanvas';
 import { computeFitLeader, resolveDrawingFitSize } from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
@@ -46,8 +44,6 @@ function SplitLayoutInner() {
   const [overlayActive, setOverlayActive] = useState(false);
   const currentStrokeRef = useRef<Stroke | null>(null);
   const overlayRedrawFnRef = useRef<(() => void) | null>(null);
-  // Diagnostic-only: filled by DrawingCanvas, polled by GestureDebugBar.
-  const drawingDebugSnapshotRef = useRef<(() => DrawingCanvasDebugSnapshot) | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
@@ -876,12 +872,6 @@ function SplitLayoutInner() {
       {/* Gesture HUD sits above both panels as a normal flex row so the
           drawing canvas keeps the same height as the reference panel — an
           earlier overlay-style HUD blocked the top of the canvas. */}
-      <GestureDebugBar
-        active={gestureSession.active}
-        status={gestureSession.status}
-        transitioning={gestureSession.transitioning}
-        debugSnapshotRef={drawingDebugSnapshotRef}
-      />
       <GestureHUD
         active={gestureSession.active}
         paused={gestureSession.paused}
@@ -956,7 +946,6 @@ function SplitLayoutInner() {
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
               inputFrozen={gestureSession.transitioning}
-              debugSnapshotRef={drawingDebugSnapshotRef}
             />
           </Box>
         </Box>
