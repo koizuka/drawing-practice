@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, IconButton, Button, ToggleButton, ToggleButtonGroup, Menu, MenuItem } from '@mui/material';
+import { Box, Typography, IconButton, Button, Checkbox, ToggleButton, ToggleButtonGroup, Menu, MenuItem } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { X, Trash2, ChevronDown, ChevronRight, Download } from 'lucide-react';
 import {
@@ -48,6 +48,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
   const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode);
   const [imageThumbs, setImageThumbs] = useState<Record<string, string | null>>({});
   const [usage, setUsage] = useState<StorageUsage | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
   const enqueuedKeysRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<string[]>([]);
 
@@ -112,14 +113,27 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
     };
   }, []);
 
-  const handleDelete = useCallback(async (id: number) => {
-    await deleteDrawing(id);
-    const next = drawings.filter(d => d.id !== id);
-    setDrawings(next);
-    computeStorageUsage(next).then((u) => {
+  const toggleSelected = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    const idsSnapshot = new Set(selectedIds);
+    await Promise.all([...idsSnapshot].map(id => deleteDrawing(id)));
+    if (!mountedRef.current) return;
+    const remaining = drawings.filter(d => d.id == null || !idsSnapshot.has(d.id));
+    setDrawings(remaining);
+    setSelectedIds(new Set());
+    computeStorageUsage(remaining).then((u) => {
       if (mountedRef.current) setUsage(u);
     }).catch(() => { /* ignore */ });
-  }, [drawings]);
+  }, [drawings, selectedIds]);
 
   const handleLoadDrawingReference = useCallback((drawing: DrawingRecord) => {
     const ref = drawing.reference;
@@ -186,7 +200,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
               <X size={20} />
             </IconButton>
           </Box>
-          <Box sx={{ display: 'flex', mt: 1, flexWrap: 'wrap', gap: 1 }}>
+          <Box sx={{ display: 'flex', mt: 1, flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
             <ToggleButtonGroup
               value={groupMode}
               exclusive
@@ -200,6 +214,17 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
               <ToggleButton value="ref-first">{t('groupByRefFirst')}</ToggleButton>
               <ToggleButton value="ref-recent">{t('groupByRefRecent')}</ToggleButton>
             </ToggleButtonGroup>
+            {selectedIds.size > 0 && (
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                startIcon={<Trash2 size={16} />}
+                onClick={handleBulkDelete}
+              >
+                {`${t('delete')} (${selectedIds.size})`}
+              </Button>
+            )}
           </Box>
           {usage && <StorageUsageRow usage={usage} />}
         </Box>
@@ -273,7 +298,8 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
                       showReferenceLabel={!isRefMode}
                       showReferenceButton={!isRefMode && canLoadReference(drawing.reference)}
                       referenceThumbUrl={!isRefMode ? getThumbForRef(drawing.reference) : null}
-                      onDelete={handleDelete}
+                      selected={drawing.id != null && selectedIds.has(drawing.id)}
+                      onToggleSelect={toggleSelected}
                       onLoadReference={handleLoadDrawingReference}
                     />
                   ))}
@@ -413,7 +439,8 @@ interface DrawingCardProps {
   showReferenceLabel: boolean;
   showReferenceButton: boolean;
   referenceThumbUrl: string | null;
-  onDelete: (id: number) => void;
+  selected: boolean;
+  onToggleSelect: (id: number) => void;
   onLoadReference: (drawing: DrawingRecord) => void;
 }
 
@@ -422,27 +449,52 @@ function DrawingCard({
   showReferenceLabel,
   showReferenceButton,
   referenceThumbUrl,
-  onDelete,
+  selected,
+  onToggleSelect,
   onLoadReference,
 }: DrawingCardProps) {
   const refLabel = showReferenceLabel
     ? refLabelOf(drawing.reference, drawing.referenceInfo || '')
     : '';
+  const drawingId = drawing.id;
   return (
     <Box
       sx={{
         'border': '1px solid #ddd',
         'borderRadius': 1,
         'overflow': 'hidden',
+        'position': 'relative',
+        'outline': selected ? '2px solid' : 'none',
+        'outlineColor': 'primary.main',
+        'outlineOffset': '-2px',
         '&:hover': { borderColor: 'primary.main' },
       }}
     >
       {drawing.thumbnail && (
         <img
           src={drawing.thumbnail}
-          alt={`#${drawing.id}`}
+          alt={`#${drawingId}`}
           style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
         />
+      )}
+      {drawingId != null && (
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 4,
+            right: 4,
+            bgcolor: 'rgba(255,255,255,0.85)',
+            borderRadius: '50%',
+            lineHeight: 0,
+          }}
+        >
+          <Checkbox
+            size="small"
+            checked={selected}
+            onChange={() => onToggleSelect(drawingId)}
+            slotProps={{ input: { 'aria-label': selected ? t('deselectDrawing') : t('selectDrawing') } }}
+          />
+        </Box>
       )}
       <Box sx={{ p: 1 }}>
         <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
@@ -482,14 +534,6 @@ function DrawingCard({
           )}
           <Box sx={{ flex: 1 }} />
           <ExportMenuButton drawing={drawing} />
-          <ToolbarTooltip title={t('delete')}>
-            <IconButton
-              size="small"
-              onClick={() => drawing.id != null && onDelete(drawing.id)}
-            >
-              <Trash2 size={20} />
-            </IconButton>
-          </ToolbarTooltip>
         </Box>
       </Box>
     </Box>

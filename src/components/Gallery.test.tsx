@@ -162,7 +162,7 @@ describe('Gallery', () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it('deletes a drawing via deleteDrawing and removes it from the list', async () => {
+  it('does not delete anything until the bulk-delete button is pressed', async () => {
     getAllDrawingsMock.mockResolvedValue([
       makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
       makeDrawing('2026-03-10T10:00:00Z', youtubeRef),
@@ -170,14 +170,51 @@ describe('Gallery', () => {
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (2)')).toBeInTheDocument());
 
-    const deleteButtons = screen.getAllByRole('button', { name: 'Delete' });
-    expect(deleteButtons).toHaveLength(2);
-    fireEvent.click(deleteButtons[0]);
+    // No bulk-delete button exists when nothing is selected.
+    expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull();
+    expect(deleteDrawingMock).not.toHaveBeenCalled();
+  });
+
+  it('selects via checkbox and bulk-deletes via the delete button', async () => {
+    getAllDrawingsMock.mockResolvedValue([
+      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
+      makeDrawing('2026-03-10T10:00:00Z', youtubeRef),
+    ]);
+    render(<Gallery onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Gallery (2)')).toBeInTheDocument());
+
+    const selectBoxes = screen.getAllByRole('checkbox', { name: 'Select this drawing' });
+    expect(selectBoxes).toHaveLength(2);
+    fireEvent.click(selectBoxes[0]);
+
+    const bulkButton = await screen.findByRole('button', { name: 'Delete (1)' });
+    fireEvent.click(bulkButton);
 
     await waitFor(() => expect(deleteDrawingMock).toHaveBeenCalledTimes(1));
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1),
+      expect(screen.getAllByRole('checkbox', { name: 'Select this drawing' })).toHaveLength(1),
     );
+    expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull();
+  });
+
+  it('toggles selection off when the checkbox is clicked again', async () => {
+    getAllDrawingsMock.mockResolvedValue([
+      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
+    ]);
+    render(<Gallery onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
+
+    const selectBox = screen.getByRole('checkbox', { name: 'Select this drawing' });
+    fireEvent.click(selectBox);
+    await screen.findByRole('button', { name: 'Delete (1)' });
+
+    const deselectBox = screen.getByRole('checkbox', { name: 'Deselect this drawing' });
+    fireEvent.click(deselectBox);
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull(),
+    );
+    expect(deleteDrawingMock).not.toHaveBeenCalled();
   });
 
   it('renders an "Other" group for legacy drawings without a structured reference in ref modes', async () => {
