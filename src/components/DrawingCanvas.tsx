@@ -53,6 +53,19 @@ export interface DrawingCanvasDebugSnapshot {
   /** Count of `strokeManager.cancelStroke()` calls (pinch arming cancels
    *  any in-flight stroke). */
   cancelStrokeCount: number;
+  /** touchmove that reached the pen-drawing branch (passed pinch/lasso/palm
+   *  filters AND mode==='pen') AND `appendStroke` returned true (point
+   *  actually pushed). */
+  mvAppendOk: number;
+  /** touchmove that reached the pen-drawing branch but `appendStroke`
+   *  returned false (no currentStroke, or new point collapses onto the
+   *  previous after quantize). */
+  mvAppendSkip: number;
+  /** touchmove that was diverted into the pinch branch (pinchRef !== null
+   *  at touchmove time). */
+  mvIntoPinch: number;
+  /** Current point count of the in-flight stroke (0 when none). */
+  curStrokePoints: number;
 }
 
 interface DrawingCanvasProps {
@@ -173,6 +186,9 @@ export function DrawingCanvas({
   const diagEnteredPinchRef = useRef(0);
   const diagListenerAttachRef = useRef(0);
   const diagCancelStrokeRef = useRef(0);
+  const diagMvAppendOkRef = useRef(0);
+  const diagMvAppendSkipRef = useRef(0);
+  const diagMvIntoPinchRef = useRef(0);
   const rafIdRef = useRef<number>(0);
   // Lasso (free-form selection) state. Points are in world coordinates so the
   // selection follows the camera while the user draws; null when inactive.
@@ -223,8 +239,12 @@ export function DrawingCanvas({
       enteredPinchCount: diagEnteredPinchRef.current,
       listenerAttachCount: diagListenerAttachRef.current,
       cancelStrokeCount: diagCancelStrokeRef.current,
+      mvAppendOk: diagMvAppendOkRef.current,
+      mvAppendSkip: diagMvAppendSkipRef.current,
+      mvIntoPinch: diagMvIntoPinchRef.current,
+      curStrokePoints: strokeManager.getCurrentStroke()?.points.length ?? 0,
     };
-  }, []);
+  }, [strokeManager]);
   useEffect(() => {
     if (!debugSnapshotRef) return;
     debugSnapshotRef.current = getDebugSnapshot;
@@ -697,6 +717,7 @@ export function DrawingCanvas({
 
     // Pinch zoom/pan
     if (pinchRef.current) {
+      diagMvIntoPinchRef.current++;
       const t1 = activeTouchesRef.current.get(pinchRef.current.id1);
       const t2 = activeTouchesRef.current.get(pinchRef.current.id2);
       if (!t1 || !t2) return;
@@ -752,7 +773,11 @@ export function DrawingCanvas({
     }
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
-    if (!strokeManager.appendStroke(point)) return;
+    if (!strokeManager.appendStroke(point)) {
+      diagMvAppendSkipRef.current++;
+      return;
+    }
+    diagMvAppendOkRef.current++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
