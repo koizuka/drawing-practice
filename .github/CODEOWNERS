@@ -1,0 +1,6 @@
+# Code owners for drawing-practice.
+# Combined with branch protection ("Require review from Code Owners"),
+# this surfaces a review requirement on every PR — most importantly for
+# CI/CD and dependency changes, which are the supply-chain attack surface.
+
+* @koizuka
