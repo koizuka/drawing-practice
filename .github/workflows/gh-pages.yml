@@ -11,6 +11,7 @@ on:
       - 'tsconfig*.json'
       - 'vite.config.ts'
       - 'eslint.config.js'
+      - '.nvmrc'
       - '.github/workflows/gh-pages.yml'
 
   workflow_dispatch:
@@ -33,6 +34,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .nvmrc
 
       - run: npm ci
       - run: npm run build -- --base=/drawing-practice/

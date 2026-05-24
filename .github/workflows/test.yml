@@ -41,6 +41,7 @@ jobs:
               - 'src/**'
               - 'tsconfig*.json'
               - 'eslint.config.js'
+              - '.nvmrc'
               - '.github/workflows/test.yml'
 
   build:
@@ -55,6 +56,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .nvmrc
 
       - run: npm ci
       - name: Build
@@ -81,6 +85,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .nvmrc
 
       - run: npm ci
       - run: npm run lint
@@ -97,6 +104,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            .nvmrc
 
       - run: npm ci
       - run: npm run test
