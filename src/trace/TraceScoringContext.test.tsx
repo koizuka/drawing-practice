@@ -246,4 +246,75 @@ describe('TraceScoringContext', () => {
     expect(h.state.scores[0].attempts).toBe(2);
     expect(h.state.scores[0].bestErrorPct).toBeCloseTo(firstBest, 5);
   });
+
+  describe('attemptedStrokeTimestamps (re-trace visibility)', () => {
+    it('reflects only currently-live scored attempts', () => {
+      const h = harness();
+      const inner = circle(0, 0, 80, 96);
+      const outer = circle(0, 0, 240, 96);
+      h.setTemplate([inner, outer]);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(0);
+
+      const a = h.finalize(ringTrace(80, 96));
+      expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(true);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(1);
+
+      const b = h.finalize(ringTrace(240, 96));
+      expect(h.state.attemptedStrokeTimestamps.has(b.timestamp)).toBe(true);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(2);
+    });
+
+    it('removes a timestamp when its stroke is undone, and restores it after redo+sync', () => {
+      const h = harness();
+      h.setTemplate([circle(0, 0, 80, 96)]);
+      const a = h.finalize(ringTrace(80, 96));
+      expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(true);
+
+      act(() => { h.sm.undo(); h.state.syncAttempts(h.sm); });
+      expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(false);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(0);
+
+      act(() => { h.sm.redo(); h.state.syncAttempts(h.sm); });
+      expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(true);
+    });
+
+    it('drops the previous attempt timestamp when re-trace replaces it', () => {
+      const h = harness();
+      h.setTemplate([circle(0, 0, 100, 96)]);
+      const a = h.finalize(ringTrace(100, 96, 0, 1));
+      const b = h.finalize(ringTrace(100, 96, Math.PI / 2, -1));
+      // a was deleted by the replacement; only b is live.
+      expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(false);
+      expect(h.state.attemptedStrokeTimestamps.has(b.timestamp)).toBe(true);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(1);
+    });
+
+    it('is empty after setTemplate', () => {
+      const h = harness();
+      h.setTemplate([circle(0, 0, 80, 96)]);
+      h.finalize(ringTrace(80, 96));
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(1);
+
+      h.setTemplate([circle(0, 0, 50, 96)]);
+      expect(h.state.attemptedStrokeTimestamps.size).toBe(0);
+    });
+  });
+
+  describe('clearLatestFeedback', () => {
+    it('wipes latestFeedback without touching scores or strokes', () => {
+      const h = harness();
+      h.setTemplate([circle(0, 0, 80, 96)]);
+      h.finalize(ringTrace(80, 96));
+      expect(h.state.latestFeedback).not.toBeNull();
+      const prevScores = h.state.scores;
+      const prevStrokeCount = h.sm.getStrokes().length;
+
+      act(() => { h.state.clearLatestFeedback(); });
+
+      expect(h.state.latestFeedback).toBeNull();
+      // Scores + strokes unaffected; only the deviation overlay state is cleared.
+      expect(h.state.scores).toEqual(prevScores);
+      expect(h.sm.getStrokes()).toHaveLength(prevStrokeCount);
+    });
+  });
 });

@@ -23,6 +23,13 @@ interface TraceScoringValue {
   scores: readonly TemplateScore[];
   /** Latest deviation feedback, or null. */
   latestFeedback: TraceFeedback | null;
+  /**
+   * Set of `Stroke.timestamp` values for currently-live strokes that are
+   * scored attempts. The drawing canvas dims these so the template guide
+   * stays readable underneath when the user starts re-tracing. A stroke
+   * leaves the set when undone or otherwise removed from the manager.
+   */
+  attemptedStrokeTimestamps: ReadonlySet<number>;
   /** Total number of template strokes attempted at least once. */
   totalCovered: number;
   /** Total number of template strokes. */
@@ -50,6 +57,12 @@ interface TraceScoringValue {
    * never scored against the current template) are preserved.
    */
   resetScores: (strokeManager: StrokeManager) => void;
+  /**
+   * Wipe `latestFeedback`. Used by DrawingCanvas's pen-mode pointer-down
+   * handler so the red deviation bands disappear the instant the user
+   * starts a new stroke — they're noise during a re-trace.
+   */
+  clearLatestFeedback: () => void;
   /** Active template strokes (for canvas rendering). */
   templateStrokes: readonly TraceStroke[] | null;
 }
@@ -112,10 +125,24 @@ function computeAttemptMap(
   return map;
 }
 
+const EMPTY_TIMESTAMP_SET: ReadonlySet<number> = new Set<number>();
+
+function computeAttemptedTimestamps(
+  history: ReadonlyMap<number, AttemptRecord>,
+  liveTimestamps: ReadonlySet<number>,
+): Set<number> {
+  const out = new Set<number>();
+  for (const ts of history.keys()) {
+    if (liveTimestamps.has(ts)) out.add(ts);
+  }
+  return out;
+}
+
 export function TraceScoringProvider({ children }: ProviderProps) {
   const [templateStrokes, setTemplateStrokes] = useState<readonly TraceStroke[] | null>(null);
   const [scores, setScores] = useState<TemplateScore[]>([]);
   const [latestFeedback, setLatestFeedback] = useState<TraceFeedback | null>(null);
+  const [attemptedStrokeTimestamps, setAttemptedStrokeTimestamps] = useState<ReadonlySet<number>>(EMPTY_TIMESTAMP_SET);
 
   // Append-only history of every scored attempt. Live derived state is
   // recomputed via computeScores / computeAttemptMap against the
@@ -131,6 +158,7 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     setTemplateStrokes(strokes);
     setScores([]);
     setLatestFeedback(null);
+    setAttemptedStrokeTimestamps(EMPTY_TIMESTAMP_SET);
     // Template-idx values are template-relative, so history from a previous
     // template is meaningless against the new one. Strokes are intentionally
     // left in StrokeManager — the user may want to keep them as part of a
@@ -145,6 +173,7 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     for (const s of strokeManager.getStrokes()) live.add(s.timestamp);
     attemptMapRef.current = computeAttemptMap(attemptHistoryRef.current, live);
     setScores(computeScores(attemptHistoryRef.current, live, allTimeStatsRef.current));
+    setAttemptedStrokeTimestamps(computeAttemptedTimestamps(attemptHistoryRef.current, live));
     // Feedback is left untouched here — it represents the most-recent
     // attempt's deviation overlay and should persist until the next trace.
     // (handleStrokeFinalized calls syncAttempts immediately after setting
@@ -162,12 +191,17 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     allTimeStatsRef.current = new Map();
     setScores([]);
     setLatestFeedback(null);
+    setAttemptedStrokeTimestamps(EMPTY_TIMESTAMP_SET);
 
     // Use discardStrokes (non-undoable) rather than lassoDelete: the user's
     // scoring history is already gone, so an Undo of the erase would
     // resurrect untracked ghost strokes that the scoring context has no
     // record of.
     if (tsToErase.size > 0) strokeManager.discardStrokes(tsToErase);
+  }, []);
+
+  const clearLatestFeedback = useCallback(() => {
+    setLatestFeedback(null);
   }, []);
 
   const handleStrokeFinalized = useCallback((stroke: Stroke, strokeManager: StrokeManager) => {
@@ -218,14 +252,16 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     setTemplate,
     scores,
     latestFeedback,
+    attemptedStrokeTimestamps,
     totalCovered,
     totalStrokes,
     overallBestPct,
     handleStrokeFinalized,
     syncAttempts,
     resetScores,
+    clearLatestFeedback,
     templateStrokes,
-  }), [setTemplate, scores, latestFeedback, totalCovered, totalStrokes, overallBestPct, handleStrokeFinalized, syncAttempts, resetScores, templateStrokes]);
+  }), [setTemplate, scores, latestFeedback, attemptedStrokeTimestamps, totalCovered, totalStrokes, overallBestPct, handleStrokeFinalized, syncAttempts, resetScores, clearLatestFeedback, templateStrokes]);
 
   return <TraceScoringContext.Provider value={value}>{children}</TraceScoringContext.Provider>;
 }

@@ -167,6 +167,13 @@ function SplitLayoutInner() {
     traceScoring.syncAttempts(strokeManager);
   }, [traceScoring, strokeManager]);
 
+  // Clears the lingering trace-template feedback the moment the user starts
+  // a new stroke — the red deviation bands from the previous attempt would
+  // otherwise obscure the template while the user is trying to re-trace.
+  const handleTraceStrokeStart = useCallback(() => {
+    traceScoring.clearLatestFeedback();
+  }, [traceScoring]);
+
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
   const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null);
   // Ref for refreshing the URL history dropdown after parent-initiated adds
@@ -1022,6 +1029,8 @@ function SplitLayoutInner() {
               traceOverallBestPct={traceScoring.overallBestPct}
               onTraceResetScores={handleTraceResetScores}
               onTraceSyncAttempts={handleTraceSyncAttempts}
+              dimmedStrokeTimestamps={traceScoring.attemptedStrokeTimestamps}
+              onTraceStrokeStart={handleTraceStrokeStart}
             />
           </Box>
         </Box>

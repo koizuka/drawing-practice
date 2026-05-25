@@ -45,7 +45,23 @@ interface DrawingCanvasProps {
   traceFeedback?: TraceFeedback | null;
   /** Called when a stroke is committed (after endStroke). Used by scoring. */
   onStrokeFinalized?: (stroke: Stroke) => void;
+  /**
+   * `Stroke.timestamp` values for strokes that should be rendered at
+   * reduced opacity. Trace-template scoring populates this with the
+   * already-attempted strokes so the underlying template guide stays
+   * visible during re-tracing.
+   */
+  dimmedStrokeTimestamps?: ReadonlySet<number> | null;
+  /**
+   * Fired when a pen-mode stroke is about to begin (right before
+   * `strokeManager.startStroke`). Used by trace-template scoring to clear
+   * the lingering deviation feedback so the re-trace surface is clean.
+   */
+  onStrokeStart?: () => void;
 }
+
+/** Opacity for scored trace-template attempts. See dimmedStrokeTimestamps. */
+const DIMMED_STROKE_OPACITY = 0.35;
 
 const ERASER_THRESHOLD = 20;
 
@@ -69,6 +85,8 @@ export function DrawingCanvas({
   templateStrokes = null,
   traceFeedback = null,
   onStrokeFinalized,
+  dimmedStrokeTimestamps = null,
+  onStrokeStart,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -158,6 +176,15 @@ export function DrawingCanvas({
 
     const strokes = strokeManager.getStrokes();
     const lassoSelected = lassoSelectedRef.current;
+    // Strokes tagged as scored attempts render at reduced opacity so the
+    // semi-transparent template guide stays readable underneath when the
+    // user starts re-tracing. Highlighted (lasso-preselected or eraser-
+    // hovered) strokes ignore the dim — the highlight is a stronger UI
+    // signal.
+    const opacityFor = (s: Stroke) =>
+      dimmedStrokeTimestamps && dimmedStrokeTimestamps.has(s.timestamp)
+        ? DIMMED_STROKE_OPACITY
+        : undefined;
     if (lassoSelected && lassoSelected.size > 0) {
       // Draw enclosed strokes in the highlight color so the user can see what
       // releasing the lasso right now would delete.
@@ -166,8 +193,13 @@ export function DrawingCanvas({
           renderer.drawHighlightedStroke(strokes[i]);
         }
         else {
-          renderer.drawStroke(strokes[i]);
+          renderer.drawStroke(strokes[i], undefined, undefined, opacityFor(strokes[i]));
         }
+      }
+    }
+    else if (dimmedStrokeTimestamps && dimmedStrokeTimestamps.size > 0) {
+      for (const s of strokes) {
+        renderer.drawStroke(s, undefined, undefined, opacityFor(s));
       }
     }
     else {
@@ -214,7 +246,7 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize, templateStrokes, traceFeedback]);
+  }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize, templateStrokes, traceFeedback, dimmedStrokeTimestamps]);
 
   // Setup canvas with DPR
   const setupCanvas = useCallback(() => {
@@ -561,9 +593,14 @@ export function DrawingCanvas({
       requestRedraw();
     }
     else {
+      // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
+      // can clear its lingering feedback in the same React batch as the
+      // first redraw — the user sees the red bands disappear the instant
+      // their pen touches down.
+      onStrokeStart?.();
       strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso, onStrokeStart]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
@@ -735,9 +772,12 @@ export function DrawingCanvas({
       requestRedraw();
     }
     else {
+      // See handleTouchStart — fire onStrokeStart before startStroke so the
+      // trace-scoring feedback clears on pointer-down.
+      onStrokeStart?.();
       strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, startMarching, requestRedraw, startLasso]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, startMarching, requestRedraw, startLasso, onStrokeStart]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current) return;

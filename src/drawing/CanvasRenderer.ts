@@ -32,21 +32,34 @@ export class CanvasRenderer {
     this.ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 
-  drawStroke(stroke: Stroke, color?: string, width?: number): void {
+  /**
+   * Draw a committed stroke. When `opacity` is supplied (range 0–1), the
+   * stroke is rendered through `ctx.globalAlpha` so trace-template scored
+   * attempts can be dimmed to keep the template guide readable underneath
+   * during re-tracing.
+   */
+  drawStroke(stroke: Stroke, color?: string, width?: number, opacity?: number): void {
     const points = stroke.points;
     if (points.length < 2) return;
 
-    this.ctx.beginPath();
-    this.ctx.strokeStyle = color ?? this.options.strokeColor;
-    this.ctx.lineWidth = width ?? this.options.strokeWidth;
-    this.ctx.lineCap = 'round';
-    this.ctx.lineJoin = 'round';
-
-    this.ctx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length; i++) {
-      this.ctx.lineTo(points[i].x, points[i].y);
+    const ctx = this.ctx;
+    const needsAlpha = opacity !== undefined && opacity !== 1;
+    if (needsAlpha) {
+      ctx.save();
+      ctx.globalAlpha = opacity;
     }
-    this.ctx.stroke();
+    ctx.beginPath();
+    ctx.strokeStyle = color ?? this.options.strokeColor;
+    ctx.lineWidth = width ?? this.options.strokeWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+    if (needsAlpha) ctx.restore();
   }
 
   drawStrokes(strokes: readonly Stroke[]): void {

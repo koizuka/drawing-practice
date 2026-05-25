@@ -92,6 +92,18 @@ interface DrawingPanelProps {
   onTraceResetScores?: () => void;
   /** Resync scoring derived state when strokes mutate outside scoring (undo/redo/erase). */
   onTraceSyncAttempts?: () => void;
+  /**
+   * Stroke timestamps that should render dimmed on the drawing canvas
+   * (trace-template scored attempts) so the underlying template guide
+   * stays readable while the user re-traces.
+   */
+  dimmedStrokeTimestamps?: ReadonlySet<number> | null;
+  /**
+   * Called the instant the user starts a pen-mode stroke. Trace-template
+   * scoring uses this to clear the previous attempt's red deviation
+   * feedback so the re-trace surface is clean.
+   */
+  onTraceStrokeStart?: () => void;
 }
 
 export function DrawingPanel({
@@ -104,6 +116,8 @@ export function DrawingPanel({
   traceOverallBestPct = null,
   onTraceResetScores,
   onTraceSyncAttempts,
+  dimmedStrokeTimestamps = null,
+  onTraceStrokeStart,
 }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
@@ -789,6 +803,8 @@ export function DrawingPanel({
             templateStrokes={templateStrokes}
             traceFeedback={traceFeedback}
             onStrokeFinalized={onStrokeFinalized}
+            dimmedStrokeTimestamps={dimmedStrokeTimestamps}
+            onStrokeStart={onTraceStrokeStart}
           />
         </Box>
       </Box>

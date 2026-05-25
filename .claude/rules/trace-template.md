@@ -62,10 +62,19 @@ Derived (`scores`, the visible per-template `TemplateScore[]`) is rebuilt from `
 
 ## Calling convention from DrawingPanel
 
-DrawingPanel forwards three callbacks to scoring (wired in SplitLayout):
-- **`onStrokeFinalized`** → fires from `DrawingCanvas` after `endStroke` in pen mode. The canvas redraws BEFORE and AFTER the callback so any synchronous stroke mutation inside it (`discardLastStroke` on rejection, `deleteStroke` on replacement) is reflected immediately.
-- **`onTraceSyncAttempts`** → fired from `handleUndo`, `handleRedo`, `handleDeleteHighlighted`, `handleStrokeCountChange` (covers lasso erase). Rebuilds derived scoring state from the live `StrokeManager`. Without this, `attemptMap` stays stale after Undo and the next re-trace fails to replace.
-- **`onTraceResetScores`** → fired from `handleClear` (and the score-overlay reset button). Removes traced strokes via `discardStrokes` (non-undoable) and wipes `allTimeStats`/`attemptHistory`/`attemptMap`/`latestFeedback`.
+DrawingPanel forwards these callbacks to scoring (wired in SplitLayout):
+- **`onStrokeFinalized`** → fires from `DrawingCanvas` after `endStroke` in pen mode, BEFORE `notifyStrokeCount` / `redrawAll`. Synchronous stroke mutations inside the callback (`discardLastStroke` on rejection, `deleteStroke` on replacement) settle before timer/autosave/UI observe the new stroke set.
+- **`onTraceSyncAttempts`** → fired from `handleUndo`, `handleRedo`, `handleDeleteHighlighted`, `handleStrokeCountChange` (covers lasso erase). Rebuilds derived scoring state from the live `StrokeManager`. Without this, `attemptMap` and `attemptedStrokeTimestamps` stay stale after Undo and the next re-trace fails to replace.
+- **`onTraceResetScores`** → fired from `handleClear` (and the score-overlay reset button). Removes traced strokes via `discardStrokes` (non-undoable) and wipes `allTimeStats`/`attemptHistory`/`attemptMap`/`attemptedStrokeTimestamps`/`latestFeedback`. Wrapped in SplitLayout so it also fires `handleStrokesChanged` (otherwise the canvas would not redraw after the strokes vanished).
+- **`onTraceStrokeStart`** → fired from `DrawingCanvas` pen-mode pointer-down, BEFORE `strokeManager.startStroke`. Calls `clearLatestFeedback` so the red deviation bands disappear the instant the user touches down for a re-trace — they're noise while drawing the new attempt.
+
+## Re-trace visibility: dimmed scored strokes
+
+Scored attempts (i.e. user strokes tracked in `attemptedStrokeTimestamps`) render on the drawing canvas at `DIMMED_STROKE_OPACITY = 0.35` instead of full black. The template guide (`rgba(140, 140, 160, 0.45)`) then naturally sits in front of past attempts, so when the user starts re-tracing they can still see what they're aiming at.
+
+In-progress strokes (`strokeManager.getCurrentStroke()`) and highlighted (lasso-preselected / eraser-hover) strokes ignore the dim — the active focus or stronger UI signal wins. Strokes the user drew while NOT in a trace template (free drawing alongside a trace, mid-mode-switching) are not in `attemptedStrokeTimestamps` so they keep full opacity.
+
+The reference panel's `overlayStrokes` rendering (only active when overlay-compare is toggled on) intentionally stays at the existing blue glow — visually distinct from the template gray already, so re-trace occlusion is less of an issue there. Match it to the drawing-canvas dimming only if user feedback complains.
 
 ## TraceTemplateViewer
 
