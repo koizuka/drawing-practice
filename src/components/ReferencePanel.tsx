@@ -1,9 +1,14 @@
 import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { Box, Button, CircularProgress, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound } from 'lucide-react';
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound, Spline } from 'lucide-react';
 import type { SketchfabActions, SketchfabFixAngleExtras, SketchfabModelMeta } from './SketchfabViewer';
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer';
+import { TraceTemplateViewer } from './TraceTemplateViewer';
+import { BundledTemplatePicker } from './BundledTemplatePicker';
+import { getBundledTemplate } from '../templates/bundled';
+import type { TraceTemplate } from '../templates/types';
+import type { TraceFeedback } from '../trace/types';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer';
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog';
@@ -298,6 +303,8 @@ interface ReferencePanelProps {
   viewTransform?: ViewTransform;
   /** Which panel owns the fit calculation. */
   fitLeader?: 'reference' | 'drawing';
+  /** Latest trace-template scoring feedback for the active template stroke. */
+  traceFeedback?: TraceFeedback | null;
 }
 
 export function ReferencePanel({
@@ -312,6 +319,7 @@ export function ReferencePanel({
   suppressGuideEditing = false,
   isFlipped, onToggleFlip,
   viewTransform, fitLeader,
+  traceFeedback = null,
 }: ReferencePanelProps) {
   const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides();
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
@@ -897,8 +905,42 @@ export function ReferencePanel({
   }, [lines]);
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl; // 'sketchfab', 'url', 'pexels' use fixedImageUrl
-  const isFixed = referenceMode === 'fixed' && !!displayImageUrl;
+  const traceTemplateInfo = refInfo?.source === 'trace-template' ? refInfo : null;
+  const activeTraceTemplate: TraceTemplate | null = (source === 'trace-template' && referenceMode === 'fixed' && traceTemplateInfo)
+    ? getBundledTemplate(traceTemplateInfo.templateId) ?? null
+    : null;
+  const isTraceFixed = !!activeTraceTemplate;
+  const isFixed = (referenceMode === 'fixed' && !!displayImageUrl) || isTraceFixed;
   const isNone = source === 'none';
+  const isTraceBrowse = source === 'trace-template' && referenceMode === 'browse';
+
+  const handleOpenTraceTemplate = useCallback(() => {
+    onReferenceChange((s) => {
+      s.setSource('trace-template');
+      s.setReferenceMode('browse');
+      s.setFixedImageUrl(null);
+      s.setLocalImageUrl(null);
+      s.setReferenceInfo(null);
+    });
+  }, [onReferenceChange]);
+
+  const handleSelectTraceTemplate = useCallback((tmpl: TraceTemplate) => {
+    onReferenceChange((s) => {
+      s.setSource('trace-template');
+      s.setReferenceMode('fixed');
+      s.setFixedImageUrl(null);
+      s.setLocalImageUrl(null);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      s.setReferenceInfo({ title: t(tmpl.titleKey as any), author: 'Drawing Practice', source: 'trace-template', templateId: tmpl.id });
+    });
+  }, [onReferenceChange]);
+
+  const handleBackToTraceTemplatePicker = useCallback(() => {
+    onReferenceChange((s) => {
+      s.setReferenceMode('browse');
+      s.setReferenceInfo(null);
+    });
+  }, [onReferenceChange]);
   // Sketchfab browse mode: either searching or viewing a model
   const isSfBrowse = source === 'sketchfab' && referenceMode === 'browse';
   const isYouTube = source === 'youtube';
@@ -968,6 +1010,20 @@ export function ReferencePanel({
         {isFixed && source === 'pexels' && (
           <Button size="small" variant="outlined" onClick={handleBackToPexelsSearch}>
             {t('pexelsBackToSearch')}
+          </Button>
+        )}
+
+        {/* Trace template picker title (browse mode) */}
+        {isTraceBrowse && (
+          <Typography variant="subtitle2" color="text.secondary" noWrap sx={{ ml: 0.5 }}>
+            {t('traceTemplate')}
+          </Typography>
+        )}
+
+        {/* Fixed mode: Back to trace template picker */}
+        {isTraceFixed && (
+          <Button size="small" variant="outlined" onClick={handleBackToTraceTemplatePicker}>
+            {t('backToTemplatePicker')}
           </Button>
         )}
 
@@ -1237,6 +1293,20 @@ export function ReferencePanel({
                     </Box>
                   </Button>
                 </Box>
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  onClick={handleOpenTraceTemplate}
+                  startIcon={<Spline size={20} />}
+                  sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+                >
+                  <Box sx={{ textAlign: 'left' }}>
+                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('traceTemplate')}</Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      {t('traceTemplateDescription')}
+                    </Typography>
+                  </Box>
+                </Button>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>
                 <Typography variant="caption" color="text.secondary">{t('urlSectionLabel')}</Typography>
@@ -1556,6 +1626,35 @@ export function ReferencePanel({
             key={referenceKey(refInfo)}
             refInfo={refInfo}
             initialCollapsed={collapseInfoOverlayByDefault}
+          />
+        )}
+
+        {/* Trace template picker (browse mode) */}
+        {isTraceBrowse && (
+          <BundledTemplatePicker onSelect={handleSelectTraceTemplate} />
+        )}
+
+        {/* Trace template viewer (fixed mode) */}
+        {activeTraceTemplate && (
+          <TraceTemplateViewer
+            template={activeTraceTemplate}
+            viewResetVersion={viewResetVersion}
+            grid={grid}
+            guideLines={lines}
+            guideVersion={guideVersion}
+            overlayStrokes={overlayStrokes ?? undefined}
+            overlayCurrentStrokeRef={overlayCurrentStrokeRef}
+            onRegisterOverlayRedraw={onRegisterOverlayRedraw}
+            onTemplateLoaded={onReferenceImageSize}
+            guideMode={effectiveGuideMode}
+            onAddGuideLine={handleAddGuideLine}
+            onDeleteGuideLine={removeLine}
+            highlightedGuideId={highlightedGuideId}
+            onHighlightGuide={setHighlightedGuideId}
+            isFlipped={isFlipped}
+            viewTransform={viewTransform}
+            isFitLeader={fitLeader === 'reference'}
+            traceFeedback={traceFeedback}
           />
         )}
 

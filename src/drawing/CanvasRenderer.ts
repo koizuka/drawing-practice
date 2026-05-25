@@ -99,6 +99,59 @@ export class CanvasRenderer {
     ctx.restore();
   }
 
+  /**
+   * Draw a polyline as a trace template guide line (semi-transparent gray).
+   * Used by the trace-template reference type to overlay the target shape
+   * underneath the user's strokes. Line width is passed in world units so the
+   * caller can keep visual width constant under zoom.
+   */
+  drawTracePath(points: readonly Point[], lineWidth: number): void {
+    if (points.length < 2) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = 'rgba(140, 140, 160, 0.45)';
+    ctx.lineWidth = lineWidth;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+      ctx.lineTo(points[i].x, points[i].y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * Draw trace feedback deviation segments (user sample → template sample).
+   * Each segment is colored by magnitude (light pink at 0 → saturated red at
+   * `maxMagnitude`). lineWidth is in world units.
+   */
+  drawTraceFeedback(
+    segments: readonly { from: Point; to: Point; magnitude: number }[],
+    maxMagnitude: number,
+    lineWidth: number,
+  ): void {
+    if (segments.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = lineWidth;
+    for (const seg of segments) {
+      const t = maxMagnitude === 0 ? 0 : Math.min(1, seg.magnitude / maxMagnitude);
+      const alpha = 0.35 + 0.55 * t;
+      const red = 220;
+      const green = Math.round(160 * (1 - t));
+      const blue = Math.round(160 * (1 - t));
+      ctx.strokeStyle = `rgba(${red}, ${green}, ${blue}, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.moveTo(seg.from.x, seg.from.y);
+      ctx.lineTo(seg.to.x, seg.to.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Draw points incrementally (for the current in-progress stroke). */
   drawPoints(points: readonly Point[], fromIndex: number): void {
     if (fromIndex >= points.length - 1) return;

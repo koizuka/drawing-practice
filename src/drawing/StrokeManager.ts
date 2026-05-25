@@ -57,6 +57,23 @@ export class StrokeManager {
    */
   private mutationCount = 0;
   private gallerySavedMutationCount = 0;
+  /**
+   * Latest timestamp handed out for a stroke this session. `startStroke` uses
+   * `max(Date.now(), lastIssuedTimestamp + 1)` so consecutive strokes always
+   * get strictly-monotonic timestamps even when the wall clock returns the
+   * same `Date.now()` value (tight test loops, low-resolution clocks). The
+   * `Stroke.timestamp` field doubles as a stable per-session identity key
+   * (used e.g. by trace-template scoring to swap re-traced attempts), so
+   * collisions would silently break that mapping.
+   */
+  private lastIssuedTimestamp = 0;
+
+  private nextTimestamp(): number {
+    const now = Date.now();
+    const ts = now > this.lastIssuedTimestamp ? now : this.lastIssuedTimestamp + 1;
+    this.lastIssuedTimestamp = ts;
+    return ts;
+  }
 
   /**
    * Single funnel for "I just changed strokes." Every stroke-modifying exit
@@ -78,7 +95,7 @@ export class StrokeManager {
   startStroke(point: Point): void {
     this.currentStroke = {
       points: [quantizePoint(point)],
-      timestamp: Date.now(),
+      timestamp: this.nextTimestamp(),
     };
   }
 
@@ -270,6 +287,31 @@ export class StrokeManager {
   }
 
   /**
+   * Unwind the most recent `endStroke` as if it never happened: pops the
+   * stroke off `strokes` AND removes the matching `add` entry from the undo
+   * stack, leaving no trace for `undo()` to resurrect.
+   *
+   * **Why this isn't `deleteStroke`**: `deleteStroke` pushes a `delete` entry
+   * so the user can recover an accidental erase. For programmatic rejections
+   * (e.g. trace-template scoring discarding an out-of-range attempt), an
+   * undo would resurrect the rejected stroke as an untracked ghost, then the
+   * next retrace would mis-replace it. Use this instead when the stroke
+   * should be treated as if the user never lifted the pen on it.
+   *
+   * Returns the discarded stroke for diagnostics, or `null` if the top of
+   * the undo stack isn't an `add` (i.e. the stroke wasn't the most recent
+   * thing committed).
+   */
+  discardLastStroke(): Stroke | null {
+    const top = this.undoStack[this.undoStack.length - 1];
+    if (!top || top.type !== 'add') return null;
+    this.undoStack.pop();
+    const stroke = this.strokes.pop() ?? null;
+    this.bumpMutation();
+    return stroke;
+  }
+
+  /**
    * Delete multiple strokes in a single undo entry. `indices` may be in any
    * order and may contain duplicates / out-of-range values (which are ignored).
    * Returns the deleted strokes in original (ascending-index) order, or `null`
@@ -326,6 +368,16 @@ export class StrokeManager {
     this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke: quantizeStroke(stroke) }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;
+    // Make sure future startStroke()s issue timestamps strictly greater than
+    // any restored stroke's, so identity-by-timestamp lookups stay unique.
+    for (const s of quantizedStrokes) {
+      if (s.timestamp > this.lastIssuedTimestamp) this.lastIssuedTimestamp = s.timestamp;
+    }
+    for (const e of this.redoStack) {
+      if (e.type === 'add' && e.stroke.timestamp > this.lastIssuedTimestamp) {
+        this.lastIssuedTimestamp = e.stroke.timestamp;
+      }
+    }
     this.bumpMutation();
   }
 

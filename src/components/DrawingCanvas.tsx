@@ -8,6 +8,7 @@ import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import { drawGrid, drawGuideLines } from '../guides/drawGuides';
 import type { Point, Stroke } from '../drawing/types';
 import type { GridSettings, GuideLine } from '../guides/types';
+import type { TraceFeedback, TraceStroke } from '../trace/types';
 
 export type DrawingMode = 'pen' | 'eraser' | 'lasso';
 
@@ -38,6 +39,12 @@ interface DrawingCanvasProps {
    *  In-flight strokes (started before the freeze) are NOT cancelled here —
    *  the caller's clear-strokes step handles that. */
   inputFrozen?: boolean;
+  /** Trace-template strokes to render as semi-transparent guides. */
+  templateStrokes?: readonly TraceStroke[] | null;
+  /** Latest scored attempt's deviation visualization. */
+  traceFeedback?: TraceFeedback | null;
+  /** Called when a stroke is committed (after endStroke). Used by scoring. */
+  onStrokeFinalized?: (stroke: Stroke) => void;
 }
 
 const ERASER_THRESHOLD = 20;
@@ -59,6 +66,9 @@ export function DrawingCanvas({
   onCurrentStrokeChange,
   viewTransform,
   inputFrozen = false,
+  templateStrokes = null,
+  traceFeedback = null,
+  onStrokeFinalized,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -136,6 +146,16 @@ export function DrawingCanvas({
       dpr * projected.offsetX, dpr * projected.offsetY,
     );
 
+    // Trace-template guide layer (semi-transparent gray, under user strokes).
+    // Drawn first so user strokes paint over it. Line width compensates for
+    // zoom so the guide stays visually subtle at high magnifications.
+    if (templateStrokes && templateStrokes.length > 0) {
+      const guideWidth = 2 / projected.scale;
+      for (const t of templateStrokes) {
+        renderer.drawTracePath(t.points, guideWidth);
+      }
+    }
+
     const strokes = strokeManager.getStrokes();
     const lassoSelected = lassoSelectedRef.current;
     if (lassoSelected && lassoSelected.size > 0) {
@@ -173,6 +193,16 @@ export function DrawingCanvas({
     drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER);
     drawGuideLines(ctx, guideLines, projected.scale);
 
+    // Trace feedback (deviation bands) above strokes so the user can see
+    // where they were off. Width also zoom-compensated.
+    if (traceFeedback && traceFeedback.segments.length > 0) {
+      let maxMag = 0;
+      for (const s of traceFeedback.segments) {
+        if (s.magnitude > maxMag) maxMag = s.magnitude;
+      }
+      renderer.drawTraceFeedback(traceFeedback.segments, maxMag, 2 / projected.scale);
+    }
+
     // In-progress lasso (marching ants). Drawn on top of strokes/grid so the
     // selection outline is always visible. Line width compensates for zoom so
     // the outline thickness stays visually constant.
@@ -184,7 +214,7 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize]);
+  }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize, templateStrokes, traceFeedback]);
 
   // Setup canvas with DPR
   const setupCanvas = useCallback(() => {
@@ -626,6 +656,7 @@ export function DrawingCanvas({
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
+        onStrokeFinalized?.(stroke);
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
@@ -635,7 +666,7 @@ export function DrawingCanvas({
         finishLasso();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso, onStrokeFinalized]);
 
   // Latest-handler refs so the native listeners below can stay attached for
   // the life of the canvas. The handlers themselves have many transitive
@@ -730,12 +761,13 @@ export function DrawingCanvas({
         onCurrentStrokeChange?.(null);
         notifyStrokeCount();
         redrawAll();
+        onStrokeFinalized?.(stroke);
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
       finishLasso();
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso, onStrokeFinalized]);
 
   return (
     <Box
