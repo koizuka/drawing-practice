@@ -70,7 +70,7 @@ DrawingPanel forwards these callbacks to scoring (wired in SplitLayout):
 
 ## Re-trace visibility: dimmed scored strokes
 
-Scored attempts (i.e. user strokes tracked in `attemptedStrokeTimestamps`) render on the drawing canvas at `DIMMED_STROKE_OPACITY = 0.35` instead of full black. The template guide (`rgba(140, 140, 160, 0.45)`) then naturally sits in front of past attempts, so when the user starts re-tracing they can still see what they're aiming at.
+Scored attempts (i.e. user strokes tracked in `attemptedStrokeTimestamps`) render on the drawing canvas at `DIMMED_STROKE_OPACITY = 0.2` instead of full black — visibly below the template guide's `~0.45` alpha so the visual hierarchy reads template > past attempts > current draw.
 
 In-progress strokes (`strokeManager.getCurrentStroke()`) and highlighted (lasso-preselected / eraser-hover) strokes ignore the dim — the active focus or stronger UI signal wins. Strokes the user drew while NOT in a trace template (free drawing alongside a trace, mid-mode-switching) are not in `attemptedStrokeTimestamps` so they keep full opacity.
 

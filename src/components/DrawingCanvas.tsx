@@ -60,8 +60,13 @@ interface DrawingCanvasProps {
   onStrokeStart?: () => void;
 }
 
-/** Opacity for scored trace-template attempts. See dimmedStrokeTimestamps. */
-const DIMMED_STROKE_OPACITY = 0.35;
+/**
+ * Opacity for scored trace-template attempts. Picked below the template
+ * guide's 0.45 alpha so the visual hierarchy reads template > past attempts
+ * > current draw — re-tracing a target stays unobstructed even when many
+ * scored strokes already sit on the canvas.
+ */
+const DIMMED_STROKE_OPACITY = 0.2;
 
 const ERASER_THRESHOLD = 20;
 
