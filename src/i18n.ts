@@ -338,7 +338,7 @@ const messages = {
   },
 } as const;
 
-type MessageKey = keyof typeof messages.en;
+export type MessageKey = keyof typeof messages.en;
 
 function detectLanguage(): 'ja' | 'en' {
   const lang = navigator.language;

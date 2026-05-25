@@ -34,7 +34,11 @@ export interface TraceMatch {
  */
 export interface TraceFeedback {
   templateStrokeIdx: number;
-  /** N segments connecting user sample to template sample. */
+  /**
+   * One deviation segment per arc-length sample pair (user → template).
+   * Length is `SCORING_N + 1` because `resampleByArcLength` includes both
+   * endpoints — keep that in mind when tuning `SCORING_N`.
+   */
   segments: { from: Point; to: Point; magnitude: number }[];
   errorPct: number;
 }

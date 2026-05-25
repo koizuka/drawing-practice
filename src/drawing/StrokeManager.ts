@@ -287,6 +287,56 @@ export class StrokeManager {
   }
 
   /**
+   * Bulk-discard strokes by timestamp without pushing any undo entry. The
+   * matching `add` entries in `undoStack` are also removed so the temporal
+   * order of the remaining `add`/`reference` entries still maps 1:1 to the
+   * remaining `strokes[]` (a later `undo` of a remaining `add` still pops
+   * the correct stroke). Also clears `redoStack` because pending redos may
+   * point at discarded strokes.
+   *
+   * Returns the number of strokes actually removed.
+   *
+   * **Why this isn't `lassoDelete`**: `lassoDelete` pushes a `lasso-delete`
+   * undo entry so the user can recover an accidental erase. Programmatic
+   * resets (e.g. trace-template scoring reset) want the strokes gone for
+   * good — an undoable bulk delete would let the user resurrect strokes
+   * whose scoring history has already been cleared, leaving untracked
+   * ghosts that break re-trace replacement.
+   */
+  discardStrokes(timestamps: ReadonlySet<number>): number {
+    if (timestamps.size === 0 || this.strokes.length === 0) return 0;
+    // Map each stroke index → position of its matching `add` entry in
+    // `undoStack`. `add` entries are pushed in stroke order and never
+    // reference the stroke by index, so the i-th `add` corresponds to the
+    // i-th stroke.
+    const addPositions: number[] = [];
+    for (let i = 0; i < this.undoStack.length; i++) {
+      if (this.undoStack[i].type === 'add') addPositions.push(i);
+    }
+    const removedIndices: number[] = [];
+    for (let i = 0; i < this.strokes.length; i++) {
+      if (timestamps.has(this.strokes[i].timestamp)) removedIndices.push(i);
+    }
+    if (removedIndices.length === 0) return 0;
+    // Splice undoStack in descending position order so earlier positions stay
+    // valid as we go.
+    const undoPositionsDesc = removedIndices
+      .map(i => addPositions[i])
+      .filter((p): p is number => p !== undefined)
+      .sort((a, b) => b - a);
+    for (const p of undoPositionsDesc) this.undoStack.splice(p, 1);
+    // Same for the strokes array.
+    for (let k = removedIndices.length - 1; k >= 0; k--) {
+      this.strokes.splice(removedIndices[k], 1);
+    }
+    // Pending redos may have been pointing at discarded strokes; safer to
+    // drop them than risk a redo splicing back a stale stroke.
+    this.redoStack = [];
+    this.bumpMutation();
+    return removedIndices.length;
+  }
+
+  /**
    * Unwind the most recent `endStroke` as if it never happened: pops the
    * stroke off `strokes` AND removes the matching `add` entry from the undo
    * stack, leaving no trace for `undo()` to resurrect.

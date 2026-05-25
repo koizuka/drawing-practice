@@ -3,7 +3,13 @@ import { dist, polylineLength, resampleByArcLength, reversePolyline } from './re
 import { closestPointOnPolyline, rotateClosedPolyline } from './polylineGeom';
 import type { TraceFeedback, TraceMatch, TraceStroke } from './types';
 
-/** Number of points each stroke is resampled to for comparison. */
+/**
+ * Number of equal-arc-length samples used per stroke for comparison.
+ * `resampleByArcLength(points, SCORING_N)` returns `SCORING_N + 1` points
+ * (both endpoints included), and `buildFeedback` emits one deviation
+ * segment per sample — so increasing this raises both per-attempt CPU cost
+ * and the number of red feedback bands drawn on the canvas.
+ */
 export const SCORING_N = 64;
 
 /** Endpoint match tolerance for open templates (world px). */

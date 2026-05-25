@@ -657,6 +657,13 @@ export function DrawingCanvas({
         notifyStrokeCount();
         redrawAll();
         onStrokeFinalized?.(stroke);
+        // Second redraw after onStrokeFinalized so synchronous stroke
+        // mutations inside the callback (trace-template scoring's
+        // discardLastStroke on rejection, deleteStroke on re-trace
+        // replacement) are reflected immediately — otherwise the rejected
+        // / replaced stroke can linger on screen until the next unrelated
+        // redraw.
+        redrawAll();
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {
@@ -762,6 +769,8 @@ export function DrawingCanvas({
         notifyStrokeCount();
         redrawAll();
         onStrokeFinalized?.(stroke);
+        // See the touchend branch for why a second redraw is required.
+        redrawAll();
       }
     }
     else if (mode === 'lasso' && lassoPointsRef.current) {

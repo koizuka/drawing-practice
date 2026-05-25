@@ -200,6 +200,97 @@ describe('StrokeManager', () => {
     });
   });
 
+  describe('discardLastStroke', () => {
+    it('removes the most recent stroke without leaving an undo entry', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const stroke = manager.endStroke();
+      expect(stroke).not.toBeNull();
+      expect(manager.canUndo()).toBe(true);
+
+      const discarded = manager.discardLastStroke();
+      expect(discarded).toBe(stroke);
+      expect(manager.getStrokes()).toHaveLength(0);
+      // No undo entry remains → Undo cannot resurrect the discarded stroke.
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('is a no-op when the top of the undo stack is not an add', () => {
+      const snap: ReferenceSnapshot = {
+        source: 'none',
+        referenceMode: 'browse',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: null,
+      };
+      manager.recordReferenceChange(snap);
+      const result = manager.discardLastStroke();
+      expect(result).toBeNull();
+      expect(manager.canUndo()).toBe(true); // reference entry preserved
+    });
+  });
+
+  describe('discardStrokes', () => {
+    it('removes specified strokes by timestamp without leaving undo entries', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const a = manager.endStroke()!;
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 30, y: 30 });
+      const b = manager.endStroke()!;
+      manager.startStroke({ x: 40, y: 40 });
+      manager.appendStroke({ x: 50, y: 50 });
+      const c = manager.endStroke()!;
+
+      const removed = manager.discardStrokes(new Set([a.timestamp, c.timestamp]));
+      expect(removed).toBe(2);
+      // Only b survives.
+      expect(manager.getStrokes()).toEqual([b]);
+      // Undoing the remaining add pops b — proves the undoStack stays
+      // consistent with the surviving strokes.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      // After popping b, no more undo entries (a and c's adds were discarded
+      // along with their strokes).
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('survives interleaved reference entries', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const a = manager.endStroke()!;
+      const snap: ReferenceSnapshot = {
+        source: 'none',
+        referenceMode: 'browse',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: null,
+      };
+      manager.recordReferenceChange(snap);
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 30, y: 30 });
+      const b = manager.endStroke()!;
+
+      const removed = manager.discardStrokes(new Set([a.timestamp]));
+      expect(removed).toBe(1);
+      expect(manager.getStrokes()).toEqual([b]);
+      // Undo: should pop b's add first, then the reference entry. The
+      // reference restorer isn't registered in this test, so it would
+      // throw if called — but undoing add(b) just pops the stroke.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+    });
+
+    it('returns 0 when no timestamps match', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      manager.endStroke();
+      const removed = manager.discardStrokes(new Set([99999]));
+      expect(removed).toBe(0);
+      expect(manager.getStrokes()).toHaveLength(1);
+    });
+  });
+
   describe('deleteStroke', () => {
     it('deletes a stroke by index', () => {
       manager.startStroke({ x: 0, y: 0 });

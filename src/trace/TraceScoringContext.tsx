@@ -163,13 +163,11 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     setScores([]);
     setLatestFeedback(null);
 
-    if (tsToErase.size === 0) return;
-    const strokes = strokeManager.getStrokes();
-    const indices: number[] = [];
-    for (let i = 0; i < strokes.length; i++) {
-      if (tsToErase.has(strokes[i].timestamp)) indices.push(i);
-    }
-    if (indices.length > 0) strokeManager.lassoDelete(indices);
+    // Use discardStrokes (non-undoable) rather than lassoDelete: the user's
+    // scoring history is already gone, so an Undo of the erase would
+    // resurrect untracked ghost strokes that the scoring context has no
+    // record of.
+    if (tsToErase.size > 0) strokeManager.discardStrokes(tsToErase);
   }, []);
 
   const handleStrokeFinalized = useCallback((stroke: Stroke, strokeManager: StrokeManager) => {

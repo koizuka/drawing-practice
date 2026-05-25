@@ -930,8 +930,7 @@ export function ReferencePanel({
       s.setReferenceMode('fixed');
       s.setFixedImageUrl(null);
       s.setLocalImageUrl(null);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      s.setReferenceInfo({ title: t(tmpl.titleKey as any), author: 'Drawing Practice', source: 'trace-template', templateId: tmpl.id });
+      s.setReferenceInfo({ title: t(tmpl.titleKey), author: 'Drawing Practice', source: 'trace-template', templateId: tmpl.id });
     });
   }, [onReferenceChange]);
 

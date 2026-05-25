@@ -144,6 +144,24 @@ describe('TraceScoringContext', () => {
     expect(h.sm.getStrokes()).toHaveLength(0);
   });
 
+  it('resetScores is not undoable — Undo after a reset must not resurrect traced strokes as untracked ghosts', () => {
+    // Regression for Copilot review #2. If resetScores used lassoDelete, Undo
+    // would restore the strokes but the scoring history is already gone, so
+    // a subsequent re-trace would not replace them and they would accumulate.
+    const h = harness();
+    h.setTemplate([circle(0, 0, 80, 96)]);
+    h.finalize(ringTrace(80, 96));
+    expect(h.sm.getStrokes()).toHaveLength(1);
+
+    act(() => { h.state.resetScores(h.sm); });
+    expect(h.sm.getStrokes()).toHaveLength(0);
+    // No undoable entry was pushed by the reset itself. (Reference-change
+    // entries may still exist from earlier setTemplate, but no stroke
+    // entries.)
+    h.sm.undo();
+    expect(h.sm.getStrokes()).toHaveLength(0);
+  });
+
   it('rejected attempts do not pollute the undo stack — Undo after a missed trace must not resurrect the rejected stroke', () => {
     // Regression for the original verifier finding #4. deleteStroke would
     // push a delete entry that Undo could pop to bring the stroke back as

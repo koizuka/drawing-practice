@@ -45,3 +45,11 @@ Persisted: strokes, redo stack, reference, guides, timer elapsed, camera (viewCe
 `gallerySaveDirty` is read at autosave time from `StrokeManager.isDirtySinceGallerySave()` (see `drawing-undo.md`). On restore, `SplitLayout.loadDraft` calls `markSavedToGallery()` after `loadState` when the draft says `gallerySaveDirty === false` — `loadState` bumps the mutation counter, so the explicit mark is what carries the saved/clean state across reload. Pre-feature drafts (no field) default to dirty=true.
 
 Local file images are stored as data URLs (via `FileReader.readAsDataURL`) to survive page reload. URL references store only the URL. Sketchfab references store the screenshot as a data URL.
+
+## Trace-template restore
+
+When `draft.source === 'trace-template'`:
+- `loadDraft`'s reference-restore else-if chain explicitly calls `setReferenceMode('fixed')`. There's no `fixedImageUrl` to set (the template strokes come from `getBundledTemplate(templateId)` keyed off `referenceInfo.templateId`). Without this branch, `referenceMode` stays at its `useState('browse')` default and `ReferencePanel` renders the picker instead of the active template.
+- `referenceWillSize` includes `'trace-template'` so the camera-restore path defers via `pendingCameraRef` (applied after `TraceTemplateViewer` mounts and fires `onTemplateLoaded` → setReferenceSize). Without this, the persisted pan/zoom would be stomped by the viewer's `loadContent(0, 0, 1)`.
+
+Scoring history (`attemptHistory`, `allTimeStats`, `attemptMap`, `latestFeedback`) is **NOT persisted** — only the active template selection survives reload. Strokes the user drew while tracing are restored via the normal autosave path but become "untracked" with respect to the new session's scoring (they're regular strokes with no scoring history). Documented MVP limitation; see `trace-template.md`.

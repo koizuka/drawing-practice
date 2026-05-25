@@ -85,9 +85,7 @@ export function BundledTemplatePicker({ onSelect }: BundledTemplatePickerProps) 
           >
             <TemplateThumbnail template={tmpl} />
             <Typography variant="caption" sx={{ mt: 0.5, textAlign: 'center' }}>
-              {/* titleKey is a typed MessageKey from i18n */}
-              {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
-              {t(tmpl.titleKey as any)}
+              {t(tmpl.titleKey)}
             </Typography>
           </Box>
         ))}

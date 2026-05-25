@@ -4,7 +4,7 @@ Guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-Drawing Practice is a line-drawing practice tool for **iPad + Apple Pencil**. Users view a reference (Sketchfab 3D model, image file/URL, YouTube video, or Pexels photo) on one side and draw on the other, with synchronized grid and guide lines for alignment.
+Drawing Practice is a line-drawing practice tool for **iPad + Apple Pencil**. Users view a reference (Sketchfab 3D model, image file/URL, YouTube video, Pexels photo, or a bundled trace template) on one side and draw on the other, with synchronized grid and guide lines for alignment. Trace templates additionally score each stroke against a target shape and render the deviation as a red feedback overlay.
 
 **Live deployment**: https://koizuka.github.io/drawing-practice/
 
@@ -26,9 +26,9 @@ Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Lib
 ## High-level Architecture
 
 - **Split layout** (`SplitLayout`): two equal panels, landscape (left/right) or portrait (top/bottom), auto-switching on orientation. Reference panel can be collapsed for free-drawing layout (drawing panel takes the full screen); the toggle lives on the drawing toolbar and the collapsed state is autosaved.
-  - **Reference Panel** (left/top) — `ReferencePanel` hosts one of: `SketchfabViewer`, `ImageViewer`, `YouTubeViewer`, `PexelsSearcher`.
+  - **Reference Panel** (left/top) — `ReferencePanel` hosts one of: `SketchfabViewer`, `ImageViewer`, `YouTubeViewer`, `PexelsSearcher`, `TraceTemplateViewer` (+ `BundledTemplatePicker` in browse mode).
   - **Drawing Panel** (right/bottom) — `DrawingPanel` + `DrawingCanvas`.
-- **Shared state** lifted to `SplitLayout`: reference (source/mode/images), timer, autosave, undo, panel-collapse, `StrokeManager` instance. Guide state shared via `GuideContext`. Hoisting the `StrokeManager` to the parent lets autosave restore strokes into it before the panels mount, so the conditional render described below sees fully-restored data on first paint.
+- **Shared state** lifted to `SplitLayout`: reference (source/mode/images), timer, autosave, undo, panel-collapse, `StrokeManager` instance. Guide state shared via `GuideContext`; trace-template scoring state shared via `TraceScoringContext`. Hoisting the `StrokeManager` to the parent lets autosave restore strokes into it before the panels mount, so the conditional render described below sees fully-restored data on first paint.
 - **Single undo stack** in `StrokeManager` covers both strokes AND reference changes — see `.claude/rules/drawing-undo.md`.
 - **Restore gate**: `SplitLayout` does not render the panels until `restoreCompleted || !hasSessionLock`. While the loadDraft promise is in flight the panels are unmounted (not `visibility: hidden`). **Why:** CSS transitions on toolbar buttons (Save's `color 0.3s`) fire on prop changes even while hidden; mounting after restore means every prop is at its final value at first paint and no transition kicks off. `useSessionLock` initializes optimistically (`true`) so the "another tab" Alert doesn't flash before lock acquisition resolves.
 - **Autosave** (`useAutosave`) persists session draft to IndexedDB `session` table; restored on reload. 2s debounce for strokes; immediate flush on reference change and discrete UI button operations (collapse / flip / grid / line edits); 250ms tail-debounce for camera (pan/zoom) with bypass when the camera lands at home — see `.claude/rules/timer-autosave.md`.
@@ -58,3 +58,4 @@ Path-scoped rules in `.claude/rules/` load automatically when you read matching 
 - `timer-autosave.md` — `useTimer.ts`, `useAutosave.ts`, `SplitLayout.tsx` (start/pause/reset triggers, autosave debounce/suppression)
 - `gallery.md` — `Gallery.tsx`, `exportDrawing.ts`, `storageUsage.ts` (3 grouping modes, thumbnail resolution, "Use this reference" paths, export)
 - `ui-design-principles.md` — `src/components/**` (layout skeleton, three-tier button model, stateful vs stateless choice, error/loading treatment, access symmetry)
+- `trace-template.md` — `src/trace/**`, `src/templates/**`, `TraceTemplateViewer.tsx`, `BundledTemplatePicker.tsx` (template definition, scoring pipeline, attemptMap derivation, replace-vs-undo semantics)

@@ -46,3 +46,20 @@ Undo/redo handles BOTH strokes and reference changes via the same button. Pass p
 `StrokeManager` exposes `markSavedToGallery()` / `isDirtySinceGallerySave()`, backed by an internal `mutationCount` bumped via the private `bumpMutation()` funnel on every stroke-modifying transition (endStroke / undo / redo of stroke entries / deleteStroke / lassoDelete / loadState / clear). **Reference-only undo entries deliberately do NOT bump it** — swapping references doesn't change the drawing the user would save. The save button reads `isDirtySinceGallerySave()` inline (same pattern as `canUndo`/`canRedo`) so React commits flow without state-mirroring. **Why:** prevents duplicate gallery entries from accidental save-button or `Cmd/Ctrl+S` repeats.
 
 `loadState` bumps `mutationCount` (it's a stroke-set-replacing mutation), so any restore path that wants to restore a non-dirty state must call `markSavedToGallery()` immediately after `loadState` — see `SplitLayout.loadDraft` and the deferred-migration path in `handleReferenceImageSize`.
+
+## Stroke timestamp uniqueness (`lastIssuedTimestamp`)
+
+`startStroke` issues each new `Stroke.timestamp` via `nextTimestamp() = max(Date.now(), lastIssuedTimestamp + 1)` so consecutive strokes always get strictly monotonic timestamps even when the wall clock returns the same `Date.now()` value (tight test loops, low-resolution clocks, rapid-fire pen taps). `loadState` advances `lastIssuedTimestamp` past every restored stroke's timestamp so post-restore strokes can't collide with restored ones either.
+
+**Why this matters:** `Stroke.timestamp` doubles as a stable per-session identity key for trace-template scoring (`attemptMap: templateIdx → strokeTimestamp`). A collision would silently mis-resolve a re-trace's "previous attempt" lookup, leaving an orphan stroke in the manager that no scoring entry tracks. Tests exercise the bursty case (`TraceScoringContext.test.tsx`'s re-trace path); the production path's safety relies on the same monotonic guarantee.
+
+## Non-undoable bulk removal (`discardLastStroke`, `discardStrokes`)
+
+Two paths exist for removing strokes that should NOT be Undo-able:
+
+- **`discardLastStroke()`** — pops the most recent stroke and the matching `add` entry. Used by `TraceScoringContext` on an out-of-range attempt: the user drew a stroke that didn't match any template, so it never "happened" from the user's perspective. If we left an `add`+`delete` pair on the undo stack, Undo would resurrect the rejected stroke as an untracked ghost — and the next valid re-trace would mis-replace it (see `Trace template scoring` in `trace-template.md`).
+- **`discardStrokes(timestamps)`** — bulk variant for `TraceScoringContext.resetScores`. Removes every matching stroke AND every matching `add` entry (counted by position; `add` entries are in stroke order regardless of interleaved `reference` entries). Also clears `redoStack` to avoid stale references. Used when the user clicks the reset-trace-score button: the scoring history is being wiped, so leaving the strokes recoverable via Undo would put the user in an inconsistent state where the strokes exist but no scoring tracks them.
+
+Neither method bumps `redoStack` for the discarded strokes (there's no logical "redo of a discard"), and neither calls the `reference` undo machinery. Both call `bumpMutation()` so the gallery-dirty flag and any future change observers see the mutation.
+
+**When to use which over `deleteStroke` / `lassoDelete`**: the regular methods push undo entries so the user can recover an accidental erase. The `discard*` methods are for programmatic cleanup where Undo recovery would corrupt invariants. The contract is "this removal is final from the user's point of view too."
