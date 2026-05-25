@@ -289,6 +289,55 @@ describe('StrokeManager', () => {
       expect(removed).toBe(0);
       expect(manager.getStrokes()).toHaveLength(1);
     });
+
+    it('correctly identifies add entries by timestamp even after deleteStroke leaves stale add entries', () => {
+      // Copilot regression: previously discardStrokes mapped "i-th live
+      // stroke → i-th add entry by position", which silently removed the
+      // wrong add entry once a deleteStroke had been issued.
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 1, y: 1 });
+      manager.endStroke()!;
+      manager.startStroke({ x: 10, y: 10 });
+      manager.appendStroke({ x: 11, y: 11 });
+      const b = manager.endStroke()!;
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 21, y: 21 });
+      const c = manager.endStroke()!;
+      // Replace-via-delete (mimics trace re-trace): delete A. The add(A.ts)
+      // entry remains in undoStack — index-based logic would have aligned
+      // strokes[0]=B with addPositions[0]=add(A.ts), corrupting subsequent
+      // undo behavior.
+      manager.deleteStroke(0);
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp, c.timestamp]);
+
+      // Discard B by timestamp. add(B.ts) must be the one that's removed,
+      // not add(A.ts).
+      const removed = manager.discardStrokes(new Set([b.timestamp]));
+      expect(removed).toBe(1);
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([c.timestamp]);
+    });
+
+    it('drops delete entries that reference discarded strokes so Undo cannot resurrect them', () => {
+      // Copilot regression: with the prior implementation, a leftover
+      // delete-entry whose stroke had been discarded could be undone,
+      // splicing a ghost stroke back into the manager.
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 1, y: 1 });
+      const a = manager.endStroke()!;
+      manager.startStroke({ x: 10, y: 10 });
+      manager.appendStroke({ x: 11, y: 11 });
+      const b = manager.endStroke()!;
+      manager.deleteStroke(0); // A removed, delete-entry remembers A
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp]);
+
+      // Discard both A and B (A is not in strokes anymore but is in history).
+      manager.discardStrokes(new Set([a.timestamp, b.timestamp]));
+      expect(manager.getStrokes()).toHaveLength(0);
+      // Now Undo should NOT resurrect A.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      expect(manager.canUndo()).toBe(false);
+    });
   });
 
   describe('deleteStroke', () => {

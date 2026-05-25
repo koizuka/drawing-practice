@@ -146,8 +146,17 @@ function SplitLayoutInner() {
     traceScoring.handleStrokeFinalized(stroke, strokeManager);
   }, [traceScoring, strokeManager]);
 
+  // handleStrokesChanged is declared further down; forward via a ref so
+  // handleTraceResetScores can fire it without a circular dep.
+  const handleStrokesChangedRef = useRef<() => void>(() => {});
+
   const handleTraceResetScores = useCallback(() => {
     traceScoring.resetScores(strokeManager);
+    // resetScores erases the traced strokes via discardStrokes — the canvas
+    // and autosave need to observe the change. handleStrokesChanged bumps
+    // overlayStrokes (when active) and changeVersion (drives autosave +
+    // DrawingCanvas redraw via the parent's redrawVersion plumbing).
+    handleStrokesChangedRef.current();
   }, [traceScoring, strokeManager]);
 
   // After undo/redo/erase the StrokeManager's stroke list changes outside the
@@ -421,6 +430,12 @@ function SplitLayoutInner() {
     }
     incrementChangeVersion();
   }, [strokeManager, overlayActive, incrementChangeVersion]);
+
+  // Keep the forward ref pointing at the latest closure so handleTraceResetScores
+  // (declared earlier in the file) can invoke it.
+  useEffect(() => {
+    handleStrokesChangedRef.current = handleStrokesChanged;
+  });
 
   // ── Gesture-drawing session ───────────────────────────────────────────────
   // Driven by useGestureSession. Sequence per pose: countdown → onTimeUp

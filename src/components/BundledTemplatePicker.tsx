@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, ButtonBase, Typography } from '@mui/material';
 import { BUNDLED_TEMPLATES } from '../templates/bundled';
 import type { TraceTemplate } from '../templates/types';
 import { t } from '../i18n';
@@ -67,27 +67,33 @@ export function BundledTemplatePicker({ onSelect }: BundledTemplatePickerProps) 
         }}
       >
         {BUNDLED_TEMPLATES.map(tmpl => (
-          <Box
+          // ButtonBase (instead of a plain Box) so the card is reachable via
+          // Tab and activatable via Enter/Space — MUI handles the keyboard
+          // semantics and adds the proper role/aria-pressed treatment.
+          <ButtonBase
             key={tmpl.id}
             onClick={() => onSelect(tmpl)}
+            focusRipple
+            aria-label={t(tmpl.titleKey)}
             sx={{
               'border': '1px solid #ddd',
               'borderRadius': 1,
               'overflow': 'hidden',
-              'cursor': 'pointer',
               'bgcolor': '#fff',
               '&:hover': { borderColor: 'primary.main' },
+              '&:focus-visible': { borderColor: 'primary.main', outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
               'display': 'flex',
               'flexDirection': 'column',
               'alignItems': 'center',
               'p': 1,
+              'textAlign': 'center',
             }}
           >
             <TemplateThumbnail template={tmpl} />
-            <Typography variant="caption" sx={{ mt: 0.5, textAlign: 'center' }}>
+            <Typography variant="caption" sx={{ mt: 0.5 }}>
               {t(tmpl.titleKey)}
             </Typography>
-          </Box>
+          </ButtonBase>
         ))}
       </Box>
     </Box>

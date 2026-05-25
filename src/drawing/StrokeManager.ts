@@ -13,9 +13,19 @@ interface LassoDeleteItem {
   index: number;
 }
 
-/** An entry on the undo stack records one reversible action. */
+/**
+ * An entry on the undo stack records one reversible action.
+ *
+ * `add` carries the added stroke's `timestamp` so that programmatic
+ * cleanup paths (e.g. `discardStrokes`) can locate the matching entry by
+ * stroke identity rather than by position. Without this, an `add` entry's
+ * position in the undo stack diverges from its corresponding stroke's
+ * position in `strokes[]` as soon as a `delete` or `lasso-delete` runs
+ * (the `add` stays but the stroke is gone), and index-based filtering
+ * silently removes the wrong entry.
+ */
 type UndoEntry
-  = | { type: 'add' }
+  = | { type: 'add'; timestamp: number }
     | { type: 'delete'; stroke: Stroke; index: number }
     | { type: 'lasso-delete'; items: LassoDeleteItem[] }
     | { type: 'reference'; prev: ReferenceSnapshot };
@@ -124,7 +134,7 @@ export class StrokeManager {
     }
     const stroke = this.currentStroke;
     this.strokes.push(stroke);
-    this.undoStack.push({ type: 'add' });
+    this.undoStack.push({ type: 'add', timestamp: stroke.timestamp });
     this.redoStack = [];
     this.currentStroke = null;
     this.bumpMutation();
@@ -237,7 +247,7 @@ export class StrokeManager {
 
     if (entry.type === 'add') {
       this.strokes.push(entry.stroke);
-      this.undoStack.push({ type: 'add' });
+      this.undoStack.push({ type: 'add', timestamp: entry.stroke.timestamp });
       this.bumpMutation();
       return { kind: 'stroke', stroke: entry.stroke };
     }
@@ -287,12 +297,18 @@ export class StrokeManager {
   }
 
   /**
-   * Bulk-discard strokes by timestamp without pushing any undo entry. The
-   * matching `add` entries in `undoStack` are also removed so the temporal
-   * order of the remaining `add`/`reference` entries still maps 1:1 to the
-   * remaining `strokes[]` (a later `undo` of a remaining `add` still pops
-   * the correct stroke). Also clears `redoStack` because pending redos may
-   * point at discarded strokes.
+   * Bulk-discard strokes by timestamp without pushing any undo entry. Finds
+   * each `add` entry whose `timestamp` matches a discarded stroke and
+   * removes it; also drops `delete` and `lasso-delete` entries that
+   * reference any discarded stroke (their saved indices would become stale
+   * once the stroke list shrinks).
+   *
+   * **Side effect**: clears the redo stack and prunes any `reference`
+   * entries' tracking counters that lose their pair. Effectively any
+   * `delete`/`lasso-delete` entry that *survives* must reference only
+   * still-live strokes; in practice the resetScores caller's strokes are
+   * typically the most recent thing in history, so the surviving stack is
+   * either empty or contains only reference entries.
    *
    * Returns the number of strokes actually removed.
    *
@@ -305,35 +321,44 @@ export class StrokeManager {
    */
   discardStrokes(timestamps: ReadonlySet<number>): number {
     if (timestamps.size === 0 || this.strokes.length === 0) return 0;
-    // Map each stroke index → position of its matching `add` entry in
-    // `undoStack`. `add` entries are pushed in stroke order and never
-    // reference the stroke by index, so the i-th `add` corresponds to the
-    // i-th stroke.
-    const addPositions: number[] = [];
-    for (let i = 0; i < this.undoStack.length; i++) {
-      if (this.undoStack[i].type === 'add') addPositions.push(i);
+    const before = this.strokes.length;
+    this.strokes = this.strokes.filter(s => !timestamps.has(s.timestamp));
+    const removed = before - this.strokes.length;
+    if (removed === 0) return 0;
+    // Drop matching add entries (by timestamp — robust to interleaved
+    // deletes that shift positional alignment), plus any delete /
+    // lasso-delete entries that reference discarded strokes (otherwise
+    // their saved indices would point at stale slots).
+    const survived: UndoEntry[] = [];
+    for (const e of this.undoStack) {
+      if (e.type === 'add') {
+        if (!timestamps.has(e.timestamp)) survived.push(e);
+        continue;
+      }
+      if (e.type === 'delete') {
+        if (!timestamps.has(e.stroke.timestamp)) survived.push(e);
+        continue;
+      }
+      if (e.type === 'lasso-delete') {
+        const remainingItems = e.items.filter(it => !timestamps.has(it.stroke.timestamp));
+        if (remainingItems.length === 0) continue;
+        survived.push({ type: 'lasso-delete', items: remainingItems });
+        continue;
+      }
+      // reference entries unaffected
+      survived.push(e);
     }
-    const removedIndices: number[] = [];
-    for (let i = 0; i < this.strokes.length; i++) {
-      if (timestamps.has(this.strokes[i].timestamp)) removedIndices.push(i);
-    }
-    if (removedIndices.length === 0) return 0;
-    // Splice undoStack in descending position order so earlier positions stay
-    // valid as we go.
-    const undoPositionsDesc = removedIndices
-      .map(i => addPositions[i])
-      .filter((p): p is number => p !== undefined)
-      .sort((a, b) => b - a);
-    for (const p of undoPositionsDesc) this.undoStack.splice(p, 1);
-    // Same for the strokes array.
-    for (let k = removedIndices.length - 1; k >= 0; k--) {
-      this.strokes.splice(removedIndices[k], 1);
-    }
+    this.undoStack = survived;
+    // Recompute the reference-entry counter from scratch — the loop above
+    // may have dropped non-reference entries while leaving reference ones in
+    // place, but `undoReferenceCount` should still equal the number of
+    // surviving reference entries (pruning logic relies on this).
+    this.undoReferenceCount = this.undoStack.filter(e => e.type === 'reference').length;
     // Pending redos may have been pointing at discarded strokes; safer to
     // drop them than risk a redo splicing back a stale stroke.
     this.redoStack = [];
     this.bumpMutation();
-    return removedIndices.length;
+    return removed;
   }
 
   /**
@@ -414,7 +439,7 @@ export class StrokeManager {
     // same already-quantized state as freshly-drawn strokes.
     const quantizedStrokes = strokes.map(quantizeStroke);
     this.strokes = quantizedStrokes;
-    this.undoStack = quantizedStrokes.map(() => ({ type: 'add' as const }));
+    this.undoStack = quantizedStrokes.map(s => ({ type: 'add' as const, timestamp: s.timestamp }));
     this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke: quantizeStroke(stroke) }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;

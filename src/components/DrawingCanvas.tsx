@@ -654,15 +654,13 @@ export function DrawingCanvas({
       const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
-        notifyStrokeCount();
-        redrawAll();
+        // onStrokeFinalized runs FIRST so trace-template scoring can
+        // synchronously discard (rejected) or replace (re-trace) the just-
+        // committed stroke. Without this ordering, notifyStrokeCount would
+        // start the timer based on a stroke that's about to vanish, and
+        // autosave would capture the pre-scoring stroke set.
         onStrokeFinalized?.(stroke);
-        // Second redraw after onStrokeFinalized so synchronous stroke
-        // mutations inside the callback (trace-template scoring's
-        // discardLastStroke on rejection, deleteStroke on re-trace
-        // replacement) are reflected immediately — otherwise the rejected
-        // / replaced stroke can linger on screen until the next unrelated
-        // redraw.
+        notifyStrokeCount();
         redrawAll();
       }
     }
@@ -766,10 +764,11 @@ export function DrawingCanvas({
       const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
-        notifyStrokeCount();
-        redrawAll();
+        // See the touchend branch — onStrokeFinalized must observe the
+        // stroke before notifyStrokeCount runs so timer/autosave don't fire
+        // on a stroke that scoring is about to discard.
         onStrokeFinalized?.(stroke);
-        // See the touchend branch for why a second redraw is required.
+        notifyStrokeCount();
         redrawAll();
       }
     }
