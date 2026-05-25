@@ -1,7 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense } from 'react';
 import { Box, CircularProgress, IconButton, Popover, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen } from 'lucide-react';
+import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, RotateCcw } from 'lucide-react';
+import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import { useLongPress } from '../hooks/useLongPress';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
@@ -73,9 +74,37 @@ interface DrawingPanelProps {
   /** Pass-through to DrawingCanvas: when true, new strokes can't start. Used
    *  during the gesture-session swap window to swallow reflexive taps. */
   inputFrozen?: boolean;
+  /** Trace-template strokes shown as semi-transparent guide lines. */
+  templateStrokes?: readonly TraceStroke[] | null;
+  /** Latest scored attempt's deviation visualization. */
+  traceFeedback?: TraceFeedback | null;
+  /** Called when a stroke is committed (forwarded to DrawingCanvas). */
+  onStrokeFinalized?: (stroke: Stroke) => void;
+  /** Per-template-stroke scores (one per attempted target). */
+  traceScores?: readonly TemplateScore[];
+  /** Number of distinct template strokes the user has attempted. */
+  traceTotalCovered?: number;
+  /** Total number of template strokes in the active template. */
+  traceTotalStrokes?: number;
+  /** Average best errorPct across attempted strokes. */
+  traceOverallBestPct?: number | null;
+  /** Clear all scores + attempts (template stays active) and erase traced strokes. */
+  onTraceResetScores?: () => void;
+  /** Resync scoring derived state when strokes mutate outside scoring (undo/redo/erase). */
+  onTraceSyncAttempts?: () => void;
 }
 
-export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false }: DrawingPanelProps) {
+export function DrawingPanel({
+  referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false,
+  templateStrokes = null,
+  traceFeedback = null,
+  onStrokeFinalized,
+  traceTotalCovered = 0,
+  traceTotalStrokes = 0,
+  traceOverallBestPct = null,
+  onTraceResetScores,
+  onTraceSyncAttempts,
+}: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
   // The most-recently-used eraser sub-mode. In narrow layouts the eraser
   // toolbar button shows this icon and a short tap activates this sub-mode;
@@ -180,19 +209,24 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
     strokeManager.undo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw();
+    // Stroke set changed: let trace scoring drop entries whose strokes were
+    // popped and re-add entries whose strokes were spliced back. Without
+    // this, attemptMap stays stale and the next retrace fails to replace.
+    onTraceSyncAttempts?.();
     if (!strokeManager.canUndo()) {
       timer.reset();
     }
-  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer]);
+  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer, onTraceSyncAttempts]);
 
   const handleRedo = useCallback(() => {
     strokeManager.redo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw();
+    onTraceSyncAttempts?.();
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
-  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer]);
+  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer, onTraceSyncAttempts]);
 
   const handleClear = useCallback(() => {
     strokeManager.clear();
@@ -201,15 +235,20 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
     timer.reset();
     triggerRedraw();
     onOverlayClear?.();
-  }, [strokeManager, triggerRedraw, timer, onOverlayClear]);
+    // Strokes are gone → trace scores/feedback for those attempts have no
+    // remaining evidence. Clear them so the red feedback bands and per-stroke
+    // best% don't outlive the strokes they refer to.
+    onTraceResetScores?.();
+  }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
 
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedStrokeIndex !== null) {
       strokeManager.deleteStroke(highlightedStrokeIndex);
       setHighlightedStrokeIndex(null);
       triggerRedraw();
+      onTraceSyncAttempts?.();
     }
-  }, [strokeManager, highlightedStrokeIndex, triggerRedraw]);
+  }, [strokeManager, highlightedStrokeIndex, triggerRedraw, onTraceSyncAttempts]);
 
   const handleCancelHighlight = useCallback(() => {
     setHighlightedStrokeIndex(null);
@@ -218,10 +257,16 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
   const handleStrokeCountChange = useCallback(() => {
     setRedrawVersion(v => v + 1);
     onStrokesChanged?.();
+    // Lasso-delete from DrawingCanvas reaches us via this path (NOT through
+    // handleStrokeFinalized), so resync trace scoring here too. The add-path
+    // also lands here just before handleStrokeFinalized records its history
+    // entry — that intermediate sync is harmless (syncAttempts is idempotent
+    // and reads the latest StrokeManager state).
+    onTraceSyncAttempts?.();
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
-  }, [strokeManager, onStrokesChanged, timer]);
+  }, [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts]);
 
   // Re-entrancy guard via ref (not `saving` state) so a Cmd/Ctrl+S burst
   // sees the latched value on the same render, before React commits the
@@ -659,25 +704,93 @@ export function DrawingPanel({ referenceSize, referenceInfo, strokeManager, onSt
       </Box>
 
       {/* Canvas */}
-      <Box sx={{ flex: 1, minHeight: 0, transform: isFlipped ? 'scaleX(-1)' : undefined }}>
-        <DrawingCanvas
-          mode={mode}
-          highlightedStrokeIndex={highlightedStrokeIndex}
-          onHighlightStroke={setHighlightedStrokeIndex}
-          onDeleteHighlightedStroke={handleDeleteHighlighted}
-          onStrokeCountChange={handleStrokeCountChange}
-          strokeManager={strokeManager}
-          redrawVersion={redrawVersion}
-          viewResetVersion={viewResetVersion}
-          grid={grid}
-          guideLines={lines}
-          guideVersion={guideVersion}
-          fitSize={referenceSize ?? undefined}
-          isFlipped={isFlipped}
-          onCurrentStrokeChange={onCurrentStrokeChange}
-          viewTransform={viewTransform}
-          inputFrozen={inputFrozen}
-        />
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {/* Trace score overlay — pinned to the top-right of the canvas so it
+            stays out of the way of the centered template strokes. Only shown
+            while a trace template is active. The overlay container ignores
+            pointer events except for the reset button. */}
+        {templateStrokes && templateStrokes.length > 0 && (
+          <Box
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              zIndex: 5,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.5,
+              px: 1,
+              py: 0.25,
+              borderRadius: 1,
+              bgcolor: 'rgba(0, 0, 0, 0.55)',
+              color: 'white',
+              pointerEvents: 'none',
+            }}
+          >
+            <Typography
+              variant="body2"
+              sx={{ fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+              aria-label={t('traceScoreLabel')}
+            >
+              {t('traceScoreLabel')}
+              {' '}
+              {traceTotalCovered}
+              /
+              {traceTotalStrokes}
+              {traceOverallBestPct !== null && (
+                <>
+                  {' · '}
+                  {t('traceScoreBest')}
+                  {' '}
+                  {traceOverallBestPct.toFixed(1)}
+                  %
+                </>
+              )}
+            </Typography>
+            {onTraceResetScores && (
+              <ToolbarTooltip title={t('traceResetScore')}>
+                <span style={{ pointerEvents: 'auto' }}>
+                  <IconButton
+                    size="small"
+                    onClick={onTraceResetScores}
+                    disabled={traceTotalCovered === 0}
+                    sx={{
+                      'color': 'white',
+                      'p': 0.25,
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+                      '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' },
+                    }}
+                  >
+                    <RotateCcw size={16} />
+                  </IconButton>
+                </span>
+              </ToolbarTooltip>
+            )}
+          </Box>
+        )}
+        <Box sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
+          <DrawingCanvas
+            mode={mode}
+            highlightedStrokeIndex={highlightedStrokeIndex}
+            onHighlightStroke={setHighlightedStrokeIndex}
+            onDeleteHighlightedStroke={handleDeleteHighlighted}
+            onStrokeCountChange={handleStrokeCountChange}
+            strokeManager={strokeManager}
+            redrawVersion={redrawVersion}
+            viewResetVersion={viewResetVersion}
+            grid={grid}
+            guideLines={lines}
+            guideVersion={guideVersion}
+            fitSize={referenceSize ?? undefined}
+            isFlipped={isFlipped}
+            onCurrentStrokeChange={onCurrentStrokeChange}
+            viewTransform={viewTransform}
+            inputFrozen={inputFrozen}
+            templateStrokes={templateStrokes}
+            traceFeedback={traceFeedback}
+            onStrokeFinalized={onStrokeFinalized}
+          />
+        </Box>
       </Box>
 
       {showGallery && (

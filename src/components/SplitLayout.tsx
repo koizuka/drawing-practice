@@ -7,6 +7,8 @@ import { useSessionLock } from '../hooks/useSessionLock';
 import { useGestureSession } from '../hooks/useGestureSession';
 import { GuideProvider } from '../guides/GuideContext';
 import { useGuides } from '../guides/useGuides';
+import { TraceScoringProvider, useTraceScoring } from '../trace/TraceScoringContext';
+import { getBundledTemplate } from '../templates/bundled';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
@@ -120,6 +122,50 @@ function SplitLayoutInner() {
 
   // Guide state (from context)
   const { grid, lines, version: guideVersion, restoreGuides, guideManagerRef } = useGuides();
+
+  // Trace-template scoring (from context). Driven by referenceInfo: when the
+  // user selects a bundled trace template the matching strokes are loaded into
+  // the context; switching to a different template (or away from trace) clears
+  // scores. Strokes the user already drew are left alone (the user might want
+  // to keep them as part of a free drawing).
+  const traceScoring = useTraceScoring();
+  const traceTemplateId = referenceInfo?.source === 'trace-template' ? referenceInfo.templateId : null;
+  useEffect(() => {
+    if (!traceTemplateId) {
+      traceScoring.setTemplate(null);
+      return;
+    }
+    const tmpl = getBundledTemplate(traceTemplateId);
+    traceScoring.setTemplate(tmpl?.strokes ?? null);
+    // traceScoring.setTemplate is stable per-provider; listing it would just
+    // bloat the dep array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [traceTemplateId]);
+
+  const handleTraceStrokeFinalized = useCallback((stroke: Stroke) => {
+    traceScoring.handleStrokeFinalized(stroke, strokeManager);
+  }, [traceScoring, strokeManager]);
+
+  // handleStrokesChanged is declared further down; forward via a ref so
+  // handleTraceResetScores can fire it without a circular dep.
+  const handleStrokesChangedRef = useRef<() => void>(() => {});
+
+  const handleTraceResetScores = useCallback(() => {
+    traceScoring.resetScores(strokeManager);
+    // resetScores erases the traced strokes via discardStrokes — the canvas
+    // and autosave need to observe the change. handleStrokesChanged bumps
+    // overlayStrokes (when active) and changeVersion (drives autosave +
+    // DrawingCanvas redraw via the parent's redrawVersion plumbing).
+    handleStrokesChangedRef.current();
+  }, [traceScoring, strokeManager]);
+
+  // After undo/redo/erase the StrokeManager's stroke list changes outside the
+  // scoring context's knowledge; without resyncing, stale timestamps in the
+  // attempt map prevent re-trace replacement and the scores diverge from the
+  // strokes actually on canvas.
+  const handleTraceSyncAttempts = useCallback(() => {
+    traceScoring.syncAttempts(strokeManager);
+  }, [traceScoring, strokeManager]);
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
   const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null);
@@ -385,6 +431,12 @@ function SplitLayoutInner() {
     incrementChangeVersion();
   }, [strokeManager, overlayActive, incrementChangeVersion]);
 
+  // Keep the forward ref pointing at the latest closure so handleTraceResetScores
+  // (declared earlier in the file) can invoke it.
+  useEffect(() => {
+    handleStrokesChangedRef.current = handleStrokesChanged;
+  });
+
   // ── Gesture-drawing session ───────────────────────────────────────────────
   // Driven by useGestureSession. Sequence per pose: countdown → onTimeUp
   // (save current drawing) → onAdvance (clear strokes + reset timer) →
@@ -588,6 +640,13 @@ function SplitLayoutInner() {
         s.setLocalImageUrl(null);
         s.setReferenceInfo(info);
       }
+      else if (info.source === 'trace-template' && info.templateId) {
+        s.setSource('trace-template');
+        s.setReferenceMode('fixed');
+        s.setFixedImageUrl(null);
+        s.setLocalImageUrl(null);
+        s.setReferenceInfo(info);
+      }
     });
 
     let historyAdd: Promise<void> | null = null;
@@ -746,6 +805,7 @@ function SplitLayoutInner() {
           || draft.source === 'url'
           || draft.source === 'pexels'
           || draft.source === 'youtube'
+          || draft.source === 'trace-template'
           || (draft.source === 'sketchfab' && draft.referenceImageData !== null);
       const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
       const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
@@ -829,6 +889,12 @@ function SplitLayoutInner() {
         }
         else if (info?.source === 'pexels') {
           setFixedImageUrl(info.pexelsImageUrl);
+          setReferenceMode('fixed');
+        }
+        else if (info?.source === 'trace-template') {
+          // No fixed/local URL to restore — the templateId on referenceInfo is
+          // enough for ReferencePanel to look up the bundled template. Just
+          // make sure we land in fixed mode (otherwise the picker shows).
           setReferenceMode('fixed');
         }
       }
@@ -923,6 +989,7 @@ function SplitLayoutInner() {
               onToggleFlip={handleToggleFlip}
               viewTransform={viewTransform}
               fitLeader={fitLeader}
+              traceFeedback={traceScoring.latestFeedback}
             />
           </Box>
           <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
@@ -946,6 +1013,15 @@ function SplitLayoutInner() {
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
               inputFrozen={gestureSession.transitioning}
+              templateStrokes={traceScoring.templateStrokes}
+              traceFeedback={traceScoring.latestFeedback}
+              onStrokeFinalized={handleTraceStrokeFinalized}
+              traceScores={traceScoring.scores}
+              traceTotalCovered={traceScoring.totalCovered}
+              traceTotalStrokes={traceScoring.totalStrokes}
+              traceOverallBestPct={traceScoring.overallBestPct}
+              onTraceResetScores={handleTraceResetScores}
+              onTraceSyncAttempts={handleTraceSyncAttempts}
             />
           </Box>
         </Box>
@@ -967,7 +1043,9 @@ function SplitLayoutInner() {
 export function SplitLayout() {
   return (
     <GuideProvider>
-      <SplitLayoutInner />
+      <TraceScoringProvider>
+        <SplitLayoutInner />
+      </TraceScoringProvider>
     </GuideProvider>
   );
 }

@@ -200,6 +200,146 @@ describe('StrokeManager', () => {
     });
   });
 
+  describe('discardLastStroke', () => {
+    it('removes the most recent stroke without leaving an undo entry', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const stroke = manager.endStroke();
+      expect(stroke).not.toBeNull();
+      expect(manager.canUndo()).toBe(true);
+
+      const discarded = manager.discardLastStroke();
+      expect(discarded).toBe(stroke);
+      expect(manager.getStrokes()).toHaveLength(0);
+      // No undo entry remains → Undo cannot resurrect the discarded stroke.
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('is a no-op when the top of the undo stack is not an add', () => {
+      const snap: ReferenceSnapshot = {
+        source: 'none',
+        referenceMode: 'browse',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: null,
+      };
+      manager.recordReferenceChange(snap);
+      const result = manager.discardLastStroke();
+      expect(result).toBeNull();
+      expect(manager.canUndo()).toBe(true); // reference entry preserved
+    });
+  });
+
+  describe('discardStrokes', () => {
+    it('removes specified strokes by timestamp without leaving undo entries', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const a = manager.endStroke()!;
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 30, y: 30 });
+      const b = manager.endStroke()!;
+      manager.startStroke({ x: 40, y: 40 });
+      manager.appendStroke({ x: 50, y: 50 });
+      const c = manager.endStroke()!;
+
+      const removed = manager.discardStrokes(new Set([a.timestamp, c.timestamp]));
+      expect(removed).toBe(2);
+      // Only b survives.
+      expect(manager.getStrokes()).toEqual([b]);
+      // Undoing the remaining add pops b — proves the undoStack stays
+      // consistent with the surviving strokes.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      // After popping b, no more undo entries (a and c's adds were discarded
+      // along with their strokes).
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('survives interleaved reference entries', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      const a = manager.endStroke()!;
+      const snap: ReferenceSnapshot = {
+        source: 'none',
+        referenceMode: 'browse',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: null,
+      };
+      manager.recordReferenceChange(snap);
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 30, y: 30 });
+      const b = manager.endStroke()!;
+
+      const removed = manager.discardStrokes(new Set([a.timestamp]));
+      expect(removed).toBe(1);
+      expect(manager.getStrokes()).toEqual([b]);
+      // Undo: should pop b's add first, then the reference entry. The
+      // reference restorer isn't registered in this test, so it would
+      // throw if called — but undoing add(b) just pops the stroke.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+    });
+
+    it('returns 0 when no timestamps match', () => {
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 10, y: 10 });
+      manager.endStroke();
+      const removed = manager.discardStrokes(new Set([99999]));
+      expect(removed).toBe(0);
+      expect(manager.getStrokes()).toHaveLength(1);
+    });
+
+    it('correctly identifies add entries by timestamp even after deleteStroke leaves stale add entries', () => {
+      // Copilot regression: previously discardStrokes mapped "i-th live
+      // stroke → i-th add entry by position", which silently removed the
+      // wrong add entry once a deleteStroke had been issued.
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 1, y: 1 });
+      manager.endStroke()!;
+      manager.startStroke({ x: 10, y: 10 });
+      manager.appendStroke({ x: 11, y: 11 });
+      const b = manager.endStroke()!;
+      manager.startStroke({ x: 20, y: 20 });
+      manager.appendStroke({ x: 21, y: 21 });
+      const c = manager.endStroke()!;
+      // Replace-via-delete (mimics trace re-trace): delete A. The add(A.ts)
+      // entry remains in undoStack — index-based logic would have aligned
+      // strokes[0]=B with addPositions[0]=add(A.ts), corrupting subsequent
+      // undo behavior.
+      manager.deleteStroke(0);
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp, c.timestamp]);
+
+      // Discard B by timestamp. add(B.ts) must be the one that's removed,
+      // not add(A.ts).
+      const removed = manager.discardStrokes(new Set([b.timestamp]));
+      expect(removed).toBe(1);
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([c.timestamp]);
+    });
+
+    it('drops delete entries that reference discarded strokes so Undo cannot resurrect them', () => {
+      // Copilot regression: with the prior implementation, a leftover
+      // delete-entry whose stroke had been discarded could be undone,
+      // splicing a ghost stroke back into the manager.
+      manager.startStroke({ x: 0, y: 0 });
+      manager.appendStroke({ x: 1, y: 1 });
+      const a = manager.endStroke()!;
+      manager.startStroke({ x: 10, y: 10 });
+      manager.appendStroke({ x: 11, y: 11 });
+      const b = manager.endStroke()!;
+      manager.deleteStroke(0); // A removed, delete-entry remembers A
+      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp]);
+
+      // Discard both A and B (A is not in strokes anymore but is in history).
+      manager.discardStrokes(new Set([a.timestamp, b.timestamp]));
+      expect(manager.getStrokes()).toHaveLength(0);
+      // Now Undo should NOT resurrect A.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      expect(manager.canUndo()).toBe(false);
+    });
+  });
+
   describe('deleteStroke', () => {
     it('deletes a stroke by index', () => {
       manager.startStroke({ x: 0, y: 0 });

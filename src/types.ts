@@ -1,4 +1,4 @@
-export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels';
+export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels' | 'trace-template';
 export type ReferenceMode = 'browse' | 'fixed';
 
 interface ReferenceInfoBase {
@@ -43,6 +43,11 @@ export type ReferenceInfo
     pexelsImageUrl: string;
     pexelsPhotographerUrl?: string;
     pexelsPageUrl?: string;
+  })
+  | (ReferenceInfoBase & {
+    source: 'trace-template';
+    /** Bundled templates: 'bundle:<slug>'. External SVG support is future work. */
+    templateId: string;
   });
 
 /**
@@ -59,5 +64,6 @@ export function referenceKey(info: ReferenceInfo): string {
     case 'url': return `url:${info.imageUrl}`;
     case 'youtube': return `youtube:${info.youtubeVideoId}`;
     case 'pexels': return `pexels:${info.pexelsPhotoId}`;
+    case 'trace-template': return `trace-template:${info.templateId}`;
   }
 }

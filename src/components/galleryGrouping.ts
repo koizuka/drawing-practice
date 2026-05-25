@@ -46,6 +46,9 @@ export function canLoadReference(ref: ReferenceInfo | undefined): boolean {
   // lazily at load time (the entry may have been evicted by the 10-cap, in
   // which case SplitLayout surfaces the error).
   if (ref.source === 'image' && ref.url) return true;
+  // Trace templates are bundled, so a recorded templateId always resolves —
+  // no urlHistory or remote dependency that could be evicted.
+  if (ref.source === 'trace-template' && ref.templateId) return true;
   return false;
 }
 
@@ -60,6 +63,7 @@ export function syncThumbUrl(ref: ReferenceInfo): string | null {
     case 'youtube': return buildYouTubeGalleryThumbnailUrl(ref.youtubeVideoId);
     case 'pexels': return ref.pexelsImageUrl;
     case 'image': return null;
+    case 'trace-template': return null;
   }
 }
 

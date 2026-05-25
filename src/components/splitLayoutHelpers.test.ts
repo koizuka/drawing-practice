@@ -21,6 +21,11 @@ describe('computeFitLeader', () => {
     expect(computeFitLeader('pexels', 'fixed')).toBe('reference');
     expect(computeFitLeader('sketchfab', 'fixed')).toBe('reference');
   });
+
+  it('returns "reference" for trace template in fixed mode, "drawing" while browsing the picker', () => {
+    expect(computeFitLeader('trace-template', 'fixed')).toBe('reference');
+    expect(computeFitLeader('trace-template', 'browse')).toBe('drawing');
+  });
 });
 
 describe('resolveDrawingFitSize', () => {

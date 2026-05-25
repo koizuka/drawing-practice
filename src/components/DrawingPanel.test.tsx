@@ -57,6 +57,11 @@ function setup(opts: {
   onToggleReferenceCollapsed?: () => void;
   collapseLocked?: boolean;
   initialReferenceCollapsed?: boolean;
+  templateStrokes?: readonly import('../trace/types').TraceStroke[] | null;
+  onTraceResetScores?: () => void;
+  traceTotalCovered?: number;
+  traceTotalStrokes?: number;
+  traceOverallBestPct?: number | null;
 } = {}) {
   const sm = new StrokeManager();
   const harness: Harness = {
@@ -102,6 +107,11 @@ function setup(opts: {
             onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
             collapseLocked={opts.collapseLocked}
             referenceCollapsed={referenceCollapsed}
+            templateStrokes={opts.templateStrokes ?? null}
+            onTraceResetScores={opts.onTraceResetScores}
+            traceTotalCovered={opts.traceTotalCovered}
+            traceTotalStrokes={opts.traceTotalStrokes}
+            traceOverallBestPct={opts.traceOverallBestPct ?? null}
           />
         )}
       </Inner>
@@ -264,6 +274,33 @@ describe('DrawingPanel toolbar state', () => {
     expect(harness.sm!.getStrokes()).toHaveLength(0);
     expect(harness.timer.isRunning).toBe(false);
     expect(harness.timer.elapsedMs).toBe(0);
+  });
+
+  it('clear button also resets trace scores so leftover red feedback bands do not outlive the strokes', () => {
+    // Regression: previously handleClear wiped strokes/timer but left the
+    // scoring context's latestFeedback in place, so the red deviation bands
+    // from the last attempt kept rendering after the user blew away the
+    // strokes that produced them.
+    const onTraceResetScores = vi.fn();
+    const { container, harness } = setup({
+      onTraceResetScores,
+      templateStrokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], length: 10, closed: false }],
+      traceTotalCovered: 1,
+      traceTotalStrokes: 1,
+      traceOverallBestPct: 0.5,
+    });
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+
+    const clearBtn = findIconButton(container, 'lucide-trash-2');
+    act(() => {
+      fireEvent.click(clearBtn);
+    });
+
+    expect(onTraceResetScores).toHaveBeenCalledTimes(1);
   });
 });
 

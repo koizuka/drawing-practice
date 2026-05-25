@@ -5,6 +5,8 @@ paths:
   - "src/components/ImageViewer.tsx"
   - "src/components/YouTubeViewer.tsx"
   - "src/components/PexelsSearcher.tsx"
+  - "src/components/TraceTemplateViewer.tsx"
+  - "src/components/BundledTemplatePicker.tsx"
   - "src/utils/sketchfab.ts"
   - "src/utils/pexels.ts"
   - "src/utils/youtube.ts"
@@ -12,7 +14,7 @@ paths:
 
 # Reference source rules
 
-Reference sources: Sketchfab 3D model, local image file, URL (auto-routed), YouTube video, Pexels photo.
+Reference sources: Sketchfab 3D model, local image file, URL (auto-routed), YouTube video, Pexels photo, bundled trace template (curve-tracing practice with scoring — see also `trace-template.md`).
 
 ## ReferencePanel
 
@@ -66,3 +68,15 @@ API: `api.pexels.com/v1` with `Authorization` header; key in `localStorage['pexe
 **Missing/invalid key is handled modally by the parent, not in-screen.** When `needsKey` flips true (mount with empty key, post-Clear `apiKeyVersion` bump, or 401 from `searchPhotos`), `PexelsSearcher` fires `onApiKeyMissing`; `ReferencePanel` opens `PexelsApiKeyDialog` and, on Cancel/Clear, calls `handleClose` to exit the Pexels source. **Why:** every searcher control is `disabled={needsKey}` — without the modal recovery the user would be stranded on a fully-disabled screen with no way off. Do not re-introduce a modeless in-screen Alert for this path.
 
 The notification is gated on the `active` prop (parent passes `referenceMode === 'browse'`). The searcher stays mounted in fixed mode (preserves search state across browse↔fixed transitions), but in fixed mode the user is viewing/drawing on a CDN-loaded photo that doesn't need the API key — firing `onApiKeyMissing` there would yank them out of their work.
+
+## Trace template (`source: 'trace-template'`)
+
+Bundled curve practice. `browse` mode shows `BundledTemplatePicker` (5 templates in `src/templates/`); `fixed` mode mounts `TraceTemplateViewer` which renders the chosen `TraceTemplate.strokes` in semi-transparent gray on both panels and overlays the user's strokes (via the existing overlay-compare path). `ReferenceInfo.templateId` is `'bundle:<slug>'` — resolved via `getBundledTemplate(id)`. There is no fixed/local URL — `displayImageUrl` stays null; `isFixed` is expanded to `(referenceMode === 'fixed' && !!displayImageUrl) || isTraceFixed`.
+
+**No URL-history entry.** Template selection records nothing in `urlHistory`; the dropdown doesn't surface trace templates. The bundle is enough.
+
+**Autosave restore takes a trace branch.** `loadDraft`'s else-if chain has a `info?.source === 'trace-template'` arm that just calls `setReferenceMode('fixed')` (no `setFixedImageUrl` — there's no image). `referenceWillSize` includes `'trace-template'` so the camera restore path defers behind `TraceTemplateViewer.onTemplateLoaded` → `pendingCameraRef` → `restoreCamera` lands after the viewer's `loadContent(0,0,1)`. Without these two pieces, reload either reverts to the picker or stomps the saved pan/zoom.
+
+**Gallery integration.** `canLoadReference` returns true for trace-template (bundled IDs never get evicted), and `handleLoadReference` has a trace-template branch mirroring `handleSelectTraceTemplate`. So "Use this reference" on a gallery record drawn with a trace template restores the active template + fixed mode.
+
+**Scoring + replace-vs-undo semantics** live in `trace-template.md` — read that for the attempt-map design, the live-vs-lifetime stats split, and why rejected attempts must use `StrokeManager.discardLastStroke()` instead of `deleteStroke()`.
