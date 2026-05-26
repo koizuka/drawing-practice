@@ -220,14 +220,13 @@ export class StrokeManager {
     // state record on independent arrays. Sharing the reference would alias
     // through `undo()` of `'clear'` (which restores `this.strokes = entry.strokes`),
     // making future stroke mutations leak into the entry. Today that's masked
-    // only by `endStroke`'s `redoStack = []` running before any observer; a
-    // copy makes the invariant local and survives refactors.
-    const saved = this.strokes.slice();
-    this.undoStack.push({ type: 'clear', strokes: saved });
+    // only by `endStroke`'s `redoStack = []` running before any observer; the
+    // copies here make the invariant local and survive refactors.
+    this.undoStack.push({ type: 'clear', strokes: this.strokes.slice() });
+    this.tentativeClearState = { savedStrokes: this.strokes.slice() };
     this.strokes = [];
     this.currentStroke = null;
     this.redoStack = [];
-    this.tentativeClearState = { savedStrokes: saved };
     // Intentionally NOT calling bumpMutation: tentative clear is fully
     // reversible until the next `endStroke` commits it, so it must not flip
     // `gallerySaveDirty`. Without this guard, Save → Trash → Undo would leave

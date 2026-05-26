@@ -909,37 +909,39 @@ describe('StrokeManager', () => {
       expect(manager.isDirtySinceGallerySave()).toBe(true);
     });
 
-    it('uses defensive copies — mutating this.strokes does not leak into the clear entry on the redoStack', () => {
+    it('uses defensive copies — mutating this.strokes does not leak into the clear entries on the undo/redo stacks', () => {
       // Regression coverage: tentativeClear used to store this.strokes by
-      // reference. After undo() of the clear, this.strokes and the redo
-      // entry's strokes aliased the same array. Any subsequent push to
-      // this.strokes would silently mutate the redo entry. This test
-      // exercises the alias path and asserts independence.
+      // reference into both the undo entry AND the tentativeClearState. After
+      // undo() of the clear, this.strokes and the redo entry's strokes
+      // aliased the same array. Without defensive copies, an in-place mutation
+      // of this.strokes between undo and redo would leak into the redo entry,
+      // and redo would re-enter tentative with the polluted set.
       commitStroke(manager, 0, 0);
       const sentinelTimestamp = manager.getStrokes()[0].timestamp;
       manager.tentativeClear();
       manager.undo();
-      // Append another stroke directly — endStroke's redoStack=[] would
-      // otherwise mask the alias issue. We need to verify the underlying
-      // arrays are independent.
-      const strokesArr = manager.getStrokes() as Stroke[];
-      const redoBefore = manager.getRedoStack();
-      // `strokes` and the redo entry must NOT be the same array reference.
-      // We can't directly inspect the redo entry, but we observe via redo()
-      // restoring exactly the saved set, regardless of any subsequent
-      // mutations to this.strokes between the undo and the redo.
-      // Mutate this.strokes via the internal API (deleteStroke), then redo:
-      // The redo should re-enter tentative with the ORIGINAL saved set.
-      void strokesArr;
-      void redoBefore;
-      // Indirect verification: redo of clear reinstates strokes containing
-      // exactly the original sentinel.
+      // Force an in-place mutation of this.strokes that does NOT touch
+      // redoStack (so any aliasing would persist). `(getStrokes() as Stroke[])`
+      // bypasses the readonly type to push a synthetic sentinel directly into
+      // the live array — the same effect a future refactor that preserves
+      // redoStack across an add would have.
+      const live = manager.getStrokes() as Stroke[];
+      live.push({ points: [{ x: 999, y: 999 }, { x: 1000, y: 1000 }], timestamp: 99_999 });
+      expect(manager.getStrokes()).toHaveLength(2);
+
+      // Redo of clear must re-enter tentative with the ORIGINAL saved set
+      // (1 stroke), NOT the polluted [original, sentinel] array.
       manager.redo();
       expect(manager.isTentativeClearActive()).toBe(true);
+      expect(manager.getStrokes()).toHaveLength(0);
+
       manager.undo();
       const restored = manager.getStrokes();
       expect(restored).toHaveLength(1);
       expect(restored[0].timestamp).toBe(sentinelTimestamp);
+      // The injected sentinel (timestamp 99_999) must NOT appear — it was
+      // never part of the saved set, so independent-array storage drops it.
+      expect(restored.find(s => s.timestamp === 99_999)).toBeUndefined();
     });
   });
 

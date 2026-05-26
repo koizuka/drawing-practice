@@ -58,7 +58,7 @@ Undo/redo handles BOTH strokes and reference changes via the same button. Pass p
 
 Two clear paths exist:
 
-- **`tentativeClear()`** — soft clear used by the trash button (`DrawingPanel.handleClear`) and by `SplitLayout.changeReference` (user-initiated reference changes only — `recordUndo: false` paths bypass it). Pushes a `'clear'` entry holding the current strokes onto `undoStack`, sets `strokes = []`, clears `currentStroke` and `redoStack`, sets the `tentativeClearState` flag, and bumps mutation. No-op when already tentative or when `strokes.length === 0`. Repeated calls within the same tentative session are ignored — the trash button is also visually disabled while `strokeCount === 0`, so users don't accumulate duplicate clears.
+- **`tentativeClear()`** — soft clear used by the trash button (`DrawingPanel.handleClear`) and by `SplitLayout.changeReference` (user-initiated reference changes only — `recordUndo: false` paths bypass it). Pushes a `'clear'` entry holding a `.slice()` of the current strokes onto `undoStack`, sets `strokes = []`, clears `currentStroke` and `redoStack`, sets the `tentativeClearState` flag (also holding its own `.slice()` so the two snapshots cannot alias). **Does NOT bump mutation** — see "Gallery-dirty parity" below. No-op when already tentative or when `strokes.length === 0`. Repeated calls within the same tentative session are ignored — the trash button is also visually disabled while `strokeCount === 0`, so users don't accumulate duplicate clears.
 
 - **`clear()`** — destructive wipe used by the gesture-session per-pose advance (`SplitLayout.resetForNextPose`). Drops all strokes AND the entire undo/redo stack including reference history. Use only when Undo recovery is undesirable.
 
@@ -67,8 +67,8 @@ Two clear paths exist:
 **Why scan-from-stack instead of "is `clear` on top"**: a `reference` entry can be pushed above the `clear` entry when the user changes references while tentative (the auto-`tentativeClear()` in `changeReference` is a no-op the second time around because `tentativeClearState !== null`, but the `recordReferenceChange` part still pushes its entry). The single-pass filter on commit handles this naturally; assuming the `clear` is at the top would miss it.
 
 **Undo / Redo**:
-- `undo()` popping a `'clear'` entry restores `strokes = entry.strokes`, clears `tentativeClearState`, pushes the entry onto `redoStack`, bumps mutation. UndoResult is `{ kind: 'strokes', strokes }` — same shape as lasso-delete undo.
-- `redo()` popping a `'clear'` redo entry re-enters tentative state (sets `tentativeClearState`, empties strokes, pushes `'clear'` back onto `undoStack`). A subsequent new stroke commits cleanly.
+- `undo()` popping a `'clear'` entry restores `strokes = entry.strokes.slice()` (independent copy), clears `tentativeClearState`, pushes the original `entry.strokes` onto `redoStack`. **Does NOT bump mutation** — see "Gallery-dirty parity". UndoResult is `{ kind: 'strokes', strokes }` — same shape as lasso-delete undo.
+- `redo()` popping a `'clear'` redo entry re-enters tentative state (sets `tentativeClearState.savedStrokes = entry.strokes.slice()`, empties strokes, pushes the original `entry.strokes` back onto `undoStack`). Also does NOT bump mutation. A subsequent new stroke commits cleanly.
 
 **Persistence**: `tentativeClearState` is **in-memory only**. The autosave draft persists `strokes = []` while tentative, so a reload after clearing lands with no strokes and no Undo entry. Consistent with the existing "reference history is session-only" rule.
 
