@@ -14,6 +14,7 @@ Single chronological undo/redo stack shared by **strokes AND reference changes**
 - `delete` — single stroke erased (tap eraser)
 - `lasso-delete` — batch erase: N strokes deleted as one undo unit (lasso). Items stored ascending by index; undo splices them back in ascending order, redo splices out in descending order so indices stay valid.
 - `reference` — reference (source/mode/image/Sketchfab angle) changed
+- `clear` — tentative clear: captures the live strokes so Undo can restore them, plus the empty visible state. Drawing a new stroke commits the clear (entry + the pre-clear `add` / `delete` / `lasso-delete` entries that referenced the cleared strokes are dropped together — see "Tentative clear" below).
 
 Reference entries are restored via an injected `ReferenceRestorer` callback. `undo(captureCurrentRef)` / `redo(captureCurrentRef)` accept a snapshot factory so the opposite stack can record the "current" reference before swapping.
 
@@ -52,6 +53,34 @@ Undo/redo handles BOTH strokes and reference changes via the same button. Pass p
 `startStroke` issues each new `Stroke.timestamp` via `nextTimestamp() = max(Date.now(), lastIssuedTimestamp + 1)` so consecutive strokes always get strictly monotonic timestamps even when the wall clock returns the same `Date.now()` value (tight test loops, low-resolution clocks, rapid-fire pen taps). `loadState` advances `lastIssuedTimestamp` past every restored stroke's timestamp so post-restore strokes can't collide with restored ones either.
 
 **Why this matters:** `Stroke.timestamp` doubles as a stable per-session identity key for trace-template scoring (`attemptMap: templateIdx → strokeTimestamp`). A collision would silently mis-resolve a re-trace's "previous attempt" lookup, leaving an orphan stroke in the manager that no scoring entry tracks. Tests exercise the bursty case (`TraceScoringContext.test.tsx`'s re-trace path); the production path's safety relies on the same monotonic guarantee.
+
+## Tentative clear (`tentativeClear` vs destructive `clear`)
+
+Two clear paths exist:
+
+- **`tentativeClear()`** — soft clear used by the trash button (`DrawingPanel.handleClear`) and by `SplitLayout.changeReference` (user-initiated reference changes only — `recordUndo: false` paths bypass it). Pushes a `'clear'` entry holding the current strokes onto `undoStack`, sets `strokes = []`, clears `currentStroke` and `redoStack`, sets the `tentativeClearState` flag, and bumps mutation. No-op when already tentative or when `strokes.length === 0`. Repeated calls within the same tentative session are ignored — the trash button is also visually disabled while `strokeCount === 0`, so users don't accumulate duplicate clears.
+
+- **`clear()`** — destructive wipe used by the gesture-session per-pose advance (`SplitLayout.resetForNextPose`). Drops all strokes AND the entire undo/redo stack including reference history. Use only when Undo recovery is undesirable.
+
+**Commit on next stroke**: `endStroke()` checks `tentativeClearState` before committing. If active, `commitTentativeClear()` runs a single-pass survival filter over `undoStack`: it drops the `'clear'` entry itself AND any older `add` / `delete` / `lasso-delete` entries that reference the cleared strokes (by timestamp). **Why:** those pre-clear entries would otherwise reference strokes no longer in `strokes[]`, leaving the undo stack inconsistent (Undo of an `add` would pop the wrong stroke). The user committed to "starting fresh," so the cleared strokes — and granular undo of them — are gone for good. `reference` entries sit between `'clear'` and `endStroke()` when the user changes reference while tentative; those survive the commit and stay individually undoable.
+
+**Why scan-from-stack instead of "is `clear` on top"**: a `reference` entry can be pushed above the `clear` entry when the user changes references while tentative (the auto-`tentativeClear()` in `changeReference` is a no-op the second time around because `tentativeClearState !== null`, but the `recordReferenceChange` part still pushes its entry). The single-pass filter on commit handles this naturally; assuming the `clear` is at the top would miss it.
+
+**Undo / Redo**:
+- `undo()` popping a `'clear'` entry restores `strokes = entry.strokes`, clears `tentativeClearState`, pushes the entry onto `redoStack`, bumps mutation. UndoResult is `{ kind: 'strokes', strokes }` — same shape as lasso-delete undo.
+- `redo()` popping a `'clear'` redo entry re-enters tentative state (sets `tentativeClearState`, empties strokes, pushes `'clear'` back onto `undoStack`). A subsequent new stroke commits cleanly.
+
+**Persistence**: `tentativeClearState` is **in-memory only**. The autosave draft persists `strokes = []` while tentative, so a reload after clearing lands with no strokes and no Undo entry. Consistent with the existing "reference history is session-only" rule.
+
+**Gallery-dirty parity**: `tentativeClear()`, `undo()` of `'clear'`, and `redo()` of `'clear'` deliberately do NOT call `bumpMutation()`. The strokes the user would save haven't changed: a tentative clear is fully reversible, and any commit happens later via `endStroke` (which bumps mutation as part of attaching the new stroke). **Why this matters:** without this, Save → Trash → Undo would leave `gallerySaveDirty = true` even though strokes are bit-identical to the last save, letting a Cmd+S burst or the still-enabled Save button write a duplicate gallery entry. The fix lives in `StrokeManager.tentativeClear` / `undo` / `redo` (search for "Intentionally NOT").
+
+**Aliasing**: `tentativeClear()` stores a `.slice()` of `this.strokes` in the `'clear'` entry, and `undo()` re-restores `this.strokes` from another `.slice()` of `entry.strokes`. `redo()` similarly copies into the new `tentativeClearState`. **Why:** without these copies, `this.strokes`, the undo entry, and the redo entry alias the same `Stroke[]` after `undo`-of-clear. Any later mutation of `this.strokes` (e.g. `push` inside `endStroke`) leaks backwards into the redo entry and corrupts a subsequent re-redo. Today the `endStroke` `redoStack = []` line happens to wipe the polluted entry before any observer, but the invariant should be local to the snapshot, not load-bearing on statement order across methods.
+
+**Timer interaction**: `DrawingPanel.handleClear` calls `timer.pause()` (NOT `timer.reset()`) on tentative clear so Undo restores the elapsed reading alongside the strokes. Commit-on-new-stroke flows through `DrawingCanvas` → `notifyStrokeCount({ committedTentativeClear })` → `DrawingPanel.handleStrokeCountChange` which calls `timer.reset()` before the existing `timer.start()` guard. `isTentativeClearActive()` must be read in `DrawingCanvas` BEFORE `endStroke()` runs — `endStroke` clears the flag as part of committing.
+
+**Trace scoring order**: `DrawingPanel.handleClear` runs `onTraceResetScores()` **before** `strokeManager.tentativeClear()`. `resetScores` calls `strokeManager.discardStrokes(scoredTimestamps)` which only matches strokes that are still in `getStrokes()` — running it after `tentativeClear` (which empties `getStrokes()`) would early-return in `discardStrokes`, leaving the scored strokes inside the `'clear'` undo entry. Undo would resurrect them as untracked ghosts AND `attemptMap` is already wiped, so a follow-up re-trace cannot replace them — leaving permanent duplicates on the same template target. With the corrected order, scored strokes are removed from `this.strokes` first, then `tentativeClear()` saves only the remaining (unscored) strokes. In a pure trace session where every stroke is scored, `tentativeClear` becomes a no-op and the trash button is effectively destructive for that click — Undo recovers nothing. Trade-off accepted for correctness.
+
+**Trace scoring history**: `onTraceResetScores()` clears `attemptHistory` / `attemptMap` / `allTimeStats` synchronously. Undo restores strokes but not scoring history — restored strokes are untracked ghosts in `attemptMap` (only an issue for unscored strokes, since scored ones were pruned above before they could enter the clear entry). Documented MVP limitation.
 
 ## Non-undoable bulk removal (`discardLastStroke`, `discardStrokes`)
 

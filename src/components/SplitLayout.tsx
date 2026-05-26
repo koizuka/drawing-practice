@@ -320,6 +320,13 @@ function SplitLayoutInner() {
       gestureSessionExitRef.current();
       const prev = captureReferenceSnapshot();
       strokeManager.recordReferenceChange(prev);
+      // Tentatively clear strokes too: switching reference usually means the
+      // user is moving on, but a tentative clear lets them Undo to come back
+      // if they were only sampling. No-op when there are no strokes or a
+      // tentative clear is already active (see StrokeManager.tentativeClear).
+      // gestureSession paths use `recordUndo: false` and bypass this so each
+      // pose advance keeps the in-progress strokes.
+      strokeManager.tentativeClear();
       setHistorySyncVersion(v => v + 1);
     }
     mutate({

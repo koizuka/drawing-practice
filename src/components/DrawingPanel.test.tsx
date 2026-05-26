@@ -23,7 +23,7 @@ vi.mock('./Gallery', () => ({
 
 type StubCanvasProps = {
   strokeManager: StrokeManager;
-  onStrokeCountChange: () => void;
+  onStrokeCountChange: (info?: { committedTentativeClear: boolean }) => void;
 };
 const canvasPropsRef: { current: StubCanvasProps | null } = { current: null };
 vi.mock('./DrawingCanvas', () => ({
@@ -257,7 +257,7 @@ describe('DrawingPanel toolbar state', () => {
     expect(clearBtn).not.toBeDisabled();
   });
 
-  it('clear button resets the timer and clears the strokes', () => {
+  it('clear button is tentative: hides strokes, pauses timer (does NOT reset), and Undo restores both', () => {
     const { container, harness } = setup();
 
     act(() => {
@@ -265,6 +265,11 @@ describe('DrawingPanel toolbar state', () => {
       canvasPropsRef.current!.onStrokeCountChange();
     });
     expect(harness.timer.isRunning).toBe(true);
+    // Use restore() to set a deterministic elapsed value (real time would
+    // tick between capture and assert, making equality flaky).
+    act(() => {
+      harness.timer.restore(2_500);
+    });
 
     const clearBtn = findIconButton(container, 'lucide-trash-2');
     act(() => {
@@ -272,8 +277,51 @@ describe('DrawingPanel toolbar state', () => {
     });
 
     expect(harness.sm!.getStrokes()).toHaveLength(0);
+    expect(harness.sm!.isTentativeClearActive()).toBe(true);
     expect(harness.timer.isRunning).toBe(false);
+    // Elapsed time is preserved — Undo will restore strokes alongside the timer reading.
+    expect(harness.timer.elapsedMs).toBe(2_500);
+    expect(harness.sm!.canUndo()).toBe(true);
+
+    // Undo restores the strokes; timer stays paused with the same elapsed value.
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-undo-2'));
+    });
+    expect(harness.sm!.getStrokes()).toHaveLength(1);
+    expect(harness.sm!.isTentativeClearActive()).toBe(false);
+    expect(harness.timer.elapsedMs).toBe(2_500);
+  });
+
+  it('drawing after a tentative clear resets the timer before auto-starting', () => {
+    const { container, harness } = setup();
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+    // Simulate accumulated elapsed time so we can observe the reset.
+    act(() => {
+      harness.timer.restore(5_000);
+    });
+
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+    });
+    expect(harness.sm!.isTentativeClearActive()).toBe(true);
+    expect(harness.timer.elapsedMs).toBe(5_000);
+
+    // Drawing a new stroke commits the tentative clear. DrawingCanvas reads
+    // isTentativeClearActive() before endStroke and forwards the flag.
+    act(() => {
+      const wasTentative = harness.sm!.isTentativeClearActive();
+      addStroke(harness.sm!, 100, 100);
+      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: wasTentative });
+    });
+
+    expect(harness.sm!.getStrokes()).toHaveLength(1);
+    expect(harness.sm!.isTentativeClearActive()).toBe(false);
     expect(harness.timer.elapsedMs).toBe(0);
+    expect(harness.timer.isRunning).toBe(true);
   });
 
   it('clear button also resets trace scores so leftover red feedback bands do not outlive the strokes', () => {
@@ -301,6 +349,37 @@ describe('DrawingPanel toolbar state', () => {
     });
 
     expect(onTraceResetScores).toHaveBeenCalledTimes(1);
+  });
+
+  it('handleClear runs onTraceResetScores BEFORE tentativeClear so discardStrokes can prune scored strokes from the clear entry', () => {
+    // Regression: if reset runs AFTER tentativeClear, discardStrokes
+    // early-returns on strokes.length===0 and the scored strokes survive
+    // inside the `'clear'` undo entry. Undo would resurrect them as
+    // untracked ghosts AND attemptMap is already wiped — a follow-up
+    // re-trace cannot replace them, leaving permanent duplicates.
+    // Verify the ordering by inspecting the StrokeManager state inside the
+    // reset callback: it must observe the strokes still present.
+    let strokesAtResetTime: number | null = null;
+    const { container, harness } = setup({
+      onTraceResetScores: () => {
+        strokesAtResetTime = harness.sm!.getStrokes().length;
+      },
+      templateStrokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], length: 10, closed: false }],
+      traceTotalCovered: 1,
+      traceTotalStrokes: 1,
+      traceOverallBestPct: 0.5,
+    });
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+    });
+
+    expect(strokesAtResetTime).toBe(1);
   });
 });
 

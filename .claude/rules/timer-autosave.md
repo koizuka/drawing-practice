@@ -19,12 +19,13 @@ paths:
 - Save.
 - Opening the gallery.
 - Any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference").
+- **Trash button (tentative clear)**. `DrawingPanel.handleClear` calls `timer.pause()` — NOT `reset()` — so Undo of the clear restores the elapsed reading alongside the strokes. The reset happens only later, iff the user commits by drawing again (see "Resets on" below).
 
 Reference-related pausing is wired through `pauseAndIncrementVersion` in `SplitLayout`. `changeReference` calls it after recording the undo entry and applying the mutation.
 
 **Resets on**:
-- Clear button.
 - When undo drains the history stack (`!canUndo()`). **Why:** treating a fully-undone session as "pre-drawing" keeps the reset path reachable even though the trash button is disabled while strokeCount is 0.
+- **Next stroke commit after a tentative clear** (trash button or reference change auto-clear). `DrawingCanvas` reads `strokeManager.isTentativeClearActive()` BEFORE `endStroke()` and forwards the flag via `onStrokeCountChange({ committedTentativeClear })`; `DrawingPanel.handleStrokeCountChange` then calls `timer.reset()` before the auto-start guard fires. **Why:** committing the clear means the user is starting a new drawing — counting time from before the clear would surprise them. See `drawing-undo.md` "Tentative clear" for the broader semantics.
 
 **Erase and redo do NOT touch the timer.**
 

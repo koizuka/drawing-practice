@@ -28,14 +28,16 @@ type UndoEntry
   = | { type: 'add'; timestamp: number }
     | { type: 'delete'; stroke: Stroke; index: number }
     | { type: 'lasso-delete'; items: LassoDeleteItem[] }
-    | { type: 'reference'; prev: ReferenceSnapshot };
+    | { type: 'reference'; prev: ReferenceSnapshot }
+    | { type: 'clear'; strokes: Stroke[] };
 
 /** An entry on the redo stack stores enough data to replay the action. */
 type RedoEntry
   = | { type: 'add'; stroke: Stroke }
     | { type: 'delete'; stroke: Stroke; index: number }
     | { type: 'lasso-delete'; items: LassoDeleteItem[] }
-    | { type: 'reference'; next: ReferenceSnapshot };
+    | { type: 'reference'; next: ReferenceSnapshot }
+    | { type: 'clear'; strokes: Stroke[] };
 
 /** Result returned from undo()/redo() so callers can distinguish what changed. */
 export type UndoResult
@@ -77,6 +79,16 @@ export class StrokeManager {
    * collisions would silently break that mapping.
    */
   private lastIssuedTimestamp = 0;
+  /**
+   * When non-null, the canvas appears empty but the strokes that were live at
+   * the moment of `tentativeClear()` are preserved on the undo stack as a
+   * `'clear'` entry so the user can Undo back. Drawing a new stroke commits
+   * the clear (drops the entry, discarding the saved strokes). Reference
+   * changes between `tentativeClear` and the next `endStroke` keep the
+   * tentative state alive — `endStroke` scans the stack for the clear entry
+   * rather than assuming it sits at the top.
+   */
+  private tentativeClearState: { savedStrokes: Stroke[] } | null = null;
 
   private nextTimestamp(): number {
     const now = Date.now();
@@ -132,6 +144,14 @@ export class StrokeManager {
       this.currentStroke = null;
       return null;
     }
+    // Commit any active tentative clear: the user is starting a new direction,
+    // so the saved strokes are discarded permanently. Drop the `'clear'` entry
+    // AND any older `add` / `delete` / `lasso-delete` entries that referenced
+    // those strokes — keeping them would leave the undo stack inconsistent
+    // (they'd point at strokes no longer in `this.strokes`).
+    if (this.tentativeClearState !== null) {
+      this.commitTentativeClear();
+    }
     const stroke = this.currentStroke;
     this.strokes.push(stroke);
     this.undoStack.push({ type: 'add', timestamp: stroke.timestamp });
@@ -176,6 +196,85 @@ export class StrokeManager {
     this.undoReferenceCount++;
     this.redoStack = [];
     this.pruneReferenceHistory();
+  }
+
+  /**
+   * Soft clear: hide all strokes from the canvas but keep them recoverable via
+   * Undo. Pushes a `'clear'` entry onto the undo stack. Drawing a new stroke
+   * (via `endStroke`) commits the clear by removing the entry, permanently
+   * discarding the saved strokes. While tentative, repeated calls are no-ops
+   * and `strokes.length === 0` is also a no-op (nothing to clear).
+   *
+   * **Why not just `clear()`**: the destructive `clear()` wipes the entire
+   * undo/redo stack and is used by the gesture-session per-pose advance where
+   * Undo recovery is undesirable. `tentativeClear()` is the trash-button /
+   * reference-change path where the user expects "I changed my mind" to work.
+   *
+   * Returns `true` if a clear actually happened (caller may want to redraw),
+   * `false` if it was a no-op.
+   */
+  tentativeClear(): boolean {
+    if (this.tentativeClearState !== null) return false;
+    if (this.strokes.length === 0) return false;
+    // Defensive copy: keep `this.strokes`, the undo entry, and the tentative-
+    // state record on independent arrays. Sharing the reference would alias
+    // through `undo()` of `'clear'` (which restores `this.strokes = entry.strokes`),
+    // making future stroke mutations leak into the entry. Today that's masked
+    // only by `endStroke`'s `redoStack = []` running before any observer; a
+    // copy makes the invariant local and survives refactors.
+    const saved = this.strokes.slice();
+    this.undoStack.push({ type: 'clear', strokes: saved });
+    this.strokes = [];
+    this.currentStroke = null;
+    this.redoStack = [];
+    this.tentativeClearState = { savedStrokes: saved };
+    // Intentionally NOT calling bumpMutation: tentative clear is fully
+    // reversible until the next `endStroke` commits it, so it must not flip
+    // `gallerySaveDirty`. Without this guard, Save → Trash → Undo would leave
+    // dirty=true while strokes are bit-identical to the saved set, allowing
+    // duplicate gallery entries. The commit path (`endStroke`) bumps mutation
+    // when it actually attaches the new stroke.
+    return true;
+  }
+
+  isTentativeClearActive(): boolean {
+    return this.tentativeClearState !== null;
+  }
+
+  /**
+   * Commit the active tentative clear: drop the `'clear'` undo entry AND any
+   * pre-clear entries (`add` / `delete` / `lasso-delete`) that referenced the
+   * cleared strokes. After this, `this.strokes` (whatever the caller is about
+   * to push) is consistent with the undo stack — no entry references a stroke
+   * that doesn't exist anymore. No-op when not in tentative state.
+   */
+  private commitTentativeClear(): void {
+    if (this.tentativeClearState === null) return;
+    const clearedTimestamps = new Set(
+      this.tentativeClearState.savedStrokes.map(s => s.timestamp),
+    );
+    const survived: UndoEntry[] = [];
+    for (const e of this.undoStack) {
+      if (e.type === 'clear') continue; // our own entry — drop it
+      if (e.type === 'add') {
+        if (!clearedTimestamps.has(e.timestamp)) survived.push(e);
+        continue;
+      }
+      if (e.type === 'delete') {
+        if (!clearedTimestamps.has(e.stroke.timestamp)) survived.push(e);
+        continue;
+      }
+      if (e.type === 'lasso-delete') {
+        const remainingItems = e.items.filter(it => !clearedTimestamps.has(it.stroke.timestamp));
+        if (remainingItems.length === 0) continue;
+        survived.push({ type: 'lasso-delete', items: remainingItems });
+        continue;
+      }
+      // reference entries unaffected
+      survived.push(e);
+    }
+    this.undoStack = survived;
+    this.tentativeClearState = null;
   }
 
   private pruneReferenceHistory(): void {
@@ -224,6 +323,20 @@ export class StrokeManager {
       this.bumpMutation();
       return { kind: 'strokes', strokes: restored };
     }
+    if (entry.type === 'clear') {
+      // Defensive copy on restore + redo push: keep `this.strokes` independent
+      // from the historical entry so subsequent stroke mutations cannot leak
+      // backwards into the redo entry. (See the matching note in
+      // `tentativeClear()`.)
+      this.strokes = entry.strokes.slice();
+      this.tentativeClearState = null;
+      this.redoStack.push({ type: 'clear', strokes: entry.strokes });
+      // Intentionally NOT bumpMutation: undoing a clear restores the strokes
+      // to exactly the saved set, so gallery-dirty must not flip. This
+      // mirrors the no-bump in `tentativeClear()` and lets Save → Trash →
+      // Undo round-trip cleanly without triggering a duplicate gallery save.
+      return { kind: 'strokes', strokes: this.strokes };
+    }
     // entry.type === 'reference'
     this.undoReferenceCount--;
     const current = captureCurrentRef?.();
@@ -268,6 +381,18 @@ export class StrokeManager {
       this.undoStack.push({ type: 'lasso-delete', items: entry.items });
       this.bumpMutation();
       return { kind: 'strokes', strokes: removed };
+    }
+    if (entry.type === 'clear') {
+      // Defensive copy: the new tentative-state record gets an independent
+      // array from the undo entry, mirroring `tentativeClear()`'s guarantee.
+      const saved = entry.strokes.slice();
+      this.undoStack.push({ type: 'clear', strokes: entry.strokes });
+      this.strokes = [];
+      this.currentStroke = null;
+      this.tentativeClearState = { savedStrokes: saved };
+      // No bumpMutation — re-entering tentative is the inverse of undo-of-clear
+      // and must preserve gallery-dirty parity. See `tentativeClear()`.
+      return { kind: 'strokes', strokes: [] };
     }
     // entry.type === 'reference'
     const current = captureCurrentRef?.();
@@ -345,7 +470,9 @@ export class StrokeManager {
         survived.push({ type: 'lasso-delete', items: remainingItems });
         continue;
       }
-      // reference entries unaffected
+      // reference / clear entries unaffected. (clear entries may carry stroke
+      // references whose scoring has been wiped — Undo restores them as
+      // untracked ghosts. Documented MVP limitation.)
       survived.push(e);
     }
     this.undoStack = survived;
@@ -443,6 +570,7 @@ export class StrokeManager {
     this.redoStack = redoStack.map(stroke => ({ type: 'add' as const, stroke: quantizeStroke(stroke) }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;
+    this.tentativeClearState = null;
     // Make sure future startStroke()s issue timestamps strictly greater than
     // any restored stroke's, so identity-by-timestamp lookups stay unique.
     for (const s of quantizedStrokes) {
@@ -464,12 +592,21 @@ export class StrokeManager {
     return result;
   }
 
+  /**
+   * Destructive wipe: drops all strokes AND the entire undo/redo stack
+   * (including reference history). Used by the gesture-session per-pose
+   * advance where recovery to a previous pose is undesirable. For the
+   * user-facing trash button and reference-change auto-clear, use
+   * `tentativeClear()` instead — it preserves the strokes on the undo stack
+   * so Undo can recover them.
+   */
   clear(): void {
     this.strokes = [];
     this.undoStack = [];
     this.redoStack = [];
     this.currentStroke = null;
     this.undoReferenceCount = 0;
+    this.tentativeClearState = null;
     this.bumpMutation();
   }
 
