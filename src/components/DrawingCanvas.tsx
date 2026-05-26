@@ -386,6 +386,63 @@ export function DrawingCanvas({
     requestRedraw();
   }, [stopMarching, requestRedraw]);
 
+  const syncActiveTouchesFromEvent = useCallback((e: TouchEvent) => {
+    // `event.touches` is the browser's current active-touch set. Rebuilding
+    // from it on touchstart protects us from iOS Safari occasionally missing
+    // a prior touchend/touchcancel, which otherwise leaves a stale id in the
+    // map and makes every later single Pencil stroke look like a two-finger
+    // pinch. Tests that synthesize only `changedTouches` fall back to the
+    // incremental path below.
+    if (e.touches.length > 0) {
+      activeTouchesRef.current.clear();
+      for (let i = 0; i < e.touches.length; i++) {
+        const touch = e.touches[i];
+        activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
+      return;
+    }
+
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const touch = e.changedTouches[i];
+      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+    }
+  }, []);
+
+  const clearStalePinchAfterTouchSync = useCallback(() => {
+    const pinch = pinchRef.current;
+    if (!pinch) return;
+    if (activeTouchesRef.current.size < 2
+      || !activeTouchesRef.current.has(pinch.id1)
+      || !activeTouchesRef.current.has(pinch.id2)) {
+      pinchRef.current = null;
+      pinchRectRef.current = null;
+    }
+  }, []);
+
+  const resetTouchSession = useCallback(() => {
+    const hadCurrentStroke = Boolean(strokeManager.getCurrentStroke());
+    const hadLasso = Boolean(lassoPointsRef.current);
+    const hadTouchState = activeTouchesRef.current.size > 0 || Boolean(pinchRef.current);
+
+    activeTouchesRef.current.clear();
+    pinchRef.current = null;
+    pinchRectRef.current = null;
+
+    if (hadCurrentStroke) {
+      strokeManager.cancelStroke();
+      onCurrentStrokeChange?.(null);
+    }
+    if (hadLasso) {
+      lassoPointsRef.current = null;
+      lassoBboxRef.current = null;
+      lassoSelectedRef.current = null;
+      stopMarching();
+    }
+    if (hadCurrentStroke || hadLasso || hadTouchState) {
+      requestRedraw();
+    }
+  }, [strokeManager, onCurrentStrokeChange, stopMarching, requestRedraw]);
+
   /** Begin a new lasso path at the given world-space point. */
   const startLasso = useCallback((point: Point) => {
     lassoPointsRef.current = [point];
@@ -530,11 +587,8 @@ export function DrawingCanvas({
     // touch behavior (scroll, etc.).
     if (inputFrozenRef.current) return;
 
-    // Track all touches
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const touch = e.changedTouches[i];
-      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
-    }
+    syncActiveTouchesFromEvent(e);
+    clearStalePinchAfterTouchSync();
 
     // Detect stylus
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -605,7 +659,7 @@ export function DrawingCanvas({
       onStrokeStart?.();
       strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso, onStrokeStart]);
+  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
@@ -751,6 +805,21 @@ export function DrawingCanvas({
       canvas.removeEventListener('touchcancel', onEnd);
     };
   }, []);
+
+  useEffect(() => {
+    const reset = () => resetTouchSession();
+    const resetWhenHidden = () => {
+      if (document.visibilityState === 'hidden') resetTouchSession();
+    };
+    window.addEventListener('blur', reset);
+    window.addEventListener('pagehide', reset);
+    document.addEventListener('visibilitychange', resetWhenHidden);
+    return () => {
+      window.removeEventListener('blur', reset);
+      window.removeEventListener('pagehide', reset);
+      document.removeEventListener('visibilitychange', resetWhenHidden);
+    };
+  }, [resetTouchSession]);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
