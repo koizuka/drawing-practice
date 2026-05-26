@@ -243,16 +243,33 @@ export function DrawingPanel({
   }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer, onTraceSyncAttempts]);
 
   const handleClear = useCallback(() => {
-    strokeManager.clear();
+    // Bail out if there is nothing the user could perceive as "clearing"
+    // (canvas already empty and no tentative state to extend). Without this
+    // guard we'd still run the trace-scoring reset below on a no-op click.
+    if (strokeManager.getStrokes().length === 0 && !strokeManager.isTentativeClearActive()) return;
+    // Reset trace scoring BEFORE tentativeClear. `resetScores` calls
+    // `discardStrokes(scoredTimestamps)` which only works while the
+    // matching strokes are still in `strokeManager.getStrokes()` — running
+    // it after `tentativeClear()` (which empties strokes) would early-return
+    // in `discardStrokes`, leaving the scored strokes inside the `'clear'`
+    // undo entry. Undo would then resurrect them as untracked ghosts AND
+    // a follow-up re-trace could not replace them (attemptMap was wiped),
+    // duplicating strokes on the same template target permanently.
+    onTraceResetScores?.();
+    // Tentative clear: hide remaining (unscored) strokes from the canvas but
+    // keep them recoverable via Undo until the user starts drawing again
+    // (commits) or saves. Returns false when nothing remains to clear (e.g.
+    // all strokes were scored & discarded above) — in that case the trash
+    // is effectively destructive for this click.
+    strokeManager.tentativeClear();
     setHighlightedStrokeIndex(null);
     setMode('pen');
-    timer.reset();
+    // Pause (don't reset) — Undo of the tentative-clear entry should also
+    // restore the elapsed time. A reset happens later iff the user commits
+    // by drawing a new stroke (see handleStrokeCountChange).
+    timer.pause();
     triggerRedraw();
     onOverlayClear?.();
-    // Strokes are gone → trace scores/feedback for those attempts have no
-    // remaining evidence. Clear them so the red feedback bands and per-stroke
-    // best% don't outlive the strokes they refer to.
-    onTraceResetScores?.();
   }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
 
   const handleDeleteHighlighted = useCallback(() => {
@@ -268,7 +285,7 @@ export function DrawingPanel({
     setHighlightedStrokeIndex(null);
   }, []);
 
-  const handleStrokeCountChange = useCallback(() => {
+  const handleStrokeCountChange = useCallback((info: { committedTentativeClear: boolean } = { committedTentativeClear: false }) => {
     setRedrawVersion(v => v + 1);
     onStrokesChanged?.();
     // Lasso-delete from DrawingCanvas reaches us via this path (NOT through
@@ -277,6 +294,12 @@ export function DrawingPanel({
     // entry — that intermediate sync is harmless (syncAttempts is idempotent
     // and reads the latest StrokeManager state).
     onTraceSyncAttempts?.();
+    // If the just-committed stroke discarded a tentative-clear entry, the
+    // user is starting a fresh drawing — reset the timer before letting the
+    // auto-start guard below resume counting from zero.
+    if (info.committedTentativeClear) {
+      timer.reset();
+    }
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }

@@ -17,7 +17,15 @@ interface DrawingCanvasProps {
   highlightedStrokeIndex: number | null;
   onHighlightStroke: (index: number | null) => void;
   onDeleteHighlightedStroke?: () => void;
-  onStrokeCountChange: () => void;
+  /**
+   * Called when the visible stroke set changes (commit, undo/redo, lasso
+   * delete). `committedTentativeClear` is true ONLY when this notification
+   * accompanies an `endStroke()` that just committed a tentative clear —
+   * i.e. the new stroke discarded a `tentativeClear` entry. Callers use it to
+   * reset the timer (the user is starting a fresh drawing). Lasso-delete and
+   * other paths always pass false.
+   */
+  onStrokeCountChange: (info: { committedTentativeClear: boolean }) => void;
   strokeManager: StrokeManager;
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number;
@@ -140,8 +148,8 @@ export function DrawingCanvas({
   // forcing a synchronous layout at 60fps.
   const pinchRectRef = useRef<DOMRect | null>(null);
 
-  const notifyStrokeCount = useCallback(() => {
-    onStrokeCountChange();
+  const notifyStrokeCount = useCallback((info: { committedTentativeClear: boolean } = { committedTentativeClear: false }) => {
+    onStrokeCountChange(info);
   }, [onStrokeCountChange]);
 
   const redrawAll = useCallback(() => {
@@ -747,6 +755,9 @@ export function DrawingCanvas({
     }
 
     if (mode === 'pen') {
+      // Read tentative state BEFORE endStroke — endStroke clears the flag as
+      // part of committing.
+      const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
@@ -756,7 +767,7 @@ export function DrawingCanvas({
         // start the timer based on a stroke that's about to vanish, and
         // autosave would capture the pre-scoring stroke set.
         onStrokeFinalized?.(stroke);
-        notifyStrokeCount();
+        notifyStrokeCount({ committedTentativeClear: wasTentative });
         redrawAll();
       }
     }
@@ -875,6 +886,7 @@ export function DrawingCanvas({
     isMouseDownRef.current = false;
 
     if (mode === 'pen') {
+      const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
         onCurrentStrokeChange?.(null);
@@ -882,7 +894,7 @@ export function DrawingCanvas({
         // stroke before notifyStrokeCount runs so timer/autosave don't fire
         // on a stroke that scoring is about to discard.
         onStrokeFinalized?.(stroke);
-        notifyStrokeCount();
+        notifyStrokeCount({ committedTentativeClear: wasTentative });
         redrawAll();
       }
     }

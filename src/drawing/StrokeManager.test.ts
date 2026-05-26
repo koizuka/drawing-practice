@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import { StrokeManager } from './StrokeManager';
-import type { ReferenceSnapshot } from './types';
+import type { ReferenceSnapshot, Stroke } from './types';
 
 function snap(overrides: Partial<ReferenceSnapshot> = {}): ReferenceSnapshot {
   return {
@@ -766,6 +766,182 @@ describe('StrokeManager', () => {
       manager.clear();
       expect(manager.canUndo()).toBe(false);
       expect(manager.canRedo()).toBe(false);
+    });
+  });
+
+  describe('tentativeClear', () => {
+    function commitStroke(m: StrokeManager, x: number, y: number): void {
+      m.startStroke({ x, y });
+      m.appendStroke({ x: x + 10, y: y + 10 });
+      m.endStroke();
+    }
+
+    it('hides strokes but keeps them recoverable via undo', () => {
+      commitStroke(manager, 0, 0);
+      commitStroke(manager, 20, 20);
+
+      const did = manager.tentativeClear();
+      expect(did).toBe(true);
+      expect(manager.getStrokes()).toHaveLength(0);
+      expect(manager.isTentativeClearActive()).toBe(true);
+      expect(manager.canUndo()).toBe(true);
+
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(2);
+      expect(manager.isTentativeClearActive()).toBe(false);
+    });
+
+    it('is a no-op when there are no strokes', () => {
+      const did = manager.tentativeClear();
+      expect(did).toBe(false);
+      expect(manager.canUndo()).toBe(false);
+      expect(manager.isTentativeClearActive()).toBe(false);
+    });
+
+    it('is a no-op when already tentative', () => {
+      commitStroke(manager, 0, 0);
+      manager.tentativeClear();
+      const before = manager.canUndo();
+      const did = manager.tentativeClear();
+      expect(did).toBe(false);
+      // Stack length unchanged — no second clear entry was added.
+      expect(manager.canUndo()).toBe(before);
+      expect(manager.isTentativeClearActive()).toBe(true);
+    });
+
+    it('drawing a new stroke commits the clear (saved strokes are discarded)', () => {
+      commitStroke(manager, 0, 0);
+      commitStroke(manager, 20, 20);
+      manager.tentativeClear();
+
+      commitStroke(manager, 100, 100);
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.isTentativeClearActive()).toBe(false);
+
+      // Undo removes only the newly drawn stroke — the previously cleared
+      // strokes are gone forever.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('commits even when a reference change sits between clear and new stroke', () => {
+      manager.setReferenceRestorer(vi.fn());
+      commitStroke(manager, 0, 0);
+      manager.tentativeClear();
+      manager.recordReferenceChange(snap({ source: 'image' }));
+      // Drawing now must still commit the clear even though it's no longer on
+      // top of the undo stack.
+      commitStroke(manager, 50, 50);
+
+      expect(manager.isTentativeClearActive()).toBe(false);
+      // Stack from bottom: reference, add(new). The clear entry should be
+      // gone. Undo pops add(new), then reference.
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(0);
+      manager.undo();
+      // Reference restored; the cleared strokes are NOT recoverable anymore.
+      expect(manager.canUndo()).toBe(false);
+    });
+
+    it('redo of clear re-enters tentative state', () => {
+      commitStroke(manager, 0, 0);
+      manager.tentativeClear();
+      manager.undo();
+      expect(manager.isTentativeClearActive()).toBe(false);
+      expect(manager.getStrokes()).toHaveLength(1);
+
+      manager.redo();
+      expect(manager.isTentativeClearActive()).toBe(true);
+      expect(manager.getStrokes()).toHaveLength(0);
+
+      // From re-entered tentative state, drawing commits cleanly.
+      commitStroke(manager, 100, 100);
+      expect(manager.getStrokes()).toHaveLength(1);
+      expect(manager.isTentativeClearActive()).toBe(false);
+    });
+
+    it('loadState clears tentative state', () => {
+      commitStroke(manager, 0, 0);
+      manager.tentativeClear();
+      expect(manager.isTentativeClearActive()).toBe(true);
+
+      manager.loadState([{ points: [{ x: 0, y: 0 }, { x: 5, y: 5 }], timestamp: 1 }], []);
+      expect(manager.isTentativeClearActive()).toBe(false);
+      expect(manager.getStrokes()).toHaveLength(1);
+    });
+
+    it('does NOT bump mutation count: Save → tentativeClear → Undo round-trips cleanly without flipping gallery-dirty', () => {
+      // Regression coverage: prior to this guard, `tentativeClear()` and the
+      // undo-of-clear path each called bumpMutation(), so the dirty flag
+      // ratcheted past the saved value in both directions. Strokes were
+      // bit-identical to the last save after Undo, yet
+      // isDirtySinceGallerySave() returned true — letting Save (or Cmd+S)
+      // write a duplicate gallery entry.
+      commitStroke(manager, 0, 0);
+      commitStroke(manager, 20, 20);
+      manager.markSavedToGallery();
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+
+      manager.tentativeClear();
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+
+      manager.undo();
+      expect(manager.getStrokes()).toHaveLength(2);
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+
+      // Redo back into tentative state — still not dirty.
+      manager.redo();
+      expect(manager.isTentativeClearActive()).toBe(true);
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+    });
+
+    it('committing the tentative clear by drawing DOES bump gallery-dirty', () => {
+      commitStroke(manager, 0, 0);
+      manager.markSavedToGallery();
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+
+      manager.tentativeClear();
+      expect(manager.isDirtySinceGallerySave()).toBe(false);
+
+      // New stroke commits the tentative clear → endStroke bumps mutation.
+      commitStroke(manager, 100, 100);
+      expect(manager.isDirtySinceGallerySave()).toBe(true);
+    });
+
+    it('uses defensive copies — mutating this.strokes does not leak into the clear entries on the undo/redo stacks', () => {
+      // Regression coverage: tentativeClear used to store this.strokes by
+      // reference into both the undo entry AND the tentativeClearState. After
+      // undo() of the clear, this.strokes and the redo entry's strokes
+      // aliased the same array. Without defensive copies, an in-place mutation
+      // of this.strokes between undo and redo would leak into the redo entry,
+      // and redo would re-enter tentative with the polluted set.
+      commitStroke(manager, 0, 0);
+      const sentinelTimestamp = manager.getStrokes()[0].timestamp;
+      manager.tentativeClear();
+      manager.undo();
+      // Force an in-place mutation of this.strokes that does NOT touch
+      // redoStack (so any aliasing would persist). `(getStrokes() as Stroke[])`
+      // bypasses the readonly type to push a synthetic sentinel directly into
+      // the live array — the same effect a future refactor that preserves
+      // redoStack across an add would have.
+      const live = manager.getStrokes() as Stroke[];
+      live.push({ points: [{ x: 999, y: 999 }, { x: 1000, y: 1000 }], timestamp: 99_999 });
+      expect(manager.getStrokes()).toHaveLength(2);
+
+      // Redo of clear must re-enter tentative with the ORIGINAL saved set
+      // (1 stroke), NOT the polluted [original, sentinel] array.
+      manager.redo();
+      expect(manager.isTentativeClearActive()).toBe(true);
+      expect(manager.getStrokes()).toHaveLength(0);
+
+      manager.undo();
+      const restored = manager.getStrokes();
+      expect(restored).toHaveLength(1);
+      expect(restored[0].timestamp).toBe(sentinelTimestamp);
+      // The injected sentinel (timestamp 99_999) must NOT appear — it was
+      // never part of the saved set, so independent-array storage drops it.
+      expect(restored.find(s => s.timestamp === 99_999)).toBeUndefined();
     });
   });
 
