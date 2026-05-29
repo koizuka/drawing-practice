@@ -70,6 +70,7 @@ export default function TouchDiagnosticsOverlay() {
       // signal is left for manual inspection via the "canvas vs doc move" row.
       const moveDelta = cur.touchmove - prev.touchmove;
       const appendDelta = cur.appendOk - prev.appendOk;
+      const redrawDelta = cur.redrawAll - prev.redrawAll;
       const rafDelta = cur.rafTick - prev.rafTick;
       const rejDelta = (cur.rejStylusFilterStart - prev.rejStylusFilterStart)
         + (cur.rejStylusFilterMove - prev.rejStylusFilterMove);
@@ -92,8 +93,12 @@ export default function TouchDiagnosticsOverlay() {
         // never append, so they're excluded via mode + drawing.)
         stuck = { reason: 'inputDropped', detail: { moveDelta } };
       }
-      else if (appendDelta > 0 && now - cur.lastRedrawAt > REDRAW_STALL_MS) {
-        stuck = { reason: 'presentStalled', detail: { sinceRedrawMs: Math.round(now - cur.lastRedrawAt), appendDelta } };
+      else if (appendDelta > 0 && redrawDelta === 0) {
+        // Points were appended but redrawAll never ran this whole tick — data
+        // added without being painted. (Using redrawDelta, not lastRedrawAt
+        // age, avoids the idle-gap race where the first append after a pause
+        // is sampled before its rAF redraw completes.)
+        stuck = { reason: 'presentStalled', detail: { appendDelta, sinceRedrawMs: Math.round(now - cur.lastRedrawAt) } };
       }
 
       if (stuck && !stuckRef.current) {
