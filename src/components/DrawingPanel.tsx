@@ -6,6 +6,7 @@ import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import { useLongPress } from '../hooks/useLongPress';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
+import { DIAG_ENABLED } from '../drawing/touchDiagnostics';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
@@ -21,6 +22,11 @@ import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 // Gallery is a modal opened on demand via the "Gallery" toolbar button —
 // keep it out of the initial bundle.
 const Gallery = lazy(() => import('./Gallery').then(m => ({ default: m.Gallery })));
+
+// Touch/Pencil diagnostics HUD — only loaded when `?diag=touch` is set. Lazy so
+// the chunk stays out of the normal bundle and the overlay never mounts for
+// ordinary users. See touchDiagnostics.ts / TouchDiagnosticsOverlay.tsx.
+const TouchDiagnosticsOverlay = lazy(() => import('./TouchDiagnosticsOverlay'));
 
 const FLIP_TRANSITION = 'transform 250ms ease-out';
 const FLIP_TRANSLATE_EPSILON = 0.5;
@@ -853,6 +859,12 @@ export function DrawingPanel({
             <Gallery onClose={() => setShowGallery(false)} onLoadReference={onLoadReference} />
           </Suspense>
         </LazyErrorBoundary>
+      )}
+
+      {DIAG_ENABLED && (
+        <Suspense fallback={null}>
+          <TouchDiagnosticsOverlay />
+        </Suspense>
       )}
     </Box>
   );

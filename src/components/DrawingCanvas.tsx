@@ -9,6 +9,7 @@ import { drawGrid, drawGuideLines } from '../guides/drawGuides';
 import type { Point, Stroke } from '../drawing/types';
 import type { GridSettings, GuideLine } from '../guides/types';
 import type { TraceFeedback, TraceStroke } from '../trace/types';
+import { DIAG_ENABLED, diag, logEvent, persistLog, registerStateProbe, registerRecoveryActions, type ResetTrigger } from '../drawing/touchDiagnostics';
 
 export type DrawingMode = 'pen' | 'eraser' | 'lasso';
 
@@ -157,6 +158,12 @@ export function DrawingCanvas({
     const renderer = rendererRef.current;
     if (!canvas || !renderer) return;
 
+    if (DIAG_ENABLED) {
+      diag.redrawAll++;
+      diag.heartbeat++;
+      diag.lastRedrawAt = performance.now();
+    }
+
     const ctx = canvas.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
     const container = containerSizeRef.current;
@@ -259,6 +266,24 @@ export function DrawingCanvas({
 
     // Reset to DPR-only transform
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    // Diagnostic heartbeat (screen space, DPR-only transform): a per-frame
+    // counter + moving dot painted ON the canvas. If the overlay's redrawAll /
+    // rafTick counters keep climbing but this marker is visually frozen while
+    // drawing, the compositor isn't presenting new canvas content (render-side
+    // stall) — the key discriminator vs. an input-side drop.
+    if (DIAG_ENABLED) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(220,0,0,0.85)';
+      ctx.fillRect(4, 4, 58, 18);
+      ctx.fillStyle = '#fff';
+      ctx.font = '12px monospace';
+      ctx.fillText(`#${diag.heartbeat}`, 7, 17);
+      ctx.beginPath();
+      ctx.arc(72 + (diag.heartbeat % 20) * 3, 13, 3, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
   }, [highlightedStrokeIndex, strokeManager, grid, guideLines, fitSize, templateStrokes, traceFeedback, dimmedStrokeTimestamps]);
 
   // Setup canvas with DPR
@@ -354,6 +379,7 @@ export function DrawingCanvas({
 
   const requestRedraw = useCallback(() => {
     if (rafIdRef.current) return;
+    if (DIAG_ENABLED) diag.rafScheduled++;
     rafIdRef.current = requestAnimationFrame(() => {
       rafIdRef.current = 0;
       redrawAll();
@@ -427,16 +453,23 @@ export function DrawingCanvas({
     }
   }, []);
 
-  const resetTouchSession = useCallback(() => {
+  const resetTouchSession = useCallback((trigger: ResetTrigger = 'manual') => {
     const hadCurrentStroke = Boolean(strokeManager.getCurrentStroke());
     const hadLasso = Boolean(lassoPointsRef.current);
     const hadTouchState = activeTouchesRef.current.size > 0 || Boolean(pinchRef.current);
+
+    if (DIAG_ENABLED) {
+      diag.resetCount++;
+      diag.lastResetTrigger = trigger;
+      logEvent('reset', { trigger, hadCurrentStroke, hadLasso, hadTouchState });
+    }
 
     activeTouchesRef.current.clear();
     pinchRef.current = null;
     pinchRectRef.current = null;
 
     if (hadCurrentStroke) {
+      if (DIAG_ENABLED) diag.cancelStroke++;
       strokeManager.cancelStroke();
       onCurrentStrokeChange?.(null);
     }
@@ -589,11 +622,29 @@ export function DrawingCanvas({
   const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
+    if (DIAG_ENABLED) {
+      diag.touchstart++;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const tt = (e.changedTouches[i] as Touch & { touchType?: string }).touchType;
+        if (tt === 'stylus') diag.touchTypeStylus++;
+        else if (tt === undefined) diag.touchTypeUndefined++;
+        else diag.touchTypeDirect++;
+      }
+      logEvent('start', {
+        changed: e.changedTouches.length,
+        touches: e.touches.length,
+        touchType: (e.changedTouches[0] as Touch & { touchType?: string })?.touchType,
+      });
+    }
+
     // Gesture-session swap window: reject the new touch entirely (no stroke
     // start, no pinch arming) so a reflexive post-swap tap is dropped. We
     // still preventDefault above so the browser doesn't fall back to default
     // touch behavior (scroll, etc.).
-    if (inputFrozenRef.current) return;
+    if (inputFrozenRef.current) {
+      if (DIAG_ENABLED) { diag.rejInputFrozen++; logEvent('rej', { reason: 'inputFrozen' }); }
+      return;
+    }
 
     syncActiveTouchesFromEvent(e);
     clearStalePinchAfterTouchSync();
@@ -602,6 +653,7 @@ export function DrawingCanvas({
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i] as Touch & { touchType?: string };
       if (touch.touchType === 'stylus') {
+        if (DIAG_ENABLED && !hasStylusRef.current) logEvent('stylusFlagSet', {});
         hasStylusRef.current = true;
       }
     }
@@ -613,6 +665,7 @@ export function DrawingCanvas({
       // amount of motion in between would otherwise commit a stray line
       // when the pinch ends.
       if (mode === 'pen' && strokeManager.getCurrentStroke()) {
+        if (DIAG_ENABLED) diag.cancelStroke++;
         strokeManager.cancelStroke();
         onCurrentStrokeChange?.(null);
         requestRedraw();
@@ -636,12 +689,16 @@ export function DrawingCanvas({
         lastMidY: (t1.y + t2.y) / 2,
       };
       pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
+      if (DIAG_ENABLED) { diag.rejPinch++; logEvent('pinchArmed', { size: activeTouchesRef.current.size }); }
       return;
     }
 
     // Single touch: drawing
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (hasStylusRef.current && touch.touchType !== 'stylus') return;
+    if (hasStylusRef.current && touch.touchType !== 'stylus') {
+      if (DIAG_ENABLED) { diag.rejStylusFilterStart++; logEvent('rej', { reason: 'stylusFilterStart', touchType: touch.touchType }); }
+      return;
+    }
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
@@ -666,11 +723,14 @@ export function DrawingCanvas({
       // their pen touches down.
       onStrokeStart?.();
       strokeManager.startStroke(point);
+      if (DIAG_ENABLED) diag.startStroke++;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
+
+    if (DIAG_ENABLED) diag.touchmove++;
 
     // Update tracked touches
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -715,7 +775,10 @@ export function DrawingCanvas({
     // Lasso path drawing
     if (mode === 'lasso' && lassoPointsRef.current) {
       const touch = e.changedTouches[0] as Touch & { touchType?: string };
-      if (hasStylusRef.current && touch.touchType !== 'stylus') return;
+      if (hasStylusRef.current && touch.touchType !== 'stylus') {
+        if (DIAG_ENABLED) diag.rejStylusFilterMove++;
+        return;
+      }
       const point = getCanvasPoint(touch.clientX, touch.clientY);
       appendLasso(point);
       recomputeLassoSelection();
@@ -726,10 +789,17 @@ export function DrawingCanvas({
     // Drawing
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
-    if (hasStylusRef.current && touch.touchType !== 'stylus') return;
+    if (hasStylusRef.current && touch.touchType !== 'stylus') {
+      if (DIAG_ENABLED) { diag.rejStylusFilterMove++; logEvent('rej', { reason: 'stylusFilterMove', touchType: touch.touchType }); }
+      return;
+    }
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
-    if (!strokeManager.appendStroke(point)) return;
+    if (!strokeManager.appendStroke(point)) {
+      if (DIAG_ENABLED) { diag.appendSkip++; diag.rejMoveAppendFalse++; }
+      return;
+    }
+    if (DIAG_ENABLED) diag.appendOk++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
@@ -739,6 +809,13 @@ export function DrawingCanvas({
     // don't trip an "Ignored attempt to cancel a touchend" intervention
     // warning (the preventDefault would be a no-op anyway).
     if (e.cancelable) e.preventDefault();
+
+    if (DIAG_ENABLED) {
+      if (e.type === 'touchcancel') diag.touchcancel++;
+      else diag.touchend++;
+      logEvent(e.type, { changed: e.changedTouches.length, remaining: e.touches.length });
+      persistLog();
+    }
 
     for (let i = 0; i < e.changedTouches.length; i++) {
       const touch = e.changedTouches[i];
@@ -760,6 +837,7 @@ export function DrawingCanvas({
       const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
+        if (DIAG_ENABLED) diag.endCommit++;
         onCurrentStrokeChange?.(null);
         // onStrokeFinalized runs FIRST so trace-template scoring can
         // synchronously discard (rejected) or replace (re-trace) the just-
@@ -818,19 +896,98 @@ export function DrawingCanvas({
   }, []);
 
   useEffect(() => {
-    const reset = () => resetTouchSession();
+    const onBlur = () => resetTouchSession('blur');
+    const onPageHide = () => resetTouchSession('pagehide');
     const resetWhenHidden = () => {
-      if (document.visibilityState === 'hidden') resetTouchSession();
+      if (document.visibilityState === 'hidden') resetTouchSession('visibility');
     };
-    window.addEventListener('blur', reset);
-    window.addEventListener('pagehide', reset);
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', resetWhenHidden);
     return () => {
-      window.removeEventListener('blur', reset);
-      window.removeEventListener('pagehide', reset);
+      window.removeEventListener('blur', onBlur);
+      window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', resetWhenHidden);
     };
   }, [resetTouchSession]);
+
+  // --- Diagnostics wiring (only when ?diag=touch) -----------------------------
+  // All four effects below are independent of the native-listener attach effect
+  // (deps []), so they never cause the touch listeners to detach/re-attach.
+
+  // Expose live ref state to the overlay via a pull-based probe (no re-render).
+  useEffect(() => {
+    if (!DIAG_ENABLED) return;
+    registerStateProbe(() => ({
+      hasStylus: hasStylusRef.current,
+      activeTouchCount: activeTouchesRef.current.size,
+      activeTouchIds: Array.from(activeTouchesRef.current.keys()),
+      pinchActive: pinchRef.current !== null,
+      strokeCount: strokeManager.getStrokes().length,
+    }));
+    return () => registerStateProbe(null);
+  }, [strokeManager]);
+
+  // Expose recovery actions to the overlay's buttons — each isolates one
+  // candidate layer so tapping them one at a time pinpoints what was stuck.
+  useEffect(() => {
+    if (!DIAG_ENABLED) return;
+    registerRecoveryActions({
+      resetSession: () => resetTouchSession('manual'),
+      clearStylus: () => { hasStylusRef.current = false; logEvent('recovery', { action: 'clearStylus' }); },
+      forceRedraw: () => { logEvent('recovery', { action: 'forceRedraw' }); redrawAll(); },
+      nudgeCompositor: () => {
+        // Mimic the layout-touching DOM change a tab switch causes, to force a
+        // recomposite without changing app state.
+        const c = canvasRef.current;
+        if (!c) return;
+        logEvent('recovery', { action: 'nudgeCompositor' });
+        const prev = c.style.height;
+        const base = c.getBoundingClientRect().height;
+        c.style.height = `${base + 1}px`;
+        requestAnimationFrame(() => { c.style.height = prev; });
+      },
+    });
+    return () => registerRecoveryActions(null);
+  }, [resetTouchSession, redrawAll]);
+
+  // Free-running rAF tick — advances every frame regardless of redraws, so the
+  // overlay can tell "main thread / rAF stalled" apart from "rAF runs but the
+  // compositor won't present the canvas".
+  useEffect(() => {
+    if (!DIAG_ENABLED) return;
+    let id = 0;
+    const tick = () => {
+      diag.rafTick++;
+      diag.lastRafAt = performance.now();
+      id = requestAnimationFrame(tick);
+    };
+    id = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Document-level passive observation of touch arrival. Compared against the
+  // canvas-listener counters, this reveals whether the canvas lost its event
+  // target (doc counts climb, canvas counts don't) vs. the OS not delivering
+  // events at all (neither climbs). Pure observation: passive, no preventDefault.
+  useEffect(() => {
+    if (!DIAG_ENABLED) return;
+    const onStart = () => { diag.docTouchstart++; };
+    const onMove = () => { diag.docTouchmove++; };
+    const onEnd = () => { diag.docTouchend++; };
+    const onCancel = () => { diag.docTouchcancel++; };
+    const opts = { capture: true, passive: true } as const;
+    document.addEventListener('touchstart', onStart, opts);
+    document.addEventListener('touchmove', onMove, opts);
+    document.addEventListener('touchend', onEnd, opts);
+    document.addEventListener('touchcancel', onCancel, opts);
+    return () => {
+      document.removeEventListener('touchstart', onStart, opts);
+      document.removeEventListener('touchmove', onMove, opts);
+      document.removeEventListener('touchend', onEnd, opts);
+      document.removeEventListener('touchcancel', onCancel, opts);
+    };
+  }, []);
 
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
@@ -861,6 +1018,7 @@ export function DrawingCanvas({
       // trace-scoring feedback clears on pointer-down.
       onStrokeStart?.();
       strokeManager.startStroke(point);
+      if (DIAG_ENABLED) diag.startStroke++;
     }
   }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, startMarching, requestRedraw, startLasso, onStrokeStart]);
 
@@ -876,7 +1034,11 @@ export function DrawingCanvas({
     if (mode !== 'pen') return;
 
     const point = getCanvasPoint(e.clientX, e.clientY);
-    if (!strokeManager.appendStroke(point)) return;
+    if (!strokeManager.appendStroke(point)) {
+      if (DIAG_ENABLED) { diag.appendSkip++; diag.rejMoveAppendFalse++; }
+      return;
+    }
+    if (DIAG_ENABLED) diag.appendOk++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
@@ -889,6 +1051,7 @@ export function DrawingCanvas({
       const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
+        if (DIAG_ENABLED) diag.endCommit++;
         onCurrentStrokeChange?.(null);
         // See the touchend branch — onStrokeFinalized must observe the
         // stroke before notifyStrokeCount runs so timer/autosave don't fire
