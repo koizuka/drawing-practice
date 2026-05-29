@@ -64,21 +64,33 @@ export default function TouchDiagnosticsOverlay() {
       const now = performance.now();
 
       // Watchdog: classify the onset of an anomalous episode and log it once.
+      // Deltas are per-tick. We deliberately do NOT auto-flag the doc-vs-canvas
+      // touch gap ("targetLost"): the document listener also sees toolbar /
+      // overlay / reference-panel touches, so doc > canvas is normal — that
+      // signal is left for manual inspection via the "canvas vs doc move" row.
       const moveDelta = cur.touchmove - prev.touchmove;
       const appendDelta = cur.appendOk - prev.appendOk;
       const rafDelta = cur.rafTick - prev.rafTick;
-      const docMoveDelta = cur.docTouchmove - prev.docTouchmove;
-      const stylus = readState()?.hasStylus ?? false;
+      const rejDelta = (cur.rejStylusFilterStart - prev.rejStylusFilterStart)
+        + (cur.rejStylusFilterMove - prev.rejStylusFilterMove);
+      const state = readState();
 
       let stuck: { reason: string; detail: Record<string, unknown> } | null = null;
       if (rafDelta === 0 && cur.lastRafAt > 0 && now - cur.lastRafAt > RAF_STALL_MS) {
+        // rAF stopped — main thread stall OR the page was backgrounded (a tab
+        // switch throttles rAF), so this also fires right after a visibility reset.
         stuck = { reason: 'rafStalled', detail: { sinceRafMs: Math.round(now - cur.lastRafAt) } };
       }
-      else if (docMoveDelta > 0 && moveDelta === 0) {
-        stuck = { reason: 'targetLost', detail: { docMoveDelta } };
+      else if (rejDelta > 0) {
+        // A touch was dropped by the stylus filter (the confirmed direct-as-
+        // Pencil mechanism). High-confidence signal.
+        stuck = { reason: 'stylusFilterDrop', detail: { rejDelta, rejStart: cur.rejStylusFilterStart, rejMove: cur.rejStylusFilterMove } };
       }
-      else if (moveDelta > 0 && appendDelta === 0 && stylus) {
-        stuck = { reason: 'inputDropped', detail: { moveDelta, rejStart: cur.rejStylusFilterStart, rejMove: cur.rejStylusFilterMove, rejPinch: cur.rejPinch } };
+      else if (moveDelta > 0 && appendDelta === 0 && state?.mode === 'pen' && state?.drawing) {
+        // Genuinely silent drop: pen-mode moves during an active stroke that
+        // neither appended nor were rejected. (Eraser/lasso moves legitimately
+        // never append, so they're excluded via mode + drawing.)
+        stuck = { reason: 'inputDropped', detail: { moveDelta } };
       }
       else if (appendDelta > 0 && now - cur.lastRedrawAt > REDRAW_STALL_MS) {
         stuck = { reason: 'presentStalled', detail: { sinceRedrawMs: Math.round(now - cur.lastRedrawAt), appendDelta } };
@@ -197,6 +209,7 @@ export default function TouchDiagnosticsOverlay() {
         </Box>
         {/* State */}
         <Box sx={sectionSx}>
+          {row('mode / drawing', s ? `${s.mode} / ${s.drawing}` : '?')}
           {row('hasStylus', String(s?.hasStylus ?? '?'), s?.hasStylus ? '#fc6' : undefined)}
           {row('activeTouches', s ? `${s.activeTouchCount} [${s.activeTouchIds.join(',')}]` : '?')}
           {row('pinchActive', String(s?.pinchActive ?? '?'), s?.pinchActive ? '#fc6' : undefined)}

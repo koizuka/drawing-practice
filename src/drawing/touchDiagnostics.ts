@@ -139,6 +139,10 @@ export interface DiagState {
   activeTouchIds: number[];
   pinchActive: boolean;
   strokeCount: number;
+  /** Current drawing mode — lets the watchdog ignore non-pen moves. */
+  mode: string;
+  /** Whether a stroke is currently in progress (currentStroke != null). */
+  drawing: boolean;
 }
 
 type StateProbe = () => DiagState;

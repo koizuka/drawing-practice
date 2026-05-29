@@ -121,6 +121,8 @@ describe('state probe registry', () => {
       activeTouchIds: [1, 2],
       pinchActive: true,
       strokeCount: 5,
+      mode: 'pen',
+      drawing: true,
     }));
     expect(readState()?.strokeCount).toBe(5);
     registerStateProbe(null);

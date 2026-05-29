@@ -630,10 +630,15 @@ export function DrawingCanvas({
         else if (tt === undefined) diag.touchTypeUndefined++;
         else diag.touchTypeDirect++;
       }
+      const t0 = e.changedTouches[0] as Touch & { touchType?: string };
       logEvent('start', {
         changed: e.changedTouches.length,
         touches: e.touches.length,
-        touchType: (e.changedTouches[0] as Touch & { touchType?: string })?.touchType,
+        touchType: t0?.touchType,
+        // Radius lets us check whether a misclassified-as-'direct' Pencil touch
+        // is distinguishable from a finger (Pencil ~1-2px, finger ~20-40px).
+        rX: t0 ? Math.round((t0.radiusX ?? 0) * 10) / 10 : undefined,
+        force: t0 ? Math.round((t0.force ?? 0) * 100) / 100 : undefined,
       });
     }
 
@@ -696,7 +701,7 @@ export function DrawingCanvas({
     // Single touch: drawing
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
     if (hasStylusRef.current && touch.touchType !== 'stylus') {
-      if (DIAG_ENABLED) { diag.rejStylusFilterStart++; logEvent('rej', { reason: 'stylusFilterStart', touchType: touch.touchType }); }
+      if (DIAG_ENABLED) { diag.rejStylusFilterStart++; logEvent('rej', { reason: 'stylusFilterStart', touchType: touch.touchType, rX: Math.round((touch.radiusX ?? 0) * 10) / 10 }); }
       return;
     }
 
@@ -790,7 +795,7 @@ export function DrawingCanvas({
     if (mode !== 'pen') return;
     const touch = e.changedTouches[0] as Touch & { touchType?: string };
     if (hasStylusRef.current && touch.touchType !== 'stylus') {
-      if (DIAG_ENABLED) { diag.rejStylusFilterMove++; logEvent('rej', { reason: 'stylusFilterMove', touchType: touch.touchType }); }
+      if (DIAG_ENABLED) { diag.rejStylusFilterMove++; logEvent('rej', { reason: 'stylusFilterMove', touchType: touch.touchType, rX: Math.round((touch.radiusX ?? 0) * 10) / 10 }); }
       return;
     }
 
@@ -916,6 +921,8 @@ export function DrawingCanvas({
   // (deps []), so they never cause the touch listeners to detach/re-attach.
 
   // Expose live ref state to the overlay via a pull-based probe (no re-render).
+  // `mode` is in deps so the closure sees the live mode (the watchdog uses it to
+  // ignore eraser/lasso moves that legitimately never append).
   useEffect(() => {
     if (!DIAG_ENABLED) return;
     registerStateProbe(() => ({
@@ -924,9 +931,11 @@ export function DrawingCanvas({
       activeTouchIds: Array.from(activeTouchesRef.current.keys()),
       pinchActive: pinchRef.current !== null,
       strokeCount: strokeManager.getStrokes().length,
+      mode,
+      drawing: strokeManager.getCurrentStroke() !== null,
     }));
     return () => registerStateProbe(null);
-  }, [strokeManager]);
+  }, [strokeManager, mode]);
 
   // Expose recovery actions to the overlay's buttons — each isolates one
   // candidate layer so tapping them one at a time pinpoints what was stuck.

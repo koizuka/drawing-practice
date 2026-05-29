@@ -862,9 +862,11 @@ export function DrawingPanel({
       )}
 
       {DIAG_ENABLED && (
-        <Suspense fallback={null}>
-          <TouchDiagnosticsOverlay />
-        </Suspense>
+        <LazyErrorBoundary>
+          <Suspense fallback={null}>
+            <TouchDiagnosticsOverlay />
+          </Suspense>
+        </LazyErrorBoundary>
       )}
     </Box>
   );
