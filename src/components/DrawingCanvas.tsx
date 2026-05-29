@@ -413,6 +413,7 @@ export function DrawingCanvas({
 
   const cancelLasso = useCallback(() => {
     if (!lassoPointsRef.current) return;
+    if (DIAG_ENABLED) logEvent('lassoCancel', { points: lassoPointsRef.current.length });
     lassoPointsRef.current = null;
     lassoBboxRef.current = null;
     lassoSelectedRef.current = null;
@@ -486,6 +487,7 @@ export function DrawingCanvas({
 
   /** Begin a new lasso path at the given world-space point. */
   const startLasso = useCallback((point: Point) => {
+    if (DIAG_ENABLED) logEvent('lassoStart', {});
     lassoPointsRef.current = [point];
     const bb = emptyBoundingBox();
     extendBoundingBox(bb, point);
@@ -541,6 +543,7 @@ export function DrawingCanvas({
   const finishLasso = useCallback(() => {
     const polygon = lassoPointsRef.current;
     const selected = lassoSelectedRef.current;
+    if (DIAG_ENABLED) logEvent('lassoFinish', { points: polygon?.length ?? 0, selected: selected?.size ?? 0 });
     lassoPointsRef.current = null;
     lassoBboxRef.current = null;
     lassoSelectedRef.current = null;
@@ -632,6 +635,7 @@ export function DrawingCanvas({
       }
       const t0 = e.changedTouches[0] as Touch & { touchType?: string };
       logEvent('start', {
+        mode,
         changed: e.changedTouches.length,
         touches: e.touches.length,
         touchType: t0?.touchType,
@@ -694,7 +698,16 @@ export function DrawingCanvas({
         lastMidY: (t1.y + t2.y) / 2,
       };
       pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
-      if (DIAG_ENABLED) { diag.rejPinch++; logEvent('pinchArmed', { size: activeTouchesRef.current.size }); }
+      if (DIAG_ENABLED) {
+        diag.rejPinch++;
+        const tp = e.changedTouches[0] as Touch & { touchType?: string };
+        logEvent('pinchArmed', {
+          mode,
+          size: activeTouchesRef.current.size,
+          newTouchType: tp?.touchType,
+          newRX: tp ? Math.round((tp.radiusX ?? 0) * 10) / 10 : undefined,
+        });
+      }
       return;
     }
 
