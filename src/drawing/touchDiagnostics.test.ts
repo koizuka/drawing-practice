@@ -7,6 +7,7 @@ import {
   getLog,
   clearLog,
   serializeLog,
+  loadPersistedLog,
   registerStateProbe,
   readState,
   registerRecoveryActions,
@@ -78,6 +79,25 @@ describe('ring buffer', () => {
     expect(getLog().length).toBeGreaterThan(0);
     clearLog();
     expect(getLog()).toHaveLength(0);
+  });
+
+  it('loadPersistedLog drops malformed entries so the overlay cannot crash', () => {
+    clearLog();
+    window.localStorage.setItem('diag.log', JSON.stringify([
+      { t: 100, type: 'start', detail: { touches: 1 } }, // valid
+      { t: 'oops', type: 'bad' }, // t not a number
+      { type: 'noTimestamp' }, // missing t
+      { t: 200 }, // missing type
+      'not-an-object', // wrong type
+      { t: 300, type: 'end' }, // valid, no detail
+    ]));
+    loadPersistedLog();
+    const log = getLog();
+    expect(log).toHaveLength(2);
+    expect(log.map(e => e.type)).toEqual(['start', 'end']);
+    // serializeLog must not throw on the loaded entries.
+    expect(() => serializeLog()).not.toThrow();
+    window.localStorage.removeItem('diag.log');
   });
 });
 

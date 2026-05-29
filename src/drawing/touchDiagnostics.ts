@@ -232,13 +232,22 @@ export function persistLog(): void {
   catch { /* quota / private mode — ignore */ }
 }
 
+function isValidLogEntry(v: unknown): v is DiagLogEntry {
+  if (typeof v !== 'object' || v === null) return false;
+  const e = v as Record<string, unknown>;
+  return typeof e.t === 'number' && typeof e.type === 'string'
+    && (e.detail === undefined || (typeof e.detail === 'object' && e.detail !== null));
+}
+
 export function loadPersistedLog(): void {
   try {
     const raw = window.localStorage.getItem(PERSIST_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      ring = parsed.slice(-LOG_CAP);
+      // Validate each entry — a corrupted / older-format record must not crash
+      // serializeLog() or the overlay (both assume t:number, type:string).
+      ring = parsed.filter(isValidLogEntry).slice(-LOG_CAP);
     }
   }
   catch { /* malformed — ignore */ }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type ReactNode } from 'react';
 import { Box, Button, IconButton, Typography } from '@mui/material';
 import { Copy, Eraser, Minus, Maximize2 } from 'lucide-react';
 import { ToolbarTooltip } from './ToolbarTooltip';
@@ -144,7 +144,7 @@ export default function TouchDiagnosticsOverlay() {
     );
   }
 
-  const row = (label: string, value: React.ReactNode, color?: string) => (
+  const row = (label: string, value: ReactNode, color?: string) => (
     <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, color: color ?? 'inherit' }}>
       <span>{label}</span>
       <span>{value}</span>
