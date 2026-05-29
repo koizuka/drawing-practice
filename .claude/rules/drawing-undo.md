@@ -11,8 +11,8 @@ paths:
 
 Single chronological undo/redo stack shared by **strokes AND reference changes**. Discriminated union entries:
 - `add` — stroke added
-- `delete` — single stroke erased (tap eraser)
-- `lasso-delete` — batch erase: N strokes deleted as one undo unit (lasso). Items stored ascending by index; undo splices them back in ascending order, redo splices out in descending order so indices stay valid.
+- `delete` — single stroke erased (erase-mode tap: a press that releases without crossing the lasso threshold)
+- `lasso-delete` — batch erase: N strokes deleted as one undo unit (erase-mode lasso: a press that drags past the threshold and encloses strokes). Items stored ascending by index; undo splices them back in ascending order, redo splices out in descending order so indices stay valid.
 - `reference` — reference (source/mode/image/Sketchfab angle) changed
 - `clear` — tentative clear: captures the live strokes so Undo can restore them, plus the empty visible state. Drawing a new stroke commits the clear (entry + the pre-clear `add` / `delete` / `lasso-delete` entries that referenced the cleared strokes are dropped together — see "Tentative clear" below).
 

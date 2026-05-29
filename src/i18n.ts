@@ -2,9 +2,7 @@ const messages = {
   en: {
     // DrawingPanel
     pen: 'Pen',
-    eraser: 'Eraser',
-    lassoEraser: 'Lasso erase',
-    erasePicker: 'Erase mode',
+    erase: 'Erase / Select',
     undo: 'Undo',
     redo: 'Redo',
     clearAll: 'Clear all & reset timer',
@@ -171,9 +169,7 @@ const messages = {
   ja: {
     // DrawingPanel
     pen: 'ペン',
-    eraser: '消しゴム',
-    lassoEraser: '投げ縄消し',
-    erasePicker: '消し方を選ぶ',
+    erase: '消去 / 選択',
     undo: '元に戻す',
     redo: 'やり直し',
     clearAll: '全消去・タイマーリセット',

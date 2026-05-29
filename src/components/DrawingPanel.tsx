@@ -1,9 +1,8 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense } from 'react';
-import { Box, CircularProgress, IconButton, Popover, Typography } from '@mui/material';
+import { Box, CircularProgress, IconButton, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { Pen, Eraser, LassoSelect, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, RotateCcw } from 'lucide-react';
+import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, RotateCcw } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
-import { useLongPress } from '../hooks/useLongPress';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
 import { DIAG_ENABLED } from '../drawing/touchDiagnostics';
@@ -126,10 +125,6 @@ export function DrawingPanel({
   onTraceStrokeStart,
 }: DrawingPanelProps) {
   const [mode, setMode] = useState<DrawingMode>('pen');
-  // The most-recently-used eraser sub-mode. In narrow layouts the eraser
-  // toolbar button shows this icon and a short tap activates this sub-mode;
-  // long-press opens a chooser. Not persisted across sessions.
-  const [eraseSubmode, setEraseSubmode] = useState<'eraser' | 'lasso'>('eraser');
   const [highlightedStrokeIndex, setHighlightedStrokeIndex] = useState<number | null>(null);
   // canUndo/canRedo/strokeCount are computed inline from the strokeManager
   // instance each render rather than mirrored into state. State-mirroring
@@ -151,42 +146,13 @@ export function DrawingPanel({
   // bounds during the slide so the (newly-revealed) reference toolbar
   // doesn't peek through the area behind translating icons on expand.
   //
-  // Children are keyed by element reference (not index) so a list-shape
-  // change between pre and post — e.g. compactErase swapping eraser+lasso
-  // for a single long-press button when the toolbar crosses the width
-  // threshold — gracefully drops the missing children instead of pairing
+  // Children are keyed by element reference (not index) so a list-shape change
+  // between pre and post gracefully drops missing children instead of pairing
   // surviving icons with unrelated rects.
   const pendingFlipRef = useRef<{ box: DOMRect; children: Map<HTMLElement, DOMRect> } | null>(null);
   const flipRafIdRef = useRef<number | null>(null);
   const toolbarCoverRef = useRef<HTMLDivElement>(null);
-
-  // Collapse the eraser/lasso pair into a single long-press button when the
-  // toolbar is narrower than the threshold. Stored as a boolean (rather than
-  // raw width) so resize events that don't cross the breakpoint don't trigger
-  // re-renders. Threshold of 480px catches iPhone widths in both portrait
-  // (375–430px) and landscape half-panel (~466px).
-  const COMPACT_ERASE_THRESHOLD = 480;
   const toolbarRef = useRef<HTMLDivElement>(null);
-  const [compactErase, setCompactErase] = useState(false);
-  const [eraserMenuAnchor, setEraserMenuAnchor] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    const el = toolbarRef.current;
-    if (!el) return;
-    const update = () => {
-      const w = el.clientWidth;
-      if (w === 0) return;
-      const isCompact = w < COMPACT_ERASE_THRESHOLD;
-      setCompactErase(isCompact);
-      // Close the chooser when growing back to the wide layout — its anchor
-      // IconButton is about to unmount and the popover would otherwise render
-      // against a stale element.
-      if (!isCompact) setEraserMenuAnchor(null);
-    };
-    const obs = new ResizeObserver(update);
-    obs.observe(el);
-    update();
-    return () => obs.disconnect();
-  }, []);
 
   const { grid, lines, version: guideVersion } = useGuides();
 
@@ -347,32 +313,13 @@ export function DrawingPanel({
     setHighlightedStrokeIndex(null);
   }, []);
 
-  const handleEraserTool = useCallback(() => {
-    setMode('eraser');
+  // Unified erase/select tool. A tap selects the nearest stroke; a
+  // drag-to-enclose acts as a lasso — the branch is decided in DrawingCanvas
+  // by pointer travel, so there's a single mode and a single button.
+  const handleEraseTool = useCallback(() => {
+    setMode('erase');
     setHighlightedStrokeIndex(null);
-    setEraseSubmode('eraser');
   }, []);
-
-  const handleLassoTool = useCallback(() => {
-    setMode('lasso');
-    setHighlightedStrokeIndex(null);
-    setEraseSubmode('lasso');
-  }, []);
-
-  // Compact (narrow toolbar) eraser button: short tap re-enters the most-
-  // recently-used erase sub-mode; long-press opens the chooser popover.
-  const handleCompactEraseTap = useCallback(() => {
-    if (eraseSubmode === 'lasso') handleLassoTool();
-    else handleEraserTool();
-  }, [eraseSubmode, handleEraserTool, handleLassoTool]);
-
-  const compactEraseLongPress = useLongPress({
-    onLongPress: (target) => {
-      setEraserMenuAnchor(target);
-    },
-    onClick: handleCompactEraseTap,
-    ms: 500,
-  });
 
   const mod = getModifierPrefix();
 
@@ -382,11 +329,10 @@ export function DrawingPanel({
       onUndo: handleUndo,
       onRedo: handleRedo,
       onPenTool: handlePenTool,
-      onEraserTool: handleEraserTool,
-      onLassoTool: handleLassoTool,
+      onEraseTool: handleEraseTool,
       onSave: handleSave,
       onResetZoom: () => setViewResetVersion(v => v + 1),
-    }), [handleUndo, handleRedo, handlePenTool, handleEraserTool, handleLassoTool, handleSave]),
+    }), [handleUndo, handleRedo, handlePenTool, handleEraseTool, handleSave]),
   });
 
   const eraseSx = (active: boolean) => ({
@@ -394,8 +340,6 @@ export function DrawingPanel({
     'color': active ? 'white' : 'inherit',
     '&:hover': { bgcolor: active ? 'error.dark' : 'action.hover' },
   });
-  const compactEraseIcon = eraseSubmode === 'lasso' ? <LassoSelect size={20} /> : <Eraser size={20} />;
-  const compactEraseLabel = eraseSubmode === 'lasso' ? t('lassoEraser') : t('eraser');
 
   const collectFlipTargets = useCallback(() => {
     const toolbar = toolbarRef.current;
@@ -577,63 +521,14 @@ export function DrawingPanel({
           </IconButton>
         </ToolbarTooltip>
 
-        {compactErase
-          ? (
-              <ToolbarTooltip title={`${compactEraseLabel} (E / L)`}>
-                <IconButton
-                  size="small"
-                  aria-label={compactEraseLabel}
-                  sx={{ ...eraseSx(mode === 'eraser' || mode === 'lasso'), touchAction: 'none' }}
-                  {...compactEraseLongPress}
-                >
-                  {compactEraseIcon}
-                </IconButton>
-              </ToolbarTooltip>
-            )
-          : (
-              <>
-                <ToolbarTooltip title={`${t('eraser')} (E)`}>
-                  <IconButton size="small" onClick={handleEraserTool} aria-label={t('eraser')} sx={eraseSx(mode === 'eraser')}>
-                    <Eraser size={20} />
-                  </IconButton>
-                </ToolbarTooltip>
-                <ToolbarTooltip title={`${t('lassoEraser')} (L)`}>
-                  <IconButton size="small" onClick={handleLassoTool} aria-label={t('lassoEraser')} sx={eraseSx(mode === 'lasso')}>
-                    <LassoSelect size={20} />
-                  </IconButton>
-                </ToolbarTooltip>
-              </>
-            )}
-
-        <Popover
-          open={Boolean(eraserMenuAnchor)}
-          anchorEl={eraserMenuAnchor}
-          onClose={() => setEraserMenuAnchor(null)}
-          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-          transformOrigin={{ vertical: 'top', horizontal: 'center' }}
-          slotProps={{ paper: { sx: { display: 'flex', p: 0.5 } } }}
-        >
-          <ToolbarTooltip title={t('eraser')}>
-            <IconButton
-              size="small"
-              aria-label={t('eraser')}
-              onClick={() => { handleEraserTool(); setEraserMenuAnchor(null); }}
-              sx={eraseSx(mode === 'eraser')}
-            >
-              <Eraser size={20} />
-            </IconButton>
-          </ToolbarTooltip>
-          <ToolbarTooltip title={t('lassoEraser')}>
-            <IconButton
-              size="small"
-              aria-label={t('lassoEraser')}
-              onClick={() => { handleLassoTool(); setEraserMenuAnchor(null); }}
-              sx={eraseSx(mode === 'lasso')}
-            >
-              <LassoSelect size={20} />
-            </IconButton>
-          </ToolbarTooltip>
-        </Popover>
+        {/* Unified erase/select: tap to select the nearest stroke, drag to
+            enclose as a lasso. One button — the lasso is gesture-driven, so it
+            isn't surfaced separately. */}
+        <ToolbarTooltip title={`${t('erase')} (E)`}>
+          <IconButton size="small" onClick={handleEraseTool} aria-label={t('erase')} sx={eraseSx(mode === 'erase')}>
+            <Eraser size={20} />
+          </IconButton>
+        </ToolbarTooltip>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 

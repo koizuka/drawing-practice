@@ -15,8 +15,7 @@ interface ShortcutActions {
   onUndo: () => void;
   onRedo: () => void;
   onPenTool: () => void;
-  onEraserTool: () => void;
-  onLassoTool: () => void;
+  onEraseTool: () => void;
   onSave: () => void;
   onResetZoom: () => void;
 }
@@ -87,13 +86,12 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
           e.preventDefault();
           actions.onPenTool();
           break;
+        // E and L both enter the unified erase/select mode. L is kept as an
+        // alias for users who learned the old lasso shortcut.
         case 'e':
-          e.preventDefault();
-          actions.onEraserTool();
-          break;
         case 'l':
           e.preventDefault();
-          actions.onLassoTool();
+          actions.onEraseTool();
           break;
       }
     }
