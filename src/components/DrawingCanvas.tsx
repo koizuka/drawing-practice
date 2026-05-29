@@ -11,7 +11,10 @@ import type { GridSettings, GuideLine } from '../guides/types';
 import type { TraceFeedback, TraceStroke } from '../trace/types';
 import { DIAG_ENABLED, diag, logEvent, persistLog, registerStateProbe, registerRecoveryActions, type ResetTrigger } from '../drawing/touchDiagnostics';
 
-export type DrawingMode = 'pen' | 'eraser' | 'lasso';
+// Unified erase/select mode: a tap selects the nearest stroke (eraser), a
+// drag-to-enclose acts as a lasso. The pen mode is unchanged. See
+// .claude/rules/drawing-undo.md and the erase-pending machinery below.
+export type DrawingMode = 'pen' | 'erase';
 
 interface DrawingCanvasProps {
   mode: DrawingMode;
@@ -79,6 +82,14 @@ const DIMMED_STROKE_OPACITY = 0.2;
 
 const ERASER_THRESHOLD = 20;
 
+// Screen-space movement (CSS px) that promotes an erase-mode press from a
+// "tap to select" into a "drag to lasso". Matches useLongPress's
+// moveTolerancePx so the tap-vs-drag feel is uniform across the app. Screen
+// space (not world) so the trigger distance is independent of zoom — a
+// world-space threshold would make the lasso fire on tiny hand jitter at high
+// zoom.
+const ERASE_LASSO_THRESHOLD = 8;
+
 export function DrawingCanvas({
   mode,
   highlightedStrokeIndex,
@@ -132,6 +143,13 @@ export function DrawingCanvas({
   // whenever the lasso path grows so the user gets live "would-be-deleted"
   // feedback in red. Null when no lasso is active.
   const lassoSelectedRef = useRef<Set<number> | null>(null);
+  // Erase-mode pending state: held from pointerdown until the press either
+  // crosses ERASE_LASSO_THRESHOLD (promoting to a lasso) or releases as a tap.
+  // startWorld seeds the lasso polygon's first vertex on promotion; the client
+  // coords measure screen-space travel (client distance is mirror-invariant,
+  // so no rect math is needed for the flipped case). Null when no erase press
+  // is in flight.
+  const erasePendingRef = useRef<{ startWorld: Point; startClientX: number; startClientY: number } | null>(null);
   // Latest container size in CSS pixels — refreshed on every ResizeObserver
   // tick. The camera transform projects against this on every read so layout
   // changes (collapse, rotate, window resize) all preserve view center
@@ -456,7 +474,7 @@ export function DrawingCanvas({
 
   const resetTouchSession = useCallback((trigger: ResetTrigger = 'manual') => {
     const hadCurrentStroke = Boolean(strokeManager.getCurrentStroke());
-    const hadLasso = Boolean(lassoPointsRef.current);
+    const hadLasso = Boolean(lassoPointsRef.current) || Boolean(erasePendingRef.current);
     const hadTouchState = activeTouchesRef.current.size > 0 || Boolean(pinchRef.current);
 
     if (DIAG_ENABLED) {
@@ -475,6 +493,7 @@ export function DrawingCanvas({
       onCurrentStrokeChange?.(null);
     }
     if (hadLasso) {
+      erasePendingRef.current = null;
       lassoPointsRef.current = null;
       lassoBboxRef.current = null;
       lassoSelectedRef.current = null;
@@ -561,11 +580,14 @@ export function DrawingCanvas({
   // Stop the marching animation if the component unmounts mid-lasso.
   useEffect(() => () => stopMarching(), [stopMarching]);
 
-  // If the user toggles out of lasso mode mid-draw, abandon the partial path
-  // so it doesn't linger on screen.
+  // If the user toggles out of erase mode mid-gesture, abandon any partial
+  // lasso path and pending press so they don't linger / resolve later.
   useEffect(() => {
-    if (mode !== 'lasso' && lassoPointsRef.current) {
-      cancelLasso();
+    if (mode !== 'erase') {
+      erasePendingRef.current = null;
+      if (lassoPointsRef.current) {
+        cancelLasso();
+      }
     }
   }, [mode, cancelLasso]);
 
@@ -616,6 +638,71 @@ export function DrawingCanvas({
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', handleWheel);
   }, [requestRedraw, isFlipped, getBaseScale]);
+
+  // --- Erase mode: shared tap-vs-lasso branching (touch + mouse) ---
+
+  // pointerdown in erase mode: arm the pending state. We do NOT start a lasso
+  // yet — the press might turn out to be a tap.
+  const beginErasePending = useCallback((clientX: number, clientY: number, worldPoint: Point) => {
+    erasePendingRef.current = { startWorld: worldPoint, startClientX: clientX, startClientY: clientY };
+  }, []);
+
+  // pointermove in erase mode: while pending, promote to a lasso once travel
+  // exceeds the threshold (seeding the polygon with the press origin so the
+  // enclosed region matches what the user drew). Already-promoted presses just
+  // extend the lasso path.
+  const advanceErasePending = useCallback((clientX: number, clientY: number, worldPoint: Point) => {
+    const pend = erasePendingRef.current;
+    if (pend) {
+      const dx = clientX - pend.startClientX;
+      const dy = clientY - pend.startClientY;
+      if (dx * dx + dy * dy <= ERASE_LASSO_THRESHOLD * ERASE_LASSO_THRESHOLD) return;
+      erasePendingRef.current = null;
+      // Starting a lasso supersedes any pending tap candidate: clear the
+      // highlight so the Delete/Cancel confirmation goes away and the lasso
+      // selection is the only thing on screen.
+      if (highlightedStrokeIndex !== null) onHighlightStroke(null);
+      startLasso(pend.startWorld);
+      appendLasso(worldPoint);
+      startMarching();
+      recomputeLassoSelection();
+      requestRedraw();
+      return;
+    }
+    if (lassoPointsRef.current) {
+      appendLasso(worldPoint);
+      recomputeLassoSelection();
+      requestRedraw();
+    }
+  }, [highlightedStrokeIndex, onHighlightStroke, startLasso, appendLasso, startMarching, recomputeLassoSelection, requestRedraw]);
+
+  // pointerup in erase mode: a still-pending press is a tap → reuse the eraser
+  // select/delete behavior (highlight nearest stroke, or delete if re-tapping
+  // the already-highlighted one). A promoted press commits the lasso, which
+  // deletes the enclosed strokes immediately.
+  //
+  // The tap hit-test uses the press-DOWN point (pend.startWorld), NOT the
+  // release point: a tap's target is where the finger landed, and using the
+  // lift point would let a sub-threshold drift select a different (or no)
+  // stroke than the one under the initial contact. It also means callers
+  // don't compute a release world point at all (no per-release layout read).
+  const endErasePending = useCallback(() => {
+    const pend = erasePendingRef.current;
+    if (pend) {
+      erasePendingRef.current = null;
+      const index = strokeManager.findNearestStroke(pend.startWorld, ERASER_THRESHOLD / getCurrentScale());
+      if (index !== null && index === highlightedStrokeIndex) {
+        onDeleteHighlightedStroke?.();
+      }
+      else {
+        onHighlightStroke(index);
+      }
+      return;
+    }
+    if (lassoPointsRef.current) {
+      finishLasso();
+    }
+  }, [strokeManager, getCurrentScale, highlightedStrokeIndex, onDeleteHighlightedStroke, onHighlightStroke, finishLasso]);
 
   // Touch handlers — registered as native listeners (see effect below) with
   // { passive: false } so preventDefault works. React 18 attaches synthetic
@@ -679,10 +766,14 @@ export function DrawingCanvas({
         onCurrentStrokeChange?.(null);
         requestRedraw();
       }
-      // Same idea for an in-progress lasso: a second finger means the user
-      // is starting to pinch, not closing a selection.
-      if (mode === 'lasso' && lassoPointsRef.current) {
-        cancelLasso();
+      // Same idea for an in-progress lasso (or an armed-but-not-yet-promoted
+      // erase press): a second finger means the user is starting to pinch, not
+      // closing a selection. Drop both so camera control wins.
+      if (mode === 'erase') {
+        erasePendingRef.current = null;
+        if (lassoPointsRef.current) {
+          cancelLasso();
+        }
       }
 
       const ids = Array.from(activeTouchesRef.current.keys());
@@ -720,19 +811,9 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
-    if (mode === 'eraser') {
-      const index = strokeManager.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
-      if (index !== null && index === highlightedStrokeIndex) {
-        onDeleteHighlightedStroke?.();
-      }
-      else {
-        onHighlightStroke(index);
-      }
-    }
-    else if (mode === 'lasso') {
-      startLasso(point);
-      startMarching();
-      requestRedraw();
+    if (mode === 'erase') {
+      // Arm pending state only — tap vs lasso is decided on move/up.
+      beginErasePending(touch.clientX, touch.clientY, point);
     }
     else {
       // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
@@ -743,7 +824,7 @@ export function DrawingCanvas({
       strokeManager.startStroke(point);
       if (DIAG_ENABLED) diag.startStroke++;
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, onCurrentStrokeChange, requestRedraw, startMarching, cancelLasso, startLasso, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
+  }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
@@ -790,17 +871,16 @@ export function DrawingCanvas({
       return;
     }
 
-    // Lasso path drawing
-    if (mode === 'lasso' && lassoPointsRef.current) {
+    // Erase mode: drive the tap-vs-lasso decision (pending) or extend an
+    // already-promoted lasso path.
+    if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
       const touch = e.changedTouches[0] as Touch & { touchType?: string };
       if (hasStylusRef.current && touch.touchType !== 'stylus') {
         if (DIAG_ENABLED) diag.rejStylusFilterMove++;
         return;
       }
       const point = getCanvasPoint(touch.clientX, touch.clientY);
-      appendLasso(point);
-      recomputeLassoSelection();
-      requestRedraw();
+      advanceErasePending(touch.clientX, touch.clientY, point);
       return;
     }
 
@@ -820,7 +900,7 @@ export function DrawingCanvas({
     if (DIAG_ENABLED) diag.appendOk++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, recomputeLassoSelection, appendLasso]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, advanceErasePending]);
 
   const handleTouchEnd = useCallback((e: TouchEvent) => {
     // touchend can fire with cancelable=false during scrolling; guard so we
@@ -867,14 +947,24 @@ export function DrawingCanvas({
         redrawAll();
       }
     }
-    else if (mode === 'lasso' && lassoPointsRef.current) {
-      // Only commit when the last finger lifts; intermediate touchends from
-      // multi-finger gestures are handled by the cancelLasso call above.
-      if (activeTouchesRef.current.size === 0) {
-        finishLasso();
+    else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      if (e.type === 'touchcancel') {
+        // A system-cancelled touch (palm rejection, incoming call, OS edge
+        // gesture) is NOT a deliberate tap/lasso — discard the pending state
+        // instead of resolving it, or it could select/delete a stroke the
+        // user never lifted on. cancelLasso is a no-op when no lasso is live.
+        erasePendingRef.current = null;
+        cancelLasso();
+      }
+      // Only resolve when the last finger lifts; intermediate touchends from
+      // multi-finger gestures are handled by the pinch-cancel branch above.
+      // endErasePending decides: still pending → tap-select (using the press-
+      // down point); promoted → commit (delete enclosed) the lasso.
+      else if (activeTouchesRef.current.size === 0) {
+        endErasePending();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso, onStrokeFinalized]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, cancelLasso, onStrokeFinalized]);
 
   // Latest-handler refs so the native listeners below can stay attached for
   // the life of the canvas. The handlers themselves have many transitive
@@ -1021,19 +1111,8 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(e.clientX, e.clientY);
 
-    if (mode === 'eraser') {
-      const index = strokeManager.findNearestStroke(point, ERASER_THRESHOLD / getCurrentScale());
-      if (index !== null && index === highlightedStrokeIndex) {
-        onDeleteHighlightedStroke?.();
-      }
-      else {
-        onHighlightStroke(index);
-      }
-    }
-    else if (mode === 'lasso') {
-      startLasso(point);
-      startMarching();
-      requestRedraw();
+    if (mode === 'erase') {
+      beginErasePending(e.clientX, e.clientY, point);
     }
     else {
       // See handleTouchStart — fire onStrokeStart before startStroke so the
@@ -1042,15 +1121,13 @@ export function DrawingCanvas({
       strokeManager.startStroke(point);
       if (DIAG_ENABLED) diag.startStroke++;
     }
-  }, [mode, getCanvasPoint, onHighlightStroke, onDeleteHighlightedStroke, highlightedStrokeIndex, strokeManager, getCurrentScale, startMarching, requestRedraw, startLasso, onStrokeStart]);
+  }, [mode, getCanvasPoint, strokeManager, beginErasePending, onStrokeStart]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current) return;
-    if (mode === 'lasso' && lassoPointsRef.current) {
+    if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
       const point = getCanvasPoint(e.clientX, e.clientY);
-      appendLasso(point);
-      recomputeLassoSelection();
-      requestRedraw();
+      advanceErasePending(e.clientX, e.clientY, point);
       return;
     }
     if (mode !== 'pen') return;
@@ -1063,7 +1140,7 @@ export function DrawingCanvas({
     if (DIAG_ENABLED) diag.appendOk++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManager, onCurrentStrokeChange, recomputeLassoSelection, appendLasso]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManager, onCurrentStrokeChange, advanceErasePending]);
 
   const handleMouseUp = useCallback(() => {
     if (!isMouseDownRef.current) return;
@@ -1083,10 +1160,24 @@ export function DrawingCanvas({
         redrawAll();
       }
     }
-    else if (mode === 'lasso' && lassoPointsRef.current) {
-      finishLasso();
+    else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      endErasePending();
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, finishLasso, onStrokeFinalized]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, onStrokeFinalized]);
+
+  // Leaving the canvas mid-press abandons a still-pending erase tap rather
+  // than resolving it as a select/delete at the exit coordinate (which could
+  // delete the highlighted stroke the user never lifted on). A promoted lasso
+  // or an in-progress pen stroke commits like a normal release.
+  const handleMouseLeave = useCallback(() => {
+    if (!isMouseDownRef.current) return;
+    if (mode === 'erase' && erasePendingRef.current && !lassoPointsRef.current) {
+      erasePendingRef.current = null;
+      isMouseDownRef.current = false;
+      return;
+    }
+    handleMouseUp();
+  }, [mode, handleMouseUp]);
 
   return (
     <Box
@@ -1095,7 +1186,7 @@ export function DrawingCanvas({
         width: '100%',
         height: '100%',
         position: 'relative',
-        cursor: mode === 'eraser' || mode === 'lasso' ? 'crosshair' : 'default',
+        cursor: mode === 'erase' ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
     >
@@ -1104,7 +1195,7 @@ export function DrawingCanvas({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
+        onMouseLeave={handleMouseLeave}
         style={{
           display: 'block',
           width: '100%',

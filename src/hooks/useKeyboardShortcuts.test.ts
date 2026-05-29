@@ -12,8 +12,7 @@ function createActions() {
     onUndo: vi.fn(),
     onRedo: vi.fn(),
     onPenTool: vi.fn(),
-    onEraserTool: vi.fn(),
-    onLassoTool: vi.fn(),
+    onEraseTool: vi.fn(),
     onSave: vi.fn(),
     onResetZoom: vi.fn(),
   };
@@ -74,20 +73,20 @@ describe('useKeyboardShortcuts', () => {
       expect(actions.onPenTool).toHaveBeenCalledOnce();
     });
 
-    it('fires onEraserTool on E', () => {
+    it('fires onEraseTool on E', () => {
       const actions = createActions();
       renderHook(() => useKeyboardShortcuts({ actions }));
 
       fireKey({ code: 'KeyE', key: 'e' });
-      expect(actions.onEraserTool).toHaveBeenCalledOnce();
+      expect(actions.onEraseTool).toHaveBeenCalledOnce();
     });
 
-    it('fires onLassoTool on L', () => {
+    it('fires onEraseTool on L (legacy lasso alias)', () => {
       const actions = createActions();
       renderHook(() => useKeyboardShortcuts({ actions }));
 
       fireKey({ code: 'KeyL', key: 'l' });
-      expect(actions.onLassoTool).toHaveBeenCalledOnce();
+      expect(actions.onEraseTool).toHaveBeenCalledOnce();
     });
   });
 
@@ -225,7 +224,7 @@ describe('useKeyboardShortcuts', () => {
           key: 'e',
         });
         textarea.dispatchEvent(event);
-        expect(actions.onEraserTool).not.toHaveBeenCalled();
+        expect(actions.onEraseTool).not.toHaveBeenCalled();
       }
       finally {
         document.body.removeChild(textarea);
@@ -241,7 +240,7 @@ describe('useKeyboardShortcuts', () => {
       fireKey({ code: 'KeyP', key: 'p', ctrlKey: true });
       fireKey({ code: 'KeyE', key: 'e', altKey: true });
       expect(actions.onPenTool).not.toHaveBeenCalled();
-      expect(actions.onEraserTool).not.toHaveBeenCalled();
+      expect(actions.onEraseTool).not.toHaveBeenCalled();
     });
   });
 });

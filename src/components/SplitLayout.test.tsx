@@ -62,7 +62,7 @@ describe('SplitLayout', () => {
     expect(screen.getByText('Image File')).toBeInTheDocument();
     // DrawingPanel renders toolbar buttons
     expect(screen.getByLabelText(/^Pen/)).toBeInTheDocument();
-    expect(screen.getByLabelText(/^Eraser/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Erase/)).toBeInTheDocument();
   });
 
   describe('reference undo integration', () => {
