@@ -948,15 +948,23 @@ export function DrawingCanvas({
       }
     }
     else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      if (e.type === 'touchcancel') {
+        // A system-cancelled touch (palm rejection, incoming call, OS edge
+        // gesture) is NOT a deliberate tap/lasso — discard the pending state
+        // instead of resolving it, or it could select/delete a stroke the
+        // user never lifted on. cancelLasso is a no-op when no lasso is live.
+        erasePendingRef.current = null;
+        cancelLasso();
+      }
       // Only resolve when the last finger lifts; intermediate touchends from
       // multi-finger gestures are handled by the pinch-cancel branch above.
       // endErasePending decides: still pending → tap-select (using the press-
       // down point); promoted → commit (delete enclosed) the lasso.
-      if (activeTouchesRef.current.size === 0) {
+      else if (activeTouchesRef.current.size === 0) {
         endErasePending();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, onStrokeFinalized]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, cancelLasso, onStrokeFinalized]);
 
   // Latest-handler refs so the native listeners below can stay attached for
   // the life of the canvas. The handlers themselves have many transitive
