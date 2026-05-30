@@ -145,7 +145,9 @@ export default function TouchDiagnosticsOverlay() {
     return (
       <Box
         sx={{
-          position: 'fixed', top: 8, right: 8, zIndex: 1100,
+          // top: 48 = ツールバー(高さ40px)の直下。top:8 だとドローイングパネル
+          // ツールバー右側のボタン群と重なって押せなくなるため下げる。
+          position: 'fixed', top: 48, right: 8, zIndex: 1100,
           bgcolor: 'rgba(0,0,0,0.75)', color: '#0f0', borderRadius: 1,
           px: 1, py: 0.25, fontFamily: 'monospace', fontSize: '0.7rem',
           display: 'flex', alignItems: 'center', gap: 0.5,
@@ -173,7 +175,9 @@ export default function TouchDiagnosticsOverlay() {
   return (
     <Box
       sx={{
-        position: 'fixed', top: 8, right: 8, zIndex: 1100,
+        // top: 48 = ツールバー(高さ40px)の直下。top:8 だとツールバー右側の
+        // ボタン群と重なって押せなくなるため下げる（畳んだ状態も同様）。
+        position: 'fixed', top: 48, right: 8, zIndex: 1100,
         width: 280, maxHeight: '80dvh',
         display: 'flex', flexDirection: 'column',
         bgcolor: 'rgba(0,0,0,0.82)', color: '#eee', borderRadius: 1,
