@@ -153,10 +153,15 @@ function SplitLayoutInner() {
   const handleTraceResetScores = useCallback(() => {
     traceScoring.resetScores(strokeManager);
     // resetScores erases the traced strokes via discardStrokes — the canvas
-    // and autosave need to observe the change. handleStrokesChanged bumps
-    // overlayStrokes (when active) and changeVersion (drives autosave +
-    // DrawingCanvas redraw via the parent's redrawVersion plumbing).
-    handleStrokesChangedRef.current();
+    // and autosave need to observe the change. The reset-score toolbar button
+    // is a discrete user action (and discardStrokes is non-undoable), so flush
+    // immediately: otherwise a reload right after the click would restore the
+    // pre-reset scored strokes. handleStrokesChanged bumps overlayStrokes (when
+    // active) and, with `flush`, drives an immediate autosave + DrawingCanvas
+    // redraw via the parent's redrawVersion plumbing. (When reached via
+    // handleClear, the trailing triggerRedraw({ flush: true }) coalesces into
+    // the same commit — one save either way.)
+    handleStrokesChangedRef.current({ flush: true });
   }, [traceScoring, strokeManager]);
 
   // After undo/redo/erase the StrokeManager's stroke list changes outside the
