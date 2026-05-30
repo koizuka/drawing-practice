@@ -148,7 +148,7 @@ function SplitLayoutInner() {
 
   // handleStrokesChanged is declared further down; forward via a ref so
   // handleTraceResetScores can fire it without a circular dep.
-  const handleStrokesChangedRef = useRef<() => void>(() => {});
+  const handleStrokesChangedRef = useRef<(opts?: { flush?: boolean }) => void>(() => {});
 
   const handleTraceResetScores = useCallback(() => {
     traceScoring.resetScores(strokeManager);
@@ -438,12 +438,23 @@ function SplitLayoutInner() {
     strokeManager.setReferenceRestorer(snap => applyReferenceSnapshotRef.current(snap));
   }, [strokeManager]);
 
-  const handleStrokesChanged = useCallback(() => {
+  const handleStrokesChanged = useCallback((opts?: { flush?: boolean }) => {
     if (overlayActive) {
       setOverlayStrokes([...strokeManager.getStrokes()]);
     }
-    incrementChangeVersion();
-  }, [strokeManager, overlayActive, incrementChangeVersion]);
+    // Discrete editing buttons (undo / redo / clear / delete-highlighted) flush
+    // immediately — same user intent as the other discrete UI operations
+    // (flip / grid / collapse / reference change), so a reload right after the
+    // click keeps the result. Freehand stroke completion passes no flag and
+    // stays on the 2s debounce (high-frequency input that benefits from
+    // batching). See `.claude/rules/timer-autosave.md`.
+    if (opts?.flush) {
+      incrementFlushVersion();
+    }
+    else {
+      incrementChangeVersion();
+    }
+  }, [strokeManager, overlayActive, incrementChangeVersion, incrementFlushVersion]);
 
   // Keep the forward ref pointing at the latest closure so handleTraceResetScores
   // (declared earlier in the file) can invoke it.

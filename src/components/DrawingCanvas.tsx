@@ -28,8 +28,13 @@ interface DrawingCanvasProps {
    * i.e. the new stroke discarded a `tentativeClear` entry. Callers use it to
    * reset the timer (the user is starting a fresh drawing). Lasso-delete and
    * other paths always pass false.
+   *
+   * `flush` is true for discrete deletions (lasso-delete) that should persist
+   * immediately rather than wait the 2s autosave debounce — same intent as the
+   * undo / redo / clear toolbar buttons. Freehand stroke commits omit it so
+   * continuous drawing stays batched.
    */
-  onStrokeCountChange: (info: { committedTentativeClear: boolean }) => void;
+  onStrokeCountChange: (info: { committedTentativeClear: boolean; flush?: boolean }) => void;
   strokeManager: StrokeManager;
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number;
@@ -167,7 +172,7 @@ export function DrawingCanvas({
   // forcing a synchronous layout at 60fps.
   const pinchRectRef = useRef<DOMRect | null>(null);
 
-  const notifyStrokeCount = useCallback((info: { committedTentativeClear: boolean } = { committedTentativeClear: false }) => {
+  const notifyStrokeCount = useCallback((info: { committedTentativeClear: boolean; flush?: boolean } = { committedTentativeClear: false }) => {
     onStrokeCountChange(info);
   }, [onStrokeCountChange]);
 
@@ -573,7 +578,8 @@ export function DrawingCanvas({
     }
     const targets = Array.from(selected).sort((a, b) => a - b);
     strokeManager.lassoDelete(targets);
-    notifyStrokeCount();
+    // Discrete erase — persist immediately like the undo/redo/clear buttons.
+    notifyStrokeCount({ committedTentativeClear: false, flush: true });
     redrawAll();
   }, [stopMarching, requestRedraw, strokeManager, notifyStrokeCount, redrawAll]);
 

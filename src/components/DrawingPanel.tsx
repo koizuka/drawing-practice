@@ -40,7 +40,7 @@ interface DrawingPanelProps {
    * `loadState` into it before this panel ever renders.
    */
   strokeManager: StrokeManager;
-  onStrokesChanged?: () => void;
+  onStrokesChanged?: (opts?: { flush?: boolean }) => void;
   /** Hook for the parent to flush autosave after a successful gallery save. */
   onGallerySaved?: () => void;
   onOverlayClear?: () => void;
@@ -186,15 +186,19 @@ export function DrawingPanel({
   void historySyncVersion;
   void redrawVersion;
 
-  const triggerRedraw = useCallback(() => {
-    onStrokesChanged?.();
+  // `opts.flush` propagates to the parent's autosave: discrete editing buttons
+  // (undo / redo / clear / delete-highlighted) pass `{ flush: true }` so the
+  // result persists immediately, matching flip / grid / collapse. Plain redraws
+  // (none currently) would fall through to the 2s debounce.
+  const triggerRedraw = useCallback((opts?: { flush?: boolean }) => {
+    onStrokesChanged?.(opts);
     setRedrawVersion(v => v + 1);
   }, [onStrokesChanged]);
 
   const handleUndo = useCallback(() => {
     strokeManager.undo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
-    triggerRedraw();
+    triggerRedraw({ flush: true });
     // Stroke set changed: let trace scoring drop entries whose strokes were
     // popped and re-add entries whose strokes were spliced back. Without
     // this, attemptMap stays stale and the next retrace fails to replace.
@@ -207,7 +211,7 @@ export function DrawingPanel({
   const handleRedo = useCallback(() => {
     strokeManager.redo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
-    triggerRedraw();
+    triggerRedraw({ flush: true });
     onTraceSyncAttempts?.();
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
@@ -240,7 +244,7 @@ export function DrawingPanel({
     // restore the elapsed time. A reset happens later iff the user commits
     // by drawing a new stroke (see handleStrokeCountChange).
     timer.pause();
-    triggerRedraw();
+    triggerRedraw({ flush: true });
     onOverlayClear?.();
   }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
 
@@ -248,7 +252,7 @@ export function DrawingPanel({
     if (highlightedStrokeIndex !== null) {
       strokeManager.deleteStroke(highlightedStrokeIndex);
       setHighlightedStrokeIndex(null);
-      triggerRedraw();
+      triggerRedraw({ flush: true });
       onTraceSyncAttempts?.();
     }
   }, [strokeManager, highlightedStrokeIndex, triggerRedraw, onTraceSyncAttempts]);
@@ -257,9 +261,12 @@ export function DrawingPanel({
     setHighlightedStrokeIndex(null);
   }, []);
 
-  const handleStrokeCountChange = useCallback((info: { committedTentativeClear: boolean } = { committedTentativeClear: false }) => {
+  const handleStrokeCountChange = useCallback((info: { committedTentativeClear: boolean; flush?: boolean } = { committedTentativeClear: false }) => {
     setRedrawVersion(v => v + 1);
-    onStrokesChanged?.();
+    // Lasso-delete and other discrete erases arrive with `flush` so they
+    // persist immediately; a freehand stroke commit omits it and rides the 2s
+    // debounce (continuous input, batched for perf).
+    onStrokesChanged?.(info.flush ? { flush: true } : undefined);
     // Lasso-delete from DrawingCanvas reaches us via this path (NOT through
     // handleStrokeFinalized), so resync trace scoring here too. The add-path
     // also lands here just before handleStrokeFinalized records its history

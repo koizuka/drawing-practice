@@ -23,7 +23,7 @@ vi.mock('./Gallery', () => ({
 
 type StubCanvasProps = {
   strokeManager: StrokeManager;
-  onStrokeCountChange: (info?: { committedTentativeClear: boolean }) => void;
+  onStrokeCountChange: (info?: { committedTentativeClear: boolean; flush?: boolean }) => void;
 };
 const canvasPropsRef: { current: StubCanvasProps | null } = { current: null };
 vi.mock('./DrawingCanvas', () => ({
@@ -59,6 +59,7 @@ function setup(opts: {
   initialReferenceCollapsed?: boolean;
   templateStrokes?: readonly import('../trace/types').TraceStroke[] | null;
   onTraceResetScores?: () => void;
+  onStrokesChanged?: (opts?: { flush?: boolean }) => void;
   traceTotalCovered?: number;
   traceTotalStrokes?: number;
   traceOverallBestPct?: number | null;
@@ -104,6 +105,7 @@ function setup(opts: {
             restoreVersion={restoreVersion}
             historySyncVersion={historySyncVersion}
             captureReferenceSnapshot={opts.captureRef}
+            onStrokesChanged={opts.onStrokesChanged}
             onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
             collapseLocked={opts.collapseLocked}
             referenceCollapsed={referenceCollapsed}
@@ -134,6 +136,89 @@ function addStroke(sm: StrokeManager, x: number, y: number) {
   sm.appendStroke({ x: x + 10, y: y + 10 });
   sm.endStroke();
 }
+
+describe('DrawingPanel autosave flush on discrete edits', () => {
+  beforeEach(() => {
+    canvasPropsRef.current = null;
+  });
+
+  // Notify the panel via the canvas stub so handleStrokeCountChange re-renders
+  // it (enabling the undo/redo/trash buttons), mirroring a real stroke commit.
+  function drawAndNotify(harness: Harness) {
+    addStroke(harness.sm!, 0, 0);
+    canvasPropsRef.current!.onStrokeCountChange();
+  }
+
+  it('undo flushes autosave immediately (flush: true)', () => {
+    const onStrokesChanged = vi.fn();
+    const { container, harness } = setup({ onStrokesChanged });
+    act(() => {
+      drawAndNotify(harness);
+    });
+    onStrokesChanged.mockClear();
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-undo-2'));
+    });
+    expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
+  });
+
+  it('redo flushes autosave immediately (flush: true)', () => {
+    const onStrokesChanged = vi.fn();
+    const { container, harness } = setup({ onStrokesChanged });
+    act(() => {
+      drawAndNotify(harness);
+    });
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-undo-2'));
+    });
+    onStrokesChanged.mockClear();
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-redo-2'));
+    });
+    expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
+  });
+
+  it('clear (trash) flushes autosave immediately (flush: true)', () => {
+    const onStrokesChanged = vi.fn();
+    const { container, harness } = setup({ onStrokesChanged });
+    act(() => {
+      drawAndNotify(harness);
+    });
+    onStrokesChanged.mockClear();
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+    });
+    expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
+  });
+
+  it('a lasso-delete commit forwards flush so the erase persists immediately', () => {
+    const onStrokesChanged = vi.fn();
+    const { harness } = setup({ onStrokesChanged });
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+    });
+    onStrokesChanged.mockClear();
+    // DrawingCanvas signals a discrete erase with `flush: true`.
+    act(() => {
+      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: false, flush: true });
+    });
+    expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
+  });
+
+  it('a freehand stroke commit stays on the 2s debounce (no flush flag)', () => {
+    const onStrokesChanged = vi.fn();
+    const { harness } = setup({ onStrokesChanged });
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+    });
+    onStrokesChanged.mockClear();
+    // A plain stroke commit omits `flush` — it should ride the debounce path.
+    act(() => {
+      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: false });
+    });
+    expect(onStrokesChanged).toHaveBeenCalledWith(undefined);
+  });
+});
 
 describe('DrawingPanel undo/redo × timer integration', () => {
   beforeEach(() => {
