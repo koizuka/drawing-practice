@@ -718,14 +718,10 @@ export function DrawingCanvas({
     }
   }, [strokeManager, getCurrentScale, highlightedStrokeIndex, onDeleteHighlightedStroke, onHighlightStroke, finishLasso]);
 
-  // Touch handlers — registered as native listeners (see effect below) with
-  // { passive: false } so preventDefault works. React 18 attaches synthetic
-  // touch handlers as passive by default, which would silently ignore our
-  // preventDefault calls and emit "Unable to preventDefault inside passive
-  // event listener" warnings.
+  // Touch handlers — registered as native passive listeners (see effect below).
+  // No preventDefault: scroll/zoom are prevented by touch-action: none and
+  // selection/callout by CSS, so the browser default is already suppressed.
   const handleTouchStart = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-
     if (DIAG_ENABLED) {
       diag.touchstart++;
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -748,9 +744,8 @@ export function DrawingCanvas({
     }
 
     // Gesture-session swap window: reject the new touch entirely (no stroke
-    // start, no pinch arming) so a reflexive post-swap tap is dropped. We
-    // still preventDefault above so the browser doesn't fall back to default
-    // touch behavior (scroll, etc.).
+    // start, no pinch arming) so a reflexive post-swap tap is dropped.
+    // (touch-action: none keeps the browser from scrolling/zooming regardless.)
     if (inputFrozenRef.current) {
       if (DIAG_ENABLED) { diag.rejInputFrozen++; logEvent('rej', { reason: 'inputFrozen' }); }
       return;
@@ -841,8 +836,6 @@ export function DrawingCanvas({
   }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-
     if (DIAG_ENABLED) {
       diag.touchmove++;
       // Delivery latency: how stale is this event by the time our handler runs.
@@ -928,11 +921,6 @@ export function DrawingCanvas({
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, advanceErasePending]);
 
   const handleTouchEnd = useCallback((e: TouchEvent) => {
-    // touchend can fire with cancelable=false during scrolling; guard so we
-    // don't trip an "Ignored attempt to cancel a touchend" intervention
-    // warning (the preventDefault would be a no-op anyway).
-    if (e.cancelable) e.preventDefault();
-
     if (DIAG_ENABLED) {
       if (e.type === 'touchcancel') diag.touchcancel++;
       else diag.touchend++;
@@ -1004,9 +992,15 @@ export function DrawingCanvas({
   useEffect(() => { handleTouchEndRef.current = handleTouchEnd; });
 
   // Register touch listeners natively (not via React's synthetic onTouch*
-  // props) so we can pass { passive: false } and actually preventDefault.
-  // Without this, browsers warn "Unable to preventDefault inside passive
-  // event listener" on every move during a stroke.
+  // props) so we control the { passive } flag explicitly.
+  // PASSIVE EXPERIMENT (iPad freeze): the confirmed freeze is a WebKit/iPadOS
+  // page-wide input-delivery suspension under sustained Pencil input. We ruled
+  // out our filter / pinch / backpressure / listener-loss / main-thread stall.
+  // Non-passive listeners make WebKit wait on our handler before continuing;
+  // passive listeners let it dispatch-and-continue and may avoid whatever state
+  // triggers the suspension. scroll/zoom are prevented by touch-action: none
+  // and selection/callout by the canvas CSS above, so dropping preventDefault
+  // (now a no-op under passive anyway) should not regress drawing behavior.
   // Effect deps are intentionally [] so the listeners are attached exactly
   // once per canvas mount; the ref bridge above forwards to the latest
   // handler closure on each event.
@@ -1016,10 +1010,10 @@ export function DrawingCanvas({
     const onStart = (e: Event) => handleTouchStartRef.current(e as TouchEvent);
     const onMove = (e: Event) => handleTouchMoveRef.current(e as TouchEvent);
     const onEnd = (e: Event) => handleTouchEndRef.current(e as TouchEvent);
-    canvas.addEventListener('touchstart', onStart, { passive: false });
-    canvas.addEventListener('touchmove', onMove, { passive: false });
-    canvas.addEventListener('touchend', onEnd, { passive: false });
-    canvas.addEventListener('touchcancel', onEnd, { passive: false });
+    canvas.addEventListener('touchstart', onStart, { passive: true });
+    canvas.addEventListener('touchmove', onMove, { passive: true });
+    canvas.addEventListener('touchend', onEnd, { passive: true });
+    canvas.addEventListener('touchcancel', onEnd, { passive: true });
     return () => {
       canvas.removeEventListener('touchstart', onStart);
       canvas.removeEventListener('touchmove', onMove);
@@ -1260,6 +1254,12 @@ export function DrawingCanvas({
           width: '100%',
           height: '100%',
           touchAction: 'none',
+          // With passive touch listeners we no longer preventDefault, so suppress
+          // text selection / the iOS long-press callout declaratively instead.
+          // (scroll/zoom are already prevented by touch-action: none.)
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          WebkitTouchCallout: 'none',
           // iOS Safari workaround: promote the canvas to its own composited
           // layer so updates to its bitmap are always pushed to the screen.
           // Without this hint, after some sequence of events (gesture-session
