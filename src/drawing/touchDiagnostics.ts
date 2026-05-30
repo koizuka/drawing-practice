@@ -110,6 +110,12 @@ export interface DiagCounters {
   docPointermove: number;
   docPointerPen: number;
   docClick: number;
+  // Document-observed touches whose target is the canvas element. If this
+  // climbs while the canvas's OWN listener counter (touchmove) stays flat, the
+  // element is still receiving touches but its listener is dead/detached
+  // (target/listener loss) — vs. the user simply touching off-canvas (this
+  // stays flat too). Settles the erase-mode "doc>canvas, finger" signature.
+  docTouchOnCanvas: number;
   // Touch delivery latency (ms) = performance.now() - touchmove.timeStamp.
   // If WebKit's event queue backs up under sustained 120Hz Pencil input
   // (the confirmed freeze: sustained drawing → page-wide input suspension,
@@ -136,6 +142,7 @@ function makeCounters(): DiagCounters {
     rafTick: 0, lastRafAt: 0,
     docTouchstart: 0, docTouchmove: 0, docTouchend: 0, docTouchcancel: 0,
     docPointerdown: 0, docPointermove: 0, docPointerPen: 0, docClick: 0,
+    docTouchOnCanvas: 0,
     moveLatencyLast: 0, moveLatencyMax: 0,
     resetCount: 0, lastResetTrigger: null,
   };

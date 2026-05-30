@@ -136,6 +136,7 @@ export default function TouchDiagnosticsOverlay() {
         if (dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
           logEvent('tick', {
             move: dMove, doc: dDoc,
+            onCanvas: cur.docTouchOnCanvas - base.docTouchOnCanvas,
             append: cur.appendOk - base.appendOk,
             redraw: cur.redrawAll - base.redrawAll,
             raf: cur.rafTick - base.rafTick,
@@ -176,7 +177,6 @@ export default function TouchDiagnosticsOverlay() {
   const s = snap.state;
   const redrawAge = c.lastRedrawAt > 0 ? Math.round(snap.now - c.lastRedrawAt) : -1;
   const rafAge = c.lastRafAt > 0 ? Math.round(snap.now - c.lastRafAt) : -1;
-  const targetGap = c.docTouchmove - c.touchmove;
 
   if (collapsed) {
     return (
@@ -238,61 +238,19 @@ export default function TouchDiagnosticsOverlay() {
         </ToolbarTooltip>
       </Box>
 
-      <Box sx={{ overflow: 'auto', flex: '0 1 auto' }}>
-        {/* Input (canvas) */}
-        <Box sx={sectionSx}>
-          {row('start / move / end', `${c.touchstart} / ${c.touchmove} / ${c.touchend}`)}
-          {row('cancel', c.touchcancel, c.touchcancel > 0 ? '#ff9' : undefined)}
-          {row('type sty/dir/und', `${c.touchTypeStylus} / ${c.touchTypeDirect} / ${c.touchTypeUndefined}`)}
-        </Box>
-        {/* Input (document) */}
-        <Box sx={sectionSx}>
-          {row('doc move', c.docTouchmove)}
-          {row('canvas vs doc move', `${c.touchmove} / ${c.docTouchmove}`, targetGap > 2 ? '#9cf' : undefined)}
-          {row('ptr down/move', `${c.docPointerdown} / ${c.docPointermove}`)}
-          {row('ptr pen / click', `${c.docPointerPen} / ${c.docClick}`)}
-        </Box>
-        {/* Rejections */}
-        <Box sx={sectionSx}>
-          {row('rej frozen', c.rejInputFrozen)}
-          {row('rej pinch', c.rejPinch, c.rejPinch > 0 ? '#fc6' : undefined)}
-          {row('rej stylus s/m', `${c.rejStylusFilterStart} / ${c.rejStylusFilterMove}`,
-            (c.rejStylusFilterStart + c.rejStylusFilterMove) > 0 ? '#fc6' : undefined)}
-          {row('append skip', c.appendSkip)}
-        </Box>
-        {/* State */}
-        <Box sx={sectionSx}>
-          {row('mode / drawing', s ? `${s.mode} / ${s.drawing}` : '?')}
-          {row('hasStylus', String(s?.hasStylus ?? '?'), s?.hasStylus ? '#fc6' : undefined)}
-          {row('activeTouches', s ? `${s.activeTouchCount} [${s.activeTouchIds.join(',')}]` : '?')}
-          {row('pinchActive', String(s?.pinchActive ?? '?'), s?.pinchActive ? '#fc6' : undefined)}
-        </Box>
-        {/* Data */}
-        <Box sx={sectionSx}>
-          {row('start/append/commit', `${c.startStroke} / ${c.appendOk} / ${c.endCommit}`)}
-          {row('cancel', c.cancelStroke)}
-          {row('strokeCount', s?.strokeCount ?? '?')}
-        </Box>
-        {/* Render */}
-        <Box sx={sectionSx}>
-          {row('redrawAll', c.redrawAll)}
-          {row('heartbeat', c.heartbeat)}
-          {row('last redraw (ms)', redrawAge, redrawAge > REDRAW_STALL_MS ? '#f66' : undefined)}
-        </Box>
-        {/* rAF liveness */}
-        <Box sx={sectionSx}>
-          {row('rafTick', c.rafTick)}
-          {row('last rAF (ms)', rafAge, rafAge > RAF_STALL_MS ? '#f66' : undefined)}
-        </Box>
-        {/* Touch delivery latency — climbs if WebKit's event queue backs up */}
-        <Box sx={sectionSx}>
-          {row('move lat last (ms)', Math.round(c.moveLatencyLast),
-            c.moveLatencyLast > 500 ? '#f66' : c.moveLatencyLast > 100 ? '#fc6' : undefined)}
-        </Box>
-        {/* Reset */}
-        <Box sx={sectionSx}>
-          {row('resets', `${c.resetCount} (${c.lastResetTrigger ?? '-'})`)}
-        </Box>
+      {/* Live signals a human watches during a freeze. Everything else lives in
+          the Copy output (serializeLog dumps every counter + the event log), so
+          the on-screen HUD stays small and readable — no scrolling to find the
+          value under investigation. */}
+      <Box sx={{ ...sectionSx, fontSize: '0.82rem', fontWeight: 700 }}>
+        {row('lat last (ms)', Math.round(c.moveLatencyLast),
+          c.moveLatencyLast > 500 ? '#f66' : c.moveLatencyLast > 100 ? '#fc6' : '#9f9')}
+        {row('on-cvs / cvs in', `${c.docTouchOnCanvas} / ${c.touchstart + c.touchmove}`,
+          c.docTouchOnCanvas - (c.touchstart + c.touchmove) > 5 ? '#9cf' : undefined)}
+        {row('mode / draw', s ? `${s.mode} / ${s.drawing}` : '?')}
+        {row('heartbeat', c.heartbeat)}
+        {row('last redraw / rAF (ms)', `${redrawAge} / ${rafAge}`,
+          (redrawAge > REDRAW_STALL_MS || rafAge > RAF_STALL_MS) ? '#f66' : undefined)}
       </Box>
 
       {/* Recovery / live mitigations */}
@@ -319,7 +277,7 @@ export default function TouchDiagnosticsOverlay() {
           </IconButton>
         </ToolbarTooltip>
       </Box>
-      <Box sx={{ mt: 0.5, height: '24dvh', overflow: 'auto', bgcolor: 'rgba(0,0,0,0.4)', borderRadius: 0.5, p: 0.5 }}>
+      <Box sx={{ mt: 0.5, height: '18dvh', overflow: 'auto', bgcolor: 'rgba(0,0,0,0.4)', borderRadius: 0.5, p: 0.5 }}>
         {snap.log.map((e, i) => (
           <Box key={i} sx={{ whiteSpace: 'nowrap', color: e.type === 'watchdog' ? '#f66' : e.type === 'rej' ? '#fc6' : '#bbb' }}>
             {`${e.t.toFixed(0)} ${e.type} ${e.detail ? JSON.stringify(e.detail) : ''}`}

@@ -1109,8 +1109,15 @@ export function DrawingCanvas({
   // events at all (neither climbs). Pure observation: passive, no preventDefault.
   useEffect(() => {
     if (!DIAG_ENABLED) return;
-    const onStart = () => { diag.docTouchstart++; };
-    const onMove = () => { diag.docTouchmove++; };
+    // Touch events retarget to the element where the touch started, so checking
+    // the canvas against the start element tells us the sequence began on it.
+    const onCanvas = (e: TouchEvent) => {
+      const t = e.target as Node | null;
+      const c = canvasRef.current;
+      return Boolean(c && t && (t === c || c.contains(t)));
+    };
+    const onStart = (e: TouchEvent) => { diag.docTouchstart++; if (onCanvas(e)) diag.docTouchOnCanvas++; };
+    const onMove = (e: TouchEvent) => { diag.docTouchmove++; if (onCanvas(e)) diag.docTouchOnCanvas++; };
     const onEnd = () => { diag.docTouchend++; };
     const onCancel = () => { diag.docTouchcancel++; };
     const opts = { capture: true, passive: true } as const;
