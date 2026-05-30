@@ -127,12 +127,15 @@ export default function TouchDiagnosticsOverlay() {
         const base = secRef.current;
         const dMove = cur.touchmove - base.touchmove;
         const dDoc = cur.docTouchmove - base.docTouchmove;
-        if (dMove > 0 || dDoc > 0 || state?.drawing) {
+        const dPtr = cur.docPointermove - base.docPointermove;
+        const dPen = cur.docPointerPen - base.docPointerPen;
+        if (dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
           logEvent('tick', {
             move: dMove, doc: dDoc,
             append: cur.appendOk - base.appendOk,
             redraw: cur.redrawAll - base.redrawAll,
             raf: cur.rafTick - base.rafTick,
+            ptr: dPtr, pen: dPen,
             mode: state?.mode,
           });
         }
@@ -241,6 +244,8 @@ export default function TouchDiagnosticsOverlay() {
         <Box sx={sectionSx}>
           {row('doc move', c.docTouchmove)}
           {row('canvas vs doc move', `${c.touchmove} / ${c.docTouchmove}`, targetGap > 2 ? '#9cf' : undefined)}
+          {row('ptr down/move', `${c.docPointerdown} / ${c.docPointermove}`)}
+          {row('ptr pen / click', `${c.docPointerPen} / ${c.docClick}`)}
         </Box>
         {/* Rejections */}
         <Box sx={sectionSx}>

@@ -101,6 +101,15 @@ export interface DiagCounters {
   docTouchmove: number;
   docTouchend: number;
   docTouchcancel: number;
+  // Cross-channel input arrival — pointer / click events observed at document
+  // level. The confirmed freeze suspends *touch* delivery page-wide; if
+  // pointer/click still fire during the touch-gap, a non-touch channel survives
+  // (a recovery foothold). If none fire, all input is suspended. `docPointerPen`
+  // counts pointer events with pointerType==='pen' (Apple Pencil, incl. hover).
+  docPointerdown: number;
+  docPointermove: number;
+  docPointerPen: number;
+  docClick: number;
   // Session reset.
   resetCount: number;
   lastResetTrigger: ResetTrigger | null;
@@ -117,6 +126,7 @@ function makeCounters(): DiagCounters {
     redrawAll: 0, rafScheduled: 0, lastRedrawAt: 0, heartbeat: 0,
     rafTick: 0, lastRafAt: 0,
     docTouchstart: 0, docTouchmove: 0, docTouchend: 0, docTouchcancel: 0,
+    docPointerdown: 0, docPointermove: 0, docPointerPen: 0, docClick: 0,
     resetCount: 0, lastResetTrigger: null,
   };
 }

@@ -1115,6 +1115,33 @@ export function DrawingCanvas({
     };
   }, []);
 
+  // Cross-channel input observation. The freeze is confirmed to suspend *touch*
+  // delivery page-wide (canvas + DOM both go dead). Pointer and click events are
+  // a separate WebKit pathway; if they keep firing during the touch-gap a
+  // non-touch channel survives and could anchor a recovery. Pure observation:
+  // passive, capture, no preventDefault — does not touch the canvas pipeline.
+  useEffect(() => {
+    if (!DIAG_ENABLED) return;
+    const onPointerDown = (e: PointerEvent) => {
+      diag.docPointerdown++;
+      if (e.pointerType === 'pen') diag.docPointerPen++;
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      diag.docPointermove++;
+      if (e.pointerType === 'pen') diag.docPointerPen++;
+    };
+    const onClick = () => { diag.docClick++; };
+    const opts = { capture: true, passive: true } as const;
+    document.addEventListener('pointerdown', onPointerDown, opts);
+    document.addEventListener('pointermove', onPointerMove, opts);
+    document.addEventListener('click', onClick, opts);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, opts);
+      document.removeEventListener('pointermove', onPointerMove, opts);
+      document.removeEventListener('click', onClick, opts);
+    };
+  }, []);
+
   // Mouse fallback handlers
   const isMouseDownRef = useRef(false);
 
