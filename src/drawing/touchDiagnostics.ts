@@ -110,6 +110,15 @@ export interface DiagCounters {
   docPointermove: number;
   docPointerPen: number;
   docClick: number;
+  // Touch delivery latency (ms) = performance.now() - touchmove.timeStamp.
+  // If WebKit's event queue backs up under sustained 120Hz Pencil input
+  // (the confirmed freeze: sustained drawing → page-wide input suspension,
+  // recovers after a ~2s idle), events arrive increasingly stale and this
+  // climbs in the run-up to the freeze. `moveLatencyMax` is a windowed peak the
+  // overlay reads-and-resets each second so the per-second trend is visible;
+  // `moveLatencyLast` is the most recent sample for the live readout.
+  moveLatencyLast: number;
+  moveLatencyMax: number;
   // Session reset.
   resetCount: number;
   lastResetTrigger: ResetTrigger | null;
@@ -127,6 +136,7 @@ function makeCounters(): DiagCounters {
     rafTick: 0, lastRafAt: 0,
     docTouchstart: 0, docTouchmove: 0, docTouchend: 0, docTouchcancel: 0,
     docPointerdown: 0, docPointermove: 0, docPointerPen: 0, docClick: 0,
+    moveLatencyLast: 0, moveLatencyMax: 0,
     resetCount: 0, lastResetTrigger: null,
   };
 }

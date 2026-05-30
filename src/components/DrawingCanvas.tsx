@@ -843,7 +843,18 @@ export function DrawingCanvas({
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
 
-    if (DIAG_ENABLED) diag.touchmove++;
+    if (DIAG_ENABLED) {
+      diag.touchmove++;
+      // Delivery latency: how stale is this event by the time our handler runs.
+      // Climbing latency = WebKit's event queue backing up (backpressure), the
+      // suspected cause of the sustained-input freeze. Guard against the legacy
+      // epoch-based timeStamp (would yield a large negative value).
+      const lat = performance.now() - e.timeStamp;
+      if (lat >= 0 && lat < 60000) {
+        diag.moveLatencyLast = lat;
+        if (lat > diag.moveLatencyMax) diag.moveLatencyMax = lat;
+      }
+    }
 
     // Update tracked touches
     for (let i = 0; i < e.changedTouches.length; i++) {

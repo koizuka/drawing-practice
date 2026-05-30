@@ -129,6 +129,10 @@ export default function TouchDiagnosticsOverlay() {
         const dDoc = cur.docTouchmove - base.docTouchmove;
         const dPtr = cur.docPointermove - base.docPointermove;
         const dPen = cur.docPointerPen - base.docPointerPen;
+        // Read-and-reset the windowed peak so each tick logs that second's worst
+        // touch-delivery latency — the trend that should climb before the freeze.
+        const latMax = Math.round(cur.moveLatencyMax);
+        diag.moveLatencyMax = 0;
         if (dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
           logEvent('tick', {
             move: dMove, doc: dDoc,
@@ -136,6 +140,7 @@ export default function TouchDiagnosticsOverlay() {
             redraw: cur.redrawAll - base.redrawAll,
             raf: cur.rafTick - base.rafTick,
             ptr: dPtr, pen: dPen,
+            latMax,
             mode: state?.mode,
           });
         }
@@ -278,6 +283,11 @@ export default function TouchDiagnosticsOverlay() {
         <Box sx={sectionSx}>
           {row('rafTick', c.rafTick)}
           {row('last rAF (ms)', rafAge, rafAge > RAF_STALL_MS ? '#f66' : undefined)}
+        </Box>
+        {/* Touch delivery latency — climbs if WebKit's event queue backs up */}
+        <Box sx={sectionSx}>
+          {row('move lat last (ms)', Math.round(c.moveLatencyLast),
+            c.moveLatencyLast > 500 ? '#f66' : c.moveLatencyLast > 100 ? '#fc6' : undefined)}
         </Box>
         {/* Reset */}
         <Box sx={sectionSx}>
