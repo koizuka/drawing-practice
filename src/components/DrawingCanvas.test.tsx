@@ -418,3 +418,39 @@ describe('DrawingCanvas erase mode (unified tap-select / drag-lasso)', () => {
     }
   });
 });
+
+// With passive touch listeners we no longer preventDefault, so iOS emits
+// compatibility ("synthetic") mouse events after a touch. Before any stylus
+// contact hasStylusRef is false, so without a guard those would re-enter the
+// mouse handlers and double up the stroke a finger touch already drew.
+describe('DrawingCanvas synthetic-mouse suppression after touch', () => {
+  function finger(identifier: number, clientX: number, clientY: number): Touch {
+    return { identifier, clientX, clientY, touchType: 'direct' } as Touch & { touchType: string };
+  }
+
+  it('ignores the mouse events that follow a finger touch (no second stroke)', () => {
+    const sm = new StrokeManager();
+    const { canvas } = renderCanvas(sm); // pen mode, no prior stylus
+
+    fireEvent.touchStart(canvas, { touches: [finger(1, 50, 50)], changedTouches: [finger(1, 50, 50)] });
+    fireEvent.touchMove(canvas, { touches: [finger(1, 70, 80)], changedTouches: [finger(1, 70, 80)] });
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [finger(1, 70, 80)] });
+    expect(sm.getStrokes()).toHaveLength(1);
+
+    // Synthetic mouse events immediately after the touch must not draw again.
+    fireEvent.mouseDown(canvas, { clientX: 70, clientY: 80 });
+    fireEvent.mouseMove(canvas, { clientX: 90, clientY: 100 });
+    fireEvent.mouseUp(canvas, { clientX: 90, clientY: 100 });
+    expect(sm.getStrokes()).toHaveLength(1);
+  });
+
+  it('still draws with a real mouse when no touch preceded it', () => {
+    const sm = new StrokeManager();
+    const { canvas } = renderCanvas(sm);
+
+    fireEvent.mouseDown(canvas, { clientX: 50, clientY: 50 });
+    fireEvent.mouseMove(canvas, { clientX: 70, clientY: 80 });
+    fireEvent.mouseUp(canvas, { clientX: 70, clientY: 80 });
+    expect(sm.getStrokes()).toHaveLength(1);
+  });
+});

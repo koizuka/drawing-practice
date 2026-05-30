@@ -94,6 +94,9 @@ const ERASER_THRESHOLD = 20;
 // world-space threshold would make the lasso fire on tiny hand jitter at high
 // zoom.
 const ERASE_LASSO_THRESHOLD = 8;
+// A mouse event arriving within this window of a touch is a compatibility
+// ("synthetic") mouse event the browser emits after touch — ignore it.
+const SYNTHETIC_MOUSE_GUARD_MS = 700;
 
 export function DrawingCanvas({
   mode,
@@ -124,6 +127,12 @@ export function DrawingCanvas({
   });
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Timestamp of the last touch event. With passive touch listeners we no longer
+  // preventDefault, so iOS fires compatibility ("synthetic") mouse events right
+  // after a touch sequence. The mouse handlers ignore any mouse event within
+  // SYNTHETIC_MOUSE_GUARD_MS of a touch so a finger draw (before any stylus, when
+  // hasStylusRef is still false) can't also fire handleMouseDown and double up.
+  const lastTouchAtRef = useRef(0);
   const rendererRef = useRef<CanvasRenderer | null>(null);
   // Lazy-init: useRef's argument runs every render, so a plain default would
   // allocate a throw-away ViewTransform on each render. The non-null cast is
@@ -722,6 +731,8 @@ export function DrawingCanvas({
   // No preventDefault: scroll/zoom are prevented by touch-action: none and
   // selection/callout by CSS, so the browser default is already suppressed.
   const handleTouchStart = useCallback((e: TouchEvent) => {
+    lastTouchAtRef.current = performance.now();
+
     if (DIAG_ENABLED) {
       diag.touchstart++;
       for (let i = 0; i < e.changedTouches.length; i++) {
@@ -836,6 +847,8 @@ export function DrawingCanvas({
   }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
+    lastTouchAtRef.current = performance.now();
+
     if (DIAG_ENABLED) {
       diag.touchmove++;
       // Delivery latency: how stale is this event by the time our handler runs.
@@ -921,6 +934,8 @@ export function DrawingCanvas({
   }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, advanceErasePending]);
 
   const handleTouchEnd = useCallback((e: TouchEvent) => {
+    lastTouchAtRef.current = performance.now();
+
     if (DIAG_ENABLED) {
       if (e.type === 'touchcancel') diag.touchcancel++;
       else diag.touchend++;
@@ -1159,6 +1174,9 @@ export function DrawingCanvas({
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (hasStylusRef.current) return;
+    // Ignore the compatibility mouse event that follows a touch (a real touch
+    // already started the stroke). Real desktop mouse has no preceding touch.
+    if (performance.now() - lastTouchAtRef.current < SYNTHETIC_MOUSE_GUARD_MS) return;
     if (inputFrozenRef.current) return;
     isMouseDownRef.current = true;
 
