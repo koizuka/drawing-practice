@@ -105,6 +105,30 @@ describe('DrawingCanvas diagnostics counters', () => {
     expect(rejected[0].detail?.touchType).toBe('direct');
   });
 
+  it('attributes document-observed touches to the canvas, and excludes off-canvas touches', () => {
+    const { canvas } = renderCanvas();
+
+    // A touch sequence on the canvas: the document-level observer sees it AND
+    // attributes it to the canvas target.
+    fireEvent.touchStart(canvas, { touches: [stylus(1, 20, 20)], changedTouches: [stylus(1, 20, 20)] });
+    fireEvent.touchMove(canvas, { touches: [stylus(1, 50, 60)], changedTouches: [stylus(1, 50, 60)] });
+
+    expect(diag.docTouchstart).toBeGreaterThanOrEqual(1);
+    expect(diag.docTouchmove).toBeGreaterThanOrEqual(1);
+    const onCanvasAfterCanvasTouch = diag.docTouchOnCanvas;
+    expect(onCanvasAfterCanvasTouch).toBeGreaterThanOrEqual(2); // start + move
+
+    // A touch elsewhere on the page is still observed by the document listener
+    // but must NOT be attributed to the canvas — this is the signal that tells
+    // "canvas lost its listener" (on-canvas climbs, canvas's own count doesn't)
+    // apart from "user simply touched off-canvas" (on-canvas stays flat).
+    fireEvent.touchStart(document.body, { touches: [direct(9, 5, 5)], changedTouches: [direct(9, 5, 5)] });
+    fireEvent.touchMove(document.body, { touches: [direct(9, 7, 7)], changedTouches: [direct(9, 7, 7)] });
+
+    expect(diag.docTouchstart).toBeGreaterThanOrEqual(2);
+    expect(diag.docTouchOnCanvas).toBe(onCanvasAfterCanvasTouch);
+  });
+
   it('counts resets with their trigger on window blur', () => {
     const { canvas } = renderCanvas();
     fireEvent.touchStart(canvas, { touches: [stylus(1, 20, 20)], changedTouches: [stylus(1, 20, 20)] });
