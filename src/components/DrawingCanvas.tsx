@@ -485,7 +485,15 @@ export function DrawingCanvas({
     if (DIAG_ENABLED) {
       diag.resetCount++;
       diag.lastResetTrigger = trigger;
-      logEvent('reset', { trigger, hadCurrentStroke, hadLasso, hadTouchState });
+      // Snapshot the cumulative counters here: a blur/visibility reset is almost
+      // always the user's own recovery gesture (tab/app switch), so this is the
+      // last reading taken *before* the frozen session is cleared. Without it the
+      // post-recovery copy only shows healthy idle state.
+      logEvent('reset', {
+        trigger, hadCurrentStroke, hadLasso, hadTouchState,
+        move: diag.touchmove, docMove: diag.docTouchmove,
+        append: diag.appendOk, redraw: diag.redrawAll, raf: diag.rafTick,
+      });
     }
 
     activeTouchesRef.current.clear();
