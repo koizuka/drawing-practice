@@ -446,7 +446,11 @@ export function DrawingPanel({
   }, []);
 
   return (
-    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
+    // position: relative は診断オーバーレイ(TouchDiagnosticsOverlay)の
+    // absolute 基準。ビューポート基準(fixed)だと別タブ警告バナーで
+    // ツールバー/キャンバスが下にずれた分を追従できず重なるため、
+    // DrawingPanel を基準にしてレイアウトと一緒に下がるようにする。
+    <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {/* Toolbar */}
       <Box
         ref={toolbarRef}

@@ -145,10 +145,12 @@ export default function TouchDiagnosticsOverlay() {
     return (
       <Box
         sx={{
+          // absolute = DrawingPanel(position:relative)基準。fixed だと別タブ
+          // 警告バナーでツールバー/キャンバスが下にずれた分を追従できない。
           // top: 84 = ツールバー(高さ40px)の下、さらにトレーススコア表示
-          // (キャンバス内 top:8 の「なぞり済み」オーバーレイ ≒ ビューポート上 48〜76px)
-          // も避けた位置。top:48 だとスコア表示と重なるため下げる。
-          position: 'fixed', top: 84, right: 8, zIndex: 1100,
+          // (キャンバス内 top:8 の「なぞり済み」オーバーレイ ≒ パネル上端から 48〜76px)
+          // も避けた位置。
+          position: 'absolute', top: 84, right: 8, zIndex: 1100,
           bgcolor: 'rgba(0,0,0,0.75)', color: '#0f0', borderRadius: 1,
           px: 1, py: 0.25, fontFamily: 'monospace', fontSize: '0.7rem',
           display: 'flex', alignItems: 'center', gap: 0.5,
@@ -176,10 +178,11 @@ export default function TouchDiagnosticsOverlay() {
   return (
     <Box
       sx={{
-        // top: 84 = ツールバー(高さ40px)の下、さらにトレーススコア表示
-        // (キャンバス内 top:8 の「なぞり済み」オーバーレイ)も避けた位置。
-        // top:48 だとスコア表示と重なるため下げる（畳んだ状態も同様）。
-        position: 'fixed', top: 84, right: 8, zIndex: 1100,
+        // absolute = DrawingPanel(position:relative)基準。fixed だと別タブ
+        // 警告バナーでツールバー/キャンバスが下にずれた分を追従できない。
+        // top: 84 = ツールバー(高さ40px)の下、トレーススコア表示も避けた位置
+        // （畳んだ状態も同様）。
+        position: 'absolute', top: 84, right: 8, zIndex: 1100,
         width: 280, maxHeight: '80dvh',
         display: 'flex', flexDirection: 'column',
         bgcolor: 'rgba(0,0,0,0.82)', color: '#eee', borderRadius: 1,
