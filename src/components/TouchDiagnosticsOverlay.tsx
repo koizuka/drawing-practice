@@ -56,6 +56,11 @@ export default function TouchDiagnosticsOverlay() {
   const prevRef = useRef<typeof diag>({ ...diag });
   // Latch so each stuck episode is logged once at onset, not every tick.
   const stuckRef = useRef(false);
+  // 1Hz activity-gated timeline: counters at the last second-boundary snapshot,
+  // plus a tick counter. Lets us reconstruct the freeze window even when the
+  // user recovers (tab switch) before reading the live counters.
+  const secRef = useRef<typeof diag>({ ...diag });
+  const tickCountRef = useRef(0);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -108,6 +113,30 @@ export default function TouchDiagnosticsOverlay() {
       }
       else if (!stuck) {
         stuckRef.current = false;
+      }
+
+      // 1Hz activity-gated timeline. Every ~1s, if there was touch activity in
+      // the last second (or a stroke is mid-flight), log a compact counter
+      // snapshot. During a freeze where the user keeps stroking the Pencil this
+      // records whether move/append/redraw/raf advance or flatline — the exact
+      // signal that separates input-drop (A) from compositor-stall (B) — and it
+      // survives the user's recovery tab-switch. Idle seconds log nothing so the
+      // 200-entry ring isn't wasted.
+      if (++tickCountRef.current >= Math.round(1000 / POLL_MS)) {
+        tickCountRef.current = 0;
+        const base = secRef.current;
+        const dMove = cur.touchmove - base.touchmove;
+        const dDoc = cur.docTouchmove - base.docTouchmove;
+        if (dMove > 0 || dDoc > 0 || state?.drawing) {
+          logEvent('tick', {
+            move: dMove, doc: dDoc,
+            append: cur.appendOk - base.appendOk,
+            redraw: cur.redrawAll - base.redrawAll,
+            raf: cur.rafTick - base.rafTick,
+            mode: state?.mode,
+          });
+        }
+        secRef.current = { ...cur };
       }
 
       prevRef.current = { ...cur };
