@@ -129,6 +129,31 @@ describe('DrawingCanvas diagnostics counters', () => {
     expect(diag.docTouchOnCanvas).toBe(onCanvasAfterCanvasTouch);
   });
 
+  it('tracks the continuous-draw streak and resets it after a long idle', () => {
+    const nowSpy = vi.spyOn(performance, 'now');
+    const { canvas } = renderCanvas();
+
+    // First contact: the gap from init is huge, so the streak starts fresh at 0.
+    nowSpy.mockReturnValue(10000);
+    fireEvent.touchStart(canvas, { touches: [stylus(1, 20, 20)], changedTouches: [stylus(1, 20, 20)] });
+    expect(diag.drawStreakMs).toBe(0);
+
+    // 1s later, still inside the streak window → the streak grows.
+    nowSpy.mockReturnValue(11000);
+    fireEvent.touchMove(canvas, { touches: [stylus(1, 30, 30)], changedTouches: [stylus(1, 30, 30)] });
+    expect(diag.drawStreakMs).toBe(1000);
+
+    nowSpy.mockReturnValue(11200);
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [stylus(1, 30, 30)] });
+    expect(diag.maxDrawStreakMs).toBe(1200);
+
+    // A >2s idle then a new contact resets the streak; the max is retained.
+    nowSpy.mockReturnValue(15000);
+    fireEvent.touchStart(canvas, { touches: [stylus(2, 40, 40)], changedTouches: [stylus(2, 40, 40)] });
+    expect(diag.drawStreakMs).toBe(0);
+    expect(diag.maxDrawStreakMs).toBe(1200);
+  });
+
   it('counts resets with their trigger on window blur', () => {
     const { canvas } = renderCanvas();
     fireEvent.touchStart(canvas, { touches: [stylus(1, 20, 20)], changedTouches: [stylus(1, 20, 20)] });

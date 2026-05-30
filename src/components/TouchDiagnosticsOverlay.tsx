@@ -29,6 +29,12 @@ const POLL_MS = 250;
 // Thresholds (ms) after which "no redraw" / "no rAF tick" is treated as stalled.
 const REDRAW_STALL_MS = 500;
 const RAF_STALL_MS = 500;
+// Freeze auto-detection: input silent for longer than this, while a streak of at
+// least FREEZE_MIN_STREAK_MS was active and rAF stayed alive, is flagged as a
+// (suspected) freeze episode. The gap floor is above a normal reposition pause;
+// the streak floor avoids flagging an idle-at-rest as a freeze.
+const FREEZE_GAP_MS = 1500;
+const FREEZE_MIN_STREAK_MS = 2000;
 
 interface Snapshot {
   counters: typeof diag;
@@ -61,6 +67,13 @@ export default function TouchDiagnosticsOverlay() {
   // user recovers (tab switch) before reading the live counters.
   const secRef = useRef<typeof diag>({ ...diag });
   const tickCountRef = useRef(0);
+  // Freeze auto-detection state. (0-init; the poll self-corrects on the first
+  // tick — useRef args must be pure, so no performance.now() / diag reads here.)
+  const lastInputCountRef = useRef(0);
+  const lastInputAtRef = useRef(0);
+  const inFreezeRef = useRef(false);
+  const freezeOnsetAtRef = useRef(0);
+  const freezePreStreakRef = useRef(0);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -113,6 +126,37 @@ export default function TouchDiagnosticsOverlay() {
       }
       else if (!stuck) {
         stuckRef.current = false;
+      }
+
+      // Freeze auto-detection. Watch total input (start+move); a silent spell
+      // after an active streak with rAF still alive is a (suspected) freeze.
+      const inputCount = cur.touchstart + cur.touchmove;
+      const rafAlive = cur.lastRafAt > 0 && (now - cur.lastRafAt) < RAF_STALL_MS;
+      if (inputCount > lastInputCountRef.current) {
+        if (inFreezeRef.current) {
+          // Input resumed → the episode ends. Log its silent duration + the
+          // streak that preceded it.
+          const durationMs = Math.round(now - freezeOnsetAtRef.current);
+          diag.freezeCount++;
+          diag.lastFreezeMs = durationMs;
+          logEvent('freeze', { durationMs, preStreakMs: Math.round(freezePreStreakRef.current) });
+          persistLog();
+          inFreezeRef.current = false;
+        }
+        lastInputCountRef.current = inputCount;
+        lastInputAtRef.current = now;
+      }
+      else if (!inFreezeRef.current
+        && now - lastInputAtRef.current > FREEZE_GAP_MS
+        && cur.drawStreakMs >= FREEZE_MIN_STREAK_MS
+        && rafAlive) {
+        // drawStreakMs stops updating once input goes silent, so it still holds
+        // the pre-freeze streak here.
+        inFreezeRef.current = true;
+        freezeOnsetAtRef.current = lastInputAtRef.current;
+        freezePreStreakRef.current = cur.drawStreakMs;
+        logEvent('freezeOnset', { preStreakMs: Math.round(cur.drawStreakMs) });
+        persistLog();
       }
 
       // 1Hz activity-gated timeline. Every ~1s, if there was touch activity in
@@ -193,7 +237,7 @@ export default function TouchDiagnosticsOverlay() {
           display: 'flex', alignItems: 'center', gap: 0.5,
         }}
       >
-        <span>{`diag #${c.heartbeat} a${c.appendOk}`}</span>
+        <span style={{ color: c.freezeCount > 0 ? '#f66' : undefined }}>{`diag #${c.heartbeat} frz${c.freezeCount}`}</span>
         <ToolbarTooltip title="Expand diagnostics">
           <IconButton size="small" onClick={() => setCollapsed(false)} sx={{ color: '#0f0', p: 0.25 }}>
             <Maximize2 size={14} />
@@ -243,10 +287,8 @@ export default function TouchDiagnosticsOverlay() {
           the on-screen HUD stays small and readable — no scrolling to find the
           value under investigation. */}
       <Box sx={{ ...sectionSx, fontSize: '0.82rem', fontWeight: 700 }}>
-        {row('lat last (ms)', Math.round(c.moveLatencyLast),
-          c.moveLatencyLast > 500 ? '#f66' : c.moveLatencyLast > 100 ? '#fc6' : '#9f9')}
-        {row('on-cvs / cvs in', `${c.docTouchOnCanvas} / ${c.touchstart + c.touchmove}`,
-          c.docTouchOnCanvas - (c.touchstart + c.touchmove) > 5 ? '#9cf' : undefined)}
+        {row('draw streak (s) / max', `${(c.drawStreakMs / 1000).toFixed(1)} / ${(c.maxDrawStreakMs / 1000).toFixed(1)}`)}
+        {row('freezes / last (ms)', `${c.freezeCount} / ${c.lastFreezeMs}`, c.freezeCount > 0 ? '#f66' : '#9f9')}
         {row('mode / draw', s ? `${s.mode} / ${s.drawing}` : '?')}
         {row('heartbeat', c.heartbeat)}
         {row('last redraw / rAF (ms)', `${redrawAge} / ${rafAge}`,

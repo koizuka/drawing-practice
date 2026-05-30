@@ -116,6 +116,19 @@ export interface DiagCounters {
   // (target/listener loss) — vs. the user simply touching off-canvas (this
   // stays flat too). Settles the erase-mode "doc>canvas, finger" signature.
   docTouchOnCanvas: number;
+  // Continuous-drawing streak (ms): how long the user has been drawing without
+  // a gap ≥ DRAW_STREAK_RESET_MS. Resets on a long idle. The freeze is triggered
+  // by sustained input, so this is the dose that builds up to it; the overlay
+  // shows it live so a controlled repro ("draw continuously until it freezes")
+  // is quantifiable, and `maxDrawStreakMs` is the A/B yardstick.
+  drawStreakMs: number;
+  maxDrawStreakMs: number;
+  // Auto-detected freeze episodes (heuristic): input went silent for a spell
+  // while a streak was active and rAF stayed alive, then resumed. `lastFreezeMs`
+  // is the most recent episode's silent duration. Lets us count freezes per
+  // session objectively instead of eyeballing gaps in the log.
+  freezeCount: number;
+  lastFreezeMs: number;
   // Touch delivery latency (ms) = performance.now() - touchmove.timeStamp.
   // If WebKit's event queue backs up under sustained 120Hz Pencil input
   // (the confirmed freeze: sustained drawing → page-wide input suspension,
@@ -143,6 +156,8 @@ function makeCounters(): DiagCounters {
     docTouchstart: 0, docTouchmove: 0, docTouchend: 0, docTouchcancel: 0,
     docPointerdown: 0, docPointermove: 0, docPointerPen: 0, docClick: 0,
     docTouchOnCanvas: 0,
+    drawStreakMs: 0, maxDrawStreakMs: 0,
+    freezeCount: 0, lastFreezeMs: 0,
     moveLatencyLast: 0, moveLatencyMax: 0,
     resetCount: 0, lastResetTrigger: null,
   };
