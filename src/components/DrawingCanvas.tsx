@@ -97,6 +97,9 @@ const ERASE_LASSO_THRESHOLD = 8;
 // A mouse event arriving within this window of a touch is a compatibility
 // ("synthetic") mouse event the browser emits after touch — ignore it.
 const SYNTHETIC_MOUSE_GUARD_MS = 700;
+// A touch gap longer than this ends the current continuous-drawing streak.
+// Matches the ~2s idle that recovers the freeze.
+const DRAW_STREAK_RESET_MS = 2000;
 
 export function DrawingCanvas({
   mode,
@@ -133,6 +136,8 @@ export function DrawingCanvas({
   // SYNTHETIC_MOUSE_GUARD_MS of a touch so a finger draw (before any stylus, when
   // hasStylusRef is still false) can't also fire handleMouseDown and double up.
   const lastTouchAtRef = useRef(0);
+  // Start of the current continuous-drawing streak (for diag.drawStreakMs).
+  const streakStartAtRef = useRef(0);
   const rendererRef = useRef<CanvasRenderer | null>(null);
   // Lazy-init: useRef's argument runs every render, so a plain default would
   // allocate a throw-away ViewTransform on each render. The non-null cast is
@@ -727,11 +732,24 @@ export function DrawingCanvas({
     }
   }, [strokeManager, getCurrentScale, highlightedStrokeIndex, onDeleteHighlightedStroke, onHighlightStroke, finishLasso]);
 
+  // Record touch activity: stamps lastTouchAt (for the synthetic-mouse guard,
+  // always) and advances the continuous-drawing streak (diag only). Must run
+  // before lastTouchAt is overwritten so the gap test sees the previous touch.
+  const noteTouch = useCallback(() => {
+    const now = performance.now();
+    if (DIAG_ENABLED) {
+      if (now - lastTouchAtRef.current > DRAW_STREAK_RESET_MS) streakStartAtRef.current = now;
+      diag.drawStreakMs = now - streakStartAtRef.current;
+      if (diag.drawStreakMs > diag.maxDrawStreakMs) diag.maxDrawStreakMs = diag.drawStreakMs;
+    }
+    lastTouchAtRef.current = now;
+  }, []);
+
   // Touch handlers — registered as native passive listeners (see effect below).
   // No preventDefault: scroll/zoom are prevented by touch-action: none and
   // selection/callout by CSS, so the browser default is already suppressed.
   const handleTouchStart = useCallback((e: TouchEvent) => {
-    lastTouchAtRef.current = performance.now();
+    noteTouch();
 
     if (DIAG_ENABLED) {
       diag.touchstart++;
@@ -844,10 +862,10 @@ export function DrawingCanvas({
       strokeManager.startStroke(point);
       if (DIAG_ENABLED) diag.startStroke++;
     }
-  }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync]);
+  }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync, noteTouch]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
-    lastTouchAtRef.current = performance.now();
+    noteTouch();
 
     if (DIAG_ENABLED) {
       diag.touchmove++;
@@ -931,10 +949,10 @@ export function DrawingCanvas({
     if (DIAG_ENABLED) diag.appendOk++;
     onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
     requestRedraw();
-  }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, advanceErasePending]);
+  }, [mode, getCanvasPoint, requestRedraw, strokeManager, isFlipped, onCurrentStrokeChange, getBaseScale, advanceErasePending, noteTouch]);
 
   const handleTouchEnd = useCallback((e: TouchEvent) => {
-    lastTouchAtRef.current = performance.now();
+    noteTouch();
 
     if (DIAG_ENABLED) {
       if (e.type === 'touchcancel') diag.touchcancel++;
@@ -992,7 +1010,7 @@ export function DrawingCanvas({
         endErasePending();
       }
     }
-  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, cancelLasso, onStrokeFinalized]);
+  }, [mode, notifyStrokeCount, redrawAll, strokeManager, onCurrentStrokeChange, endErasePending, cancelLasso, onStrokeFinalized, noteTouch]);
 
   // Latest-handler refs so the native listeners below can stay attached for
   // the life of the canvas. The handlers themselves have many transitive
