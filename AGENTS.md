@@ -26,7 +26,7 @@ Prefer `npm run test` over watch mode in agent / CI-style runs.
 - Vite + React + TypeScript strict mode
 - Material UI
 - Vitest + React Testing Library
-- Dexie / IndexedDB schema v13 for persistence
+- Dexie / IndexedDB schema v14 for persistence
 - GitHub Pages via GitHub Actions
 
 ## Code Map
