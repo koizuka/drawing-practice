@@ -57,6 +57,10 @@ export default function TouchDiagnosticsOverlay() {
   const [snap, setSnap] = useState<Snapshot>(() => takeSnapshot());
   const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
+  // Live freeze state, mirrored from the detector refs each poll so the HUD can
+  // show "FROZEN {age}s" *during* the episode (the count only ticks up after
+  // recovery, which is too late to watch).
+  const [freezeLive, setFreezeLive] = useState<{ on: boolean; sinceMs: number }>({ on: false, sinceMs: 0 });
 
   // Previous tick's counters, for the watchdog's delta detection.
   const prevRef = useRef<typeof diag>({ ...diag });
@@ -169,6 +173,7 @@ export default function TouchDiagnosticsOverlay() {
       if (++tickCountRef.current >= Math.round(1000 / POLL_MS)) {
         tickCountRef.current = 0;
         const base = secRef.current;
+        const dStart = cur.touchstart - base.touchstart;
         const dMove = cur.touchmove - base.touchmove;
         const dDoc = cur.docTouchmove - base.docTouchmove;
         const dPtr = cur.docPointermove - base.docPointermove;
@@ -177,8 +182,16 @@ export default function TouchDiagnosticsOverlay() {
         // touch-delivery latency — the trend that should climb before the freeze.
         const latMax = Math.round(cur.moveLatencyMax);
         diag.moveLatencyMax = 0;
-        if (dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
+        // Gate on dStart too: rapid short taps (touchstart→touchend, no move) are
+        // exactly the 664108-class freeze trigger, but produce no move/pointer
+        // delta and may sample state.drawing=false between contacts. Without this
+        // those seconds would log nothing now that per-stroke start/end events
+        // are suppressed, losing the very rate `start` is meant to carry.
+        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
           logEvent('tick', {
+            // Per-second stroke-start count: per-stroke `start` logging is now
+            // suppressed in DrawingCanvas, so the tick carries the rate instead.
+            start: dStart,
             move: dMove, doc: dDoc,
             onCanvas: cur.docTouchOnCanvas - base.docTouchOnCanvas,
             append: cur.appendOk - base.appendOk,
@@ -191,6 +204,10 @@ export default function TouchDiagnosticsOverlay() {
         }
         secRef.current = { ...cur };
       }
+
+      setFreezeLive(inFreezeRef.current
+        ? { on: true, sinceMs: now - freezeOnsetAtRef.current }
+        : { on: false, sinceMs: 0 });
 
       prevRef.current = { ...cur };
       setSnap(takeSnapshot());
@@ -234,10 +251,20 @@ export default function TouchDiagnosticsOverlay() {
           position: 'absolute', top: 84, right: 8, zIndex: 1100,
           bgcolor: 'rgba(0,0,0,0.75)', color: '#0f0', borderRadius: 1,
           px: 1, py: 0.25, fontFamily: 'monospace', fontSize: '0.7rem',
+          fontVariantNumeric: 'tabular-nums',
           display: 'flex', alignItems: 'center', gap: 0.5,
         }}
       >
-        <span style={{ color: c.freezeCount > 0 ? '#f66' : undefined }}>{`diag #${c.heartbeat} frz${c.freezeCount}`}</span>
+        {/* State dot: frozen=red, drawing=green, idle=grey. The monotonic
+            heartbeat number was dropped — its ever-growing digits made the
+            badge width oscillate. */}
+        <span
+          style={{
+            display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+            backgroundColor: freezeLive.on ? '#f66' : s?.drawing ? '#6f6' : '#666',
+          }}
+        />
+        <span style={{ minWidth: 44, color: c.freezeCount > 0 ? '#f66' : undefined }}>{`frz${c.freezeCount}`}</span>
         <ToolbarTooltip title="Expand diagnostics">
           <IconButton size="small" onClick={() => setCollapsed(false)} sx={{ color: '#0f0', p: 0.25 }}>
             <Maximize2 size={14} />
@@ -247,10 +274,14 @@ export default function TouchDiagnosticsOverlay() {
     );
   }
 
+  // Each row is forced to a single line: when a value's digit count grew, the
+  // label+value used to wrap inside the fixed-width panel, changing the row
+  // height and making the rows below jump. The label truncates (ellipsis) and
+  // the value never wraps, so row height is constant regardless of magnitude.
   const row = (label: string, value: ReactNode, color?: string) => (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, color: color ?? 'inherit' }}>
-      <span>{label}</span>
-      <span>{value}</span>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, color: color ?? 'inherit', whiteSpace: 'nowrap' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+      <span style={{ flexShrink: 0 }}>{value}</span>
     </Box>
   );
 
@@ -268,6 +299,7 @@ export default function TouchDiagnosticsOverlay() {
         display: 'flex', flexDirection: 'column',
         bgcolor: 'rgba(0,0,0,0.82)', color: '#eee', borderRadius: 1,
         fontFamily: 'monospace', fontSize: '0.72rem', lineHeight: 1.45,
+        fontVariantNumeric: 'tabular-nums',
         p: 1, boxShadow: 3,
       }}
     >
@@ -287,10 +319,10 @@ export default function TouchDiagnosticsOverlay() {
           the on-screen HUD stays small and readable — no scrolling to find the
           value under investigation. */}
       <Box sx={{ ...sectionSx, fontSize: '0.82rem', fontWeight: 700 }}>
+        {freezeLive.on && row('▲ FROZEN (s)', (freezeLive.sinceMs / 1000).toFixed(1), '#f66')}
         {row('draw streak (s) / max', `${(c.drawStreakMs / 1000).toFixed(1)} / ${(c.maxDrawStreakMs / 1000).toFixed(1)}`)}
         {row('freezes / last (ms)', `${c.freezeCount} / ${c.lastFreezeMs}`, c.freezeCount > 0 ? '#f66' : '#9f9')}
         {row('mode / draw', s ? `${s.mode} / ${s.drawing}` : '?')}
-        {row('heartbeat', c.heartbeat)}
         {row('last redraw / rAF (ms)', `${redrawAge} / ${rafAge}`,
           (redrawAge > REDRAW_STALL_MS || rafAge > RAF_STALL_MS) ? '#f66' : undefined)}
       </Box>
