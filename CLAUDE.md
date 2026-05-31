@@ -21,7 +21,7 @@ npm run test:watch # Run tests in watch mode (prefer `npm run test` in CI/agent 
 
 ## Tech Stack
 
-Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v13), GitHub Pages via GitHub Actions.
+Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v14), GitHub Pages via GitHub Actions.
 
 ## High-level Architecture
 
