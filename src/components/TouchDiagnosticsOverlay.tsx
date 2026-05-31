@@ -268,10 +268,14 @@ export default function TouchDiagnosticsOverlay() {
     );
   }
 
+  // Each row is forced to a single line: when a value's digit count grew, the
+  // label+value used to wrap inside the fixed-width panel, changing the row
+  // height and making the rows below jump. The label truncates (ellipsis) and
+  // the value never wraps, so row height is constant regardless of magnitude.
   const row = (label: string, value: ReactNode, color?: string) => (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, color: color ?? 'inherit' }}>
-      <span>{label}</span>
-      <span>{value}</span>
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, color: color ?? 'inherit', whiteSpace: 'nowrap' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
+      <span style={{ flexShrink: 0 }}>{value}</span>
     </Box>
   );
 
