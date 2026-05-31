@@ -83,6 +83,32 @@ describe('DrawingCanvas diagnostics counters', () => {
     expect(diag.redrawAll).toBeGreaterThan(0);
   });
 
+  it('suppresses per-stroke start/end log entries for a normal single-stylus stroke while still counting them', () => {
+    const { canvas } = renderCanvas();
+
+    fireEvent.touchStart(canvas, { touches: [stylus(1, 20, 20)], changedTouches: [stylus(1, 20, 20)] });
+    fireEvent.touchMove(canvas, { touches: [stylus(1, 50, 60)], changedTouches: [stylus(1, 50, 60)] });
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [stylus(1, 50, 60)] });
+
+    // Counters still tally the stroke...
+    expect(diag.touchstart).toBe(1);
+    expect(diag.touchend).toBe(1);
+    // ...but the ring buffer must NOT hold a per-stroke start/touchend entry —
+    // that flood is what evicts the freeze trail during sustained writing.
+    expect(getLog().filter(e => e.type === 'start')).toHaveLength(0);
+    expect(getLog().filter(e => e.type === 'touchend')).toHaveLength(0);
+  });
+
+  it('still logs a start entry for a non-stylus (misclassified-Pencil suspect) touch', () => {
+    const { canvas } = renderCanvas();
+
+    fireEvent.touchStart(canvas, { touches: [direct(1, 20, 20)], changedTouches: [direct(1, 20, 20)] });
+
+    const starts = getLog().filter(e => e.type === 'start');
+    expect(starts.length).toBeGreaterThanOrEqual(1);
+    expect(starts[0].detail?.touchType).toBe('direct');
+  });
+
   it('records the Hypothesis-A drop: after a stylus touch, a non-stylus move is rejected by the stylus filter', () => {
     const { canvas, strokeManager } = renderCanvas();
 

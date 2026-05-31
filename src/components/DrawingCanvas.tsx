@@ -301,19 +301,16 @@ export function DrawingCanvas({
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Diagnostic heartbeat (screen space, DPR-only transform): a per-frame
-    // counter + moving dot painted ON the canvas. If the overlay's redrawAll /
-    // rafTick counters keep climbing but this marker is visually frozen while
-    // drawing, the compositor isn't presenting new canvas content (render-side
-    // stall) — the key discriminator vs. an input-side drop.
+    // moving dot painted ON the canvas. If the overlay's redrawAll / rafTick
+    // counters keep climbing but this dot is visually frozen while drawing, the
+    // compositor isn't presenting new canvas content (render-side stall) — the
+    // key discriminator vs. an input-side drop. The monotonic `#N` text was
+    // dropped (visually noisy, ever-growing); a moving dot is sufficient proof.
     if (DIAG_ENABLED) {
       ctx.save();
       ctx.fillStyle = 'rgba(220,0,0,0.85)';
-      ctx.fillRect(4, 4, 58, 18);
-      ctx.fillStyle = '#fff';
-      ctx.font = '12px monospace';
-      ctx.fillText(`#${diag.heartbeat}`, 7, 17);
       ctx.beginPath();
-      ctx.arc(72 + (diag.heartbeat % 20) * 3, 13, 3, 0, 2 * Math.PI);
+      ctx.arc(10 + (diag.heartbeat % 20) * 3, 12, 3, 0, 2 * Math.PI);
       ctx.fill();
       ctx.restore();
     }
@@ -760,17 +757,25 @@ export function DrawingCanvas({
         else if (tt === undefined) diag.touchTypeUndefined++;
         else diag.touchTypeDirect++;
       }
+      // Per-stroke start logging is suppressed for the normal single-stylus
+      // case — it floods the 200-entry ring during sustained short-stroke
+      // writing and evicts the freeze trail. The 1Hz `tick` carries the
+      // per-second start count instead. Only log anomalous starts worth
+      // inspecting: a non-stylus touch (the Pencil-misclassified-as-direct
+      // suspect) or a multi-touch start.
       const t0 = e.changedTouches[0] as Touch & { touchType?: string };
-      logEvent('start', {
-        mode,
-        changed: e.changedTouches.length,
-        touches: e.touches.length,
-        touchType: t0?.touchType,
-        // Radius lets us check whether a misclassified-as-'direct' Pencil touch
-        // is distinguishable from a finger (Pencil ~1-2px, finger ~20-40px).
-        rX: t0 ? Math.round((t0.radiusX ?? 0) * 10) / 10 : undefined,
-        force: t0 ? Math.round((t0.force ?? 0) * 100) / 100 : undefined,
-      });
+      if (t0?.touchType !== 'stylus' || e.touches.length > 1) {
+        logEvent('start', {
+          mode,
+          changed: e.changedTouches.length,
+          touches: e.touches.length,
+          touchType: t0?.touchType,
+          // Radius lets us check whether a misclassified-as-'direct' Pencil touch
+          // is distinguishable from a finger (Pencil ~1-2px, finger ~20-40px).
+          rX: t0 ? Math.round((t0.radiusX ?? 0) * 10) / 10 : undefined,
+          force: t0 ? Math.round((t0.force ?? 0) * 100) / 100 : undefined,
+        });
+      }
     }
 
     // Gesture-session swap window: reject the new touch entirely (no stroke
@@ -962,7 +967,14 @@ export function DrawingCanvas({
     if (DIAG_ENABLED) {
       if (e.type === 'touchcancel') diag.touchcancel++;
       else diag.touchend++;
-      logEvent(e.type, { changed: e.changedTouches.length, remaining: e.touches.length });
+      // Per-stroke end logging is suppressed for the normal single-touch
+      // touchend (counters above still tally it; the 1Hz `tick` carries the
+      // rate). Only log the investigation-relevant cases: a touchcancel, or a
+      // multi-touch end with touches still down.
+      if (e.type === 'touchcancel' || e.touches.length > 0) {
+        logEvent(e.type, { changed: e.changedTouches.length, remaining: e.touches.length });
+      }
+      // persistLog regardless so the ring survives the reload the bug triggers.
       persistLog();
     }
 
