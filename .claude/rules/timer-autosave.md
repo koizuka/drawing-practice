@@ -10,22 +10,24 @@ paths:
 ## Timer (`useTimer`)
 
 **Auto-starts on**:
-- First stroke completion.
-- Resume on next stroke after any pause.
+- Stroke START (pen-down), not stroke completion. `DrawingCanvas` fires `onStrokeStart` on pen-down (pen mode, after the stylus filter, single touch not escalated to pinch); `DrawingPanel.handleStrokeStart` calls `timer.start()` when the timer is stopped. **Why:** counting from pen-down means a long opening stroke is timed instead of jumping from 0 only when the pen lifts. Covers the first stroke and resume-after-pause uniformly.
 - Redo when strokes are restored while the timer is stopped (e.g. after undo emptied history).
+- `handleStrokeCountChange` keeps a `!isRunning && strokes>0 → start()` guard as a safety net for non-pen commit paths (e.g. lasso-delete) that never fire `onStrokeStart`. On the pen path the timer is already running by commit time, so it's a no-op there.
+
+**Caveat (accepted):** starting at pen-down decouples "timer running" from "a stroke committed". A pen-down whose stroke never commits — escalated to a pinch (`cancelStroke`), freeze-recovery cancel, or a trace stroke rejected by scoring (`discardLastStroke`) — leaves the timer running with no committed stroke (on a fresh canvas it ticks from 0; mid-session it just keeps the existing reading). It self-corrects on the next real stroke; the leaked interval is the pinch-recognition window in practice. Not compensated — doing so would need a cancel signal plumbed from `DrawingCanvas` back to the timer.
 
 **Pauses on**:
 - App backgrounded (`visibilitychange` API).
 - Save.
 - Opening the gallery.
 - Any reference change (source / mode / fixed image / local image / Sketchfab angle / gallery "use this reference").
-- **Trash button (tentative clear)**. `DrawingPanel.handleClear` calls `timer.pause()` — NOT `reset()` — so Undo of the clear restores the elapsed reading alongside the strokes. The reset happens only later, iff the user commits by drawing again (see "Resets on" below).
+- **Trash button (tentative clear)**. `DrawingPanel.handleClear` calls `timer.pause()` — NOT `reset()` — so Undo of the clear restores the elapsed reading alongside the strokes. The reset happens only later, when the user starts drawing again (see "Resets on" below).
 
 Reference-related pausing is wired through `pauseAndIncrementVersion` in `SplitLayout`. `changeReference` calls it after recording the undo entry and applying the mutation.
 
 **Resets on**:
 - When undo drains the history stack (`!canUndo()`). **Why:** treating a fully-undone session as "pre-drawing" keeps the reset path reachable even though the trash button is disabled while strokeCount is 0.
-- **Next stroke commit after a tentative clear** (trash button or reference change auto-clear). `DrawingCanvas` reads `strokeManager.isTentativeClearActive()` BEFORE `endStroke()` and forwards the flag via `onStrokeCountChange({ committedTentativeClear })`; `DrawingPanel.handleStrokeCountChange` then calls `timer.reset()` before the auto-start guard fires. **Why:** committing the clear means the user is starting a new drawing — counting time from before the clear would surprise them. See `drawing-undo.md` "Tentative clear" for the broader semantics.
+- **Stroke START while a tentative clear is active** (trash button or reference change auto-clear). `DrawingPanel.handleStrokeStart` reads `strokeManager.isTentativeClearActive()` on pen-down and calls `timer.reset()` (then `start()`). **Why:** starting to draw means the user is starting a new drawing — counting time from before the clear would surprise them, and resetting at pen-down (rather than on release) times the new opening stroke. The tentative clear itself is still committed later by `endStroke`. See `drawing-undo.md` "Tentative clear" for the broader semantics.
 
 **Erase and redo do NOT touch the timer.**
 

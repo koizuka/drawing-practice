@@ -261,7 +261,7 @@ export function DrawingPanel({
     setHighlightedStrokeIndex(null);
   }, []);
 
-  const handleStrokeCountChange = useCallback((info: { committedTentativeClear: boolean; flush?: boolean } = { committedTentativeClear: false }) => {
+  const handleStrokeCountChange = useCallback((info: { flush?: boolean } = {}) => {
     setRedrawVersion(v => v + 1);
     // Lasso-delete and other discrete erases arrive with `flush` so they
     // persist immediately; a freehand stroke commit omits it and rides the 2s
@@ -273,16 +273,42 @@ export function DrawingPanel({
     // entry — that intermediate sync is harmless (syncAttempts is idempotent
     // and reads the latest StrokeManager state).
     onTraceSyncAttempts?.();
-    // If the just-committed stroke discarded a tentative-clear entry, the
-    // user is starting a fresh drawing — reset the timer before letting the
-    // auto-start guard below resume counting from zero.
-    if (info.committedTentativeClear) {
-      timer.reset();
-    }
+    // Timer start/reset now happens at stroke START (handleStrokeStart), so by
+    // the time a pen commit lands here the timer is already running. This guard
+    // stays as a safety net for non-pen commit paths (e.g. lasso-delete) that
+    // never fire onStrokeStart.
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
   }, [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts]);
+
+  const handleStrokeStart = useCallback(() => {
+    // Clear the previous attempt's red deviation feedback in the same React
+    // batch as the first redraw (trace-template scoring), so the bands vanish
+    // the instant the pen touches down.
+    onTraceStrokeStart?.();
+    // Committing a tentative clear means the user is starting a fresh drawing —
+    // zero out the elapsed reading carried over from the cleared drawing.
+    if (strokeManager.isTentativeClearActive()) {
+      timer.reset();
+    }
+    // Count from the instant the pen touches down rather than when it lifts, so
+    // a long opening stroke is timed. Covers the first stroke and resume-after-
+    // pause uniformly (resume-after-pause does NOT reset, since the guard above
+    // only fires while tentative — start() then resumes from the accumulated
+    // elapsed). Trade-off: starting at pen-down decouples "timer running" from
+    // "a stroke committed", so a pen-down whose stroke never commits (escalated
+    // to a pinch via DrawingCanvas cancelStroke, freeze-recovery, or a trace
+    // stroke rejected by scoring) leaves the timer running with no committed
+    // stroke. On a fresh canvas it ticks from 0 until the first real stroke; if
+    // a tentative clear was active, the pre-clear elapsed is also lost on a
+    // subsequent Undo. Accepted: the leaked interval is the pinch-recognition
+    // window (a few frames) in practice, it self-corrects on the next stroke,
+    // and compensating would need a cancel signal plumbed back from the canvas.
+    if (!timer.isRunning) {
+      timer.start();
+    }
+  }, [onTraceStrokeStart, strokeManager, timer]);
 
   // Re-entrancy guard via ref (not `saving` state) so a Cmd/Ctrl+S burst
   // sees the latched value on the same render, before React commits the
@@ -739,7 +765,7 @@ export function DrawingPanel({
             traceFeedback={traceFeedback}
             onStrokeFinalized={onStrokeFinalized}
             dimmedStrokeTimestamps={dimmedStrokeTimestamps}
-            onStrokeStart={onTraceStrokeStart}
+            onStrokeStart={handleStrokeStart}
           />
         </Box>
       </Box>

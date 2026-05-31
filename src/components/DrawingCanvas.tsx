@@ -23,18 +23,14 @@ interface DrawingCanvasProps {
   onDeleteHighlightedStroke?: () => void;
   /**
    * Called when the visible stroke set changes (commit, undo/redo, lasso
-   * delete). `committedTentativeClear` is true ONLY when this notification
-   * accompanies an `endStroke()` that just committed a tentative clear —
-   * i.e. the new stroke discarded a `tentativeClear` entry. Callers use it to
-   * reset the timer (the user is starting a fresh drawing). Lasso-delete and
-   * other paths always pass false.
+   * delete).
    *
    * `flush` is true for discrete deletions (lasso-delete) that should persist
    * immediately rather than wait the 2s autosave debounce — same intent as the
    * undo / redo / clear toolbar buttons. Freehand stroke commits omit it so
    * continuous drawing stays batched.
    */
-  onStrokeCountChange: (info: { committedTentativeClear: boolean; flush?: boolean }) => void;
+  onStrokeCountChange: (info: { flush?: boolean }) => void;
   strokeManager: StrokeManager;
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number;
@@ -186,7 +182,7 @@ export function DrawingCanvas({
   // forcing a synchronous layout at 60fps.
   const pinchRectRef = useRef<DOMRect | null>(null);
 
-  const notifyStrokeCount = useCallback((info: { committedTentativeClear: boolean; flush?: boolean } = { committedTentativeClear: false }) => {
+  const notifyStrokeCount = useCallback((info: { flush?: boolean } = {}) => {
     onStrokeCountChange(info);
   }, [onStrokeCountChange]);
 
@@ -601,7 +597,7 @@ export function DrawingCanvas({
     const targets = Array.from(selected).sort((a, b) => a - b);
     strokeManager.lassoDelete(targets);
     // Discrete erase — persist immediately like the undo/redo/clear buttons.
-    notifyStrokeCount({ committedTentativeClear: false, flush: true });
+    notifyStrokeCount({ flush: true });
     redrawAll();
   }, [stopMarching, requestRedraw, strokeManager, notifyStrokeCount, redrawAll]);
 
@@ -985,20 +981,16 @@ export function DrawingCanvas({
     }
 
     if (mode === 'pen') {
-      // Read tentative state BEFORE endStroke — endStroke clears the flag as
-      // part of committing.
-      const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
         if (DIAG_ENABLED) diag.endCommit++;
         onCurrentStrokeChange?.(null);
         // onStrokeFinalized runs FIRST so trace-template scoring can
         // synchronously discard (rejected) or replace (re-trace) the just-
-        // committed stroke. Without this ordering, notifyStrokeCount would
-        // start the timer based on a stroke that's about to vanish, and
-        // autosave would capture the pre-scoring stroke set.
+        // committed stroke. Without this ordering, autosave would capture the
+        // pre-scoring stroke set.
         onStrokeFinalized?.(stroke);
-        notifyStrokeCount({ committedTentativeClear: wasTentative });
+        notifyStrokeCount();
         redrawAll();
       }
     }
@@ -1242,16 +1234,15 @@ export function DrawingCanvas({
     isMouseDownRef.current = false;
 
     if (mode === 'pen') {
-      const wasTentative = strokeManager.isTentativeClearActive();
       const stroke = strokeManager.endStroke();
       if (stroke) {
         if (DIAG_ENABLED) diag.endCommit++;
         onCurrentStrokeChange?.(null);
         // See the touchend branch — onStrokeFinalized must observe the
-        // stroke before notifyStrokeCount runs so timer/autosave don't fire
+        // stroke before notifyStrokeCount runs so autosave doesn't fire
         // on a stroke that scoring is about to discard.
         onStrokeFinalized?.(stroke);
-        notifyStrokeCount({ committedTentativeClear: wasTentative });
+        notifyStrokeCount();
         redrawAll();
       }
     }
