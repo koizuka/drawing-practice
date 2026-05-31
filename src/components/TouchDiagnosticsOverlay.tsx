@@ -173,6 +173,7 @@ export default function TouchDiagnosticsOverlay() {
       if (++tickCountRef.current >= Math.round(1000 / POLL_MS)) {
         tickCountRef.current = 0;
         const base = secRef.current;
+        const dStart = cur.touchstart - base.touchstart;
         const dMove = cur.touchmove - base.touchmove;
         const dDoc = cur.docTouchmove - base.docTouchmove;
         const dPtr = cur.docPointermove - base.docPointermove;
@@ -181,11 +182,16 @@ export default function TouchDiagnosticsOverlay() {
         // touch-delivery latency — the trend that should climb before the freeze.
         const latMax = Math.round(cur.moveLatencyMax);
         diag.moveLatencyMax = 0;
-        if (dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
+        // Gate on dStart too: rapid short taps (touchstart→touchend, no move) are
+        // exactly the 664108-class freeze trigger, but produce no move/pointer
+        // delta and may sample state.drawing=false between contacts. Without this
+        // those seconds would log nothing now that per-stroke start/end events
+        // are suppressed, losing the very rate `start` is meant to carry.
+        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
           logEvent('tick', {
             // Per-second stroke-start count: per-stroke `start` logging is now
             // suppressed in DrawingCanvas, so the tick carries the rate instead.
-            start: cur.touchstart - base.touchstart,
+            start: dStart,
             move: dMove, doc: dDoc,
             onCanvas: cur.docTouchOnCanvas - base.docTouchOnCanvas,
             append: cur.appendOk - base.appendOk,
