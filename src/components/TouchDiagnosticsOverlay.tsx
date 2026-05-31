@@ -143,14 +143,17 @@ export default function TouchDiagnosticsOverlay() {
           const durationMs = Math.round(now - freezeOnsetAtRef.current);
           diag.freezeCount++;
           diag.lastFreezeMs = durationMs;
-          // `open` = touchstart − touchend = contacts started but never ended
-          // (lost-touchend / 664108 hypothesis: an orphaned contact makes WebKit
-          // believe the Pencil is still down → exclusive input lock). `active` =
+          // `open` = touchstart − touchend − touchcancel = contacts started but
+          // neither ended nor canceled (lost-touchend / 664108 hypothesis: an
+          // orphaned contact makes WebKit believe the Pencil is still down →
+          // exclusive input lock). touchcancel must be subtracted — a canceled
+          // touch DID close (it just routes to the touchcancel counter, not
+          // touchend), so omitting it would misreport it as unclosed. `active` =
           // the canvas's own live-touch count. A healthy session pairs perfectly
           // (open oscillates 0↔1); open ≥ 1 lingering at recovery is the tell.
           logEvent('freeze', {
             durationMs, preStreakMs: Math.round(freezePreStreakRef.current),
-            open: cur.touchstart - cur.touchend, active: state?.activeTouchCount,
+            open: cur.touchstart - cur.touchend - cur.touchcancel, active: state?.activeTouchCount,
           });
           persistLog();
           inFreezeRef.current = false;
@@ -171,7 +174,7 @@ export default function TouchDiagnosticsOverlay() {
         // at the instant input went silent? See the `freeze` log comment.
         logEvent('freezeOnset', {
           preStreakMs: Math.round(cur.drawStreakMs),
-          open: cur.touchstart - cur.touchend, active: state?.activeTouchCount,
+          open: cur.touchstart - cur.touchend - cur.touchcancel, active: state?.activeTouchCount,
         });
         persistLog();
       }
@@ -212,11 +215,12 @@ export default function TouchDiagnosticsOverlay() {
             raf: cur.rafTick - base.rafTick,
             ptr: dPtr, pen: dPen,
             latMax,
-            // Running unclosed-contact count at the end of this second. In a
+            // Running unclosed-contact count at the end of this second (canceled
+            // touches subtracted — they close via the touchcancel counter). In a
             // healthy session this is 0 (between strokes) or 1 (mid-stroke); a
             // value that creeps up / never returns to 0 flags a lost touchend —
             // the suspected 664108 trigger — in the run-up to a freeze.
-            open: cur.touchstart - cur.touchend,
+            open: cur.touchstart - cur.touchend - cur.touchcancel,
             mode: state?.mode,
           });
         }
@@ -341,10 +345,10 @@ export default function TouchDiagnosticsOverlay() {
         {row('draw streak (s) / max', `${(c.drawStreakMs / 1000).toFixed(1)} / ${(c.maxDrawStreakMs / 1000).toFixed(1)}`)}
         {row('freezes / last (ms)', `${c.freezeCount} / ${c.lastFreezeMs}`, c.freezeCount > 0 ? '#f66' : '#9f9')}
         {row('mode / draw', s ? `${s.mode} / ${s.drawing}` : '?')}
-        {/* open = touchstart − touchend (unclosed contacts). >1 is anomalous —
-            the lost-touchend / exclusive-lock suspect. active = canvas live touches. */}
-        {row('open / active', `${c.touchstart - c.touchend} / ${s ? s.activeTouchCount : '?'}`,
-          (c.touchstart - c.touchend) > 1 ? '#f66' : undefined)}
+        {/* open = touchstart − touchend − touchcancel (unclosed contacts). >1 is
+            anomalous — the lost-touchend / exclusive-lock suspect. active = canvas live touches. */}
+        {row('open / active', `${c.touchstart - c.touchend - c.touchcancel} / ${s ? s.activeTouchCount : '?'}`,
+          (c.touchstart - c.touchend - c.touchcancel) > 1 ? '#f66' : undefined)}
         {row('last redraw / rAF (ms)', `${redrawAge} / ${rafAge}`,
           (redrawAge > REDRAW_STALL_MS || rafAge > RAF_STALL_MS) ? '#f66' : undefined)}
       </Box>
