@@ -23,7 +23,8 @@ vi.mock('./Gallery', () => ({
 
 type StubCanvasProps = {
   strokeManager: StrokeManager;
-  onStrokeCountChange: (info?: { committedTentativeClear: boolean; flush?: boolean }) => void;
+  onStrokeCountChange: (info?: { flush?: boolean }) => void;
+  onStrokeStart?: () => void;
 };
 const canvasPropsRef: { current: StubCanvasProps | null } = { current: null };
 vi.mock('./DrawingCanvas', () => ({
@@ -200,7 +201,7 @@ describe('DrawingPanel autosave flush on discrete edits', () => {
     onStrokesChanged.mockClear();
     // DrawingCanvas signals a discrete erase with `flush: true`.
     act(() => {
-      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: false, flush: true });
+      canvasPropsRef.current!.onStrokeCountChange({ flush: true });
     });
     expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
   });
@@ -214,7 +215,7 @@ describe('DrawingPanel autosave flush on discrete edits', () => {
     onStrokesChanged.mockClear();
     // A plain stroke commit omits `flush` — it should ride the debounce path.
     act(() => {
-      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: false });
+      canvasPropsRef.current!.onStrokeCountChange();
     });
     expect(onStrokesChanged).toHaveBeenCalledWith(undefined);
   });
@@ -377,7 +378,7 @@ describe('DrawingPanel toolbar state', () => {
     expect(harness.timer.elapsedMs).toBe(2_500);
   });
 
-  it('drawing after a tentative clear resets the timer before auto-starting', () => {
+  it('drawing after a tentative clear resets the timer at stroke START (pen-down), not on release', () => {
     const { container, harness } = setup();
 
     act(() => {
@@ -394,19 +395,68 @@ describe('DrawingPanel toolbar state', () => {
     });
     expect(harness.sm!.isTentativeClearActive()).toBe(true);
     expect(harness.timer.elapsedMs).toBe(5_000);
+    expect(harness.timer.isRunning).toBe(false);
 
-    // Drawing a new stroke commits the tentative clear. DrawingCanvas reads
-    // isTentativeClearActive() before endStroke and forwards the flag.
+    // Pen touches down: DrawingCanvas fires onStrokeStart. With a tentative
+    // clear active this resets the timer to 0 and starts counting immediately —
+    // a long opening stroke is now timed, instead of resetting only on release.
     act(() => {
-      const wasTentative = harness.sm!.isTentativeClearActive();
+      canvasPropsRef.current!.onStrokeStart?.();
+    });
+    expect(harness.timer.elapsedMs).toBe(0);
+    expect(harness.timer.isRunning).toBe(true);
+    // Still tentative until the stroke commits.
+    expect(harness.sm!.isTentativeClearActive()).toBe(true);
+
+    // Pen lifts: the stroke commits the tentative clear. The release path must
+    // NOT re-reset the already-running timer.
+    act(() => {
       addStroke(harness.sm!, 100, 100);
-      canvasPropsRef.current!.onStrokeCountChange({ committedTentativeClear: wasTentative });
+      canvasPropsRef.current!.onStrokeCountChange();
     });
 
     expect(harness.sm!.getStrokes()).toHaveLength(1);
     expect(harness.sm!.isTentativeClearActive()).toBe(false);
     expect(harness.timer.elapsedMs).toBe(0);
     expect(harness.timer.isRunning).toBe(true);
+  });
+
+  it('starts the timer at stroke START on a fresh canvas (does not wait for release)', () => {
+    const { harness } = setup();
+
+    expect(harness.timer.isRunning).toBe(false);
+
+    // Pen touches down on an empty canvas — timer should begin counting now,
+    // so the first (possibly long) stroke is timed.
+    act(() => {
+      canvasPropsRef.current!.onStrokeStart?.();
+    });
+    expect(harness.timer.isRunning).toBe(true);
+    expect(harness.timer.elapsedMs).toBe(0);
+  });
+
+  it('resume-after-pause: stroke START resumes WITHOUT resetting when merely paused (no tentative clear)', () => {
+    const { harness } = setup();
+
+    // Draw, then simulate a non-tentative pause (e.g. Save / open gallery /
+    // reference change that left strokes intact) with accumulated elapsed.
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+    act(() => {
+      harness.timer.restore(2_500);
+    });
+    expect(harness.timer.isRunning).toBe(false);
+    expect(harness.sm!.isTentativeClearActive()).toBe(false);
+
+    // Pen-down on the next stroke must RESUME from the accumulated reading, not
+    // zero it — the tentative-clear reset guard must not fire here.
+    act(() => {
+      canvasPropsRef.current!.onStrokeStart?.();
+    });
+    expect(harness.timer.isRunning).toBe(true);
+    expect(harness.timer.elapsedMs).toBe(2_500);
   });
 
   it('clear button also resets trace scores so leftover red feedback bands do not outlive the strokes', () => {
