@@ -16,10 +16,18 @@ export const MAX_VISIBLE_MS = 8_000;
 
 // Anchor clamp estimates (CSS px) so the pill stays on-screen near edges. The
 // pill is centered above the anchor (translate(-50%, -100%)), so reserve about
-// half its width on each side and its height above.
-const EST_HALF_W = 120;
+// half its width on each side and its height above. EST_HALF_W is exported so
+// the component can derive the pill's maxWidth from it (keeps the clamp reserve
+// and the rendered width in sync).
+export const EST_HALF_W = 120;
 const EST_ABOVE = 52;
 const MARGIN = 8;
+
+export const DEFAULT_THRESHOLDS: FreezeHintThresholds = {
+  streakMs: STREAK_MS,
+  silenceMs: SILENCE_MS,
+  maxVisibleMs: MAX_VISIBLE_MS,
+};
 
 export interface FreezeHintThresholds {
   streakMs: number;
@@ -45,9 +53,29 @@ export interface FreezeHintResult {
   y: number;
 }
 
-function clamp(v: number, lo: number, hi: number): number {
-  if (hi < lo) return lo;
+// Clamp v into [lo, hi]; if the range is empty (container too small to honor
+// the reserve on both sides), fall back to `mid` so the pill stays centered
+// rather than pinned to one edge (which would overflow the opposite side).
+function clampOrCenter(v: number, lo: number, hi: number, mid: number): number {
+  if (hi < lo) return mid;
   return v < lo ? lo : v > hi ? hi : v;
+}
+
+/**
+ * The time-only gate: a long enough continuous-draw streak, then input silence
+ * inside the show-window. Cheap (number reads only, no DOM), so the component
+ * can call it first and skip the layout read (getBoundingClientRect) on the
+ * common ticks where the hint can't be shown.
+ */
+export function isFreezeHintEligible(
+  lastInputAt: number,
+  streakStartAt: number,
+  now: number,
+  th: FreezeHintThresholds = DEFAULT_THRESHOLDS,
+): boolean {
+  const silence = now - lastInputAt;
+  const streak = lastInputAt - streakStartAt;
+  return streak >= th.streakMs && silence >= th.silenceMs && silence < th.silenceMs + th.maxVisibleMs;
 }
 
 /**
@@ -57,23 +85,19 @@ function clamp(v: number, lo: number, hi: number): number {
 export function evaluateFreezeHint(
   input: FreezeHintInput,
   now: number,
-  th: FreezeHintThresholds = { streakMs: STREAK_MS, silenceMs: SILENCE_MS, maxVisibleMs: MAX_VISIBLE_MS },
+  th: FreezeHintThresholds = DEFAULT_THRESHOLDS,
 ): FreezeHintResult {
   const { lastInputAt, streakStartAt, client, containerRect } = input;
-  const silence = now - lastInputAt;
-  const streak = lastInputAt - streakStartAt;
   const visible
     = client != null
       && containerRect != null
-      && streak >= th.streakMs
-      && silence >= th.silenceMs
-      && silence < th.silenceMs + th.maxVisibleMs;
+      && isFreezeHintEligible(lastInputAt, streakStartAt, now, th);
 
   if (!visible) return { visible: false, x: 0, y: 0 };
 
   const relX = client.x - containerRect.left;
   const relY = client.y - containerRect.top;
-  const x = clamp(relX, EST_HALF_W + MARGIN, containerRect.width - EST_HALF_W - MARGIN);
-  const y = clamp(relY, EST_ABOVE + MARGIN, containerRect.height - MARGIN);
+  const x = clampOrCenter(relX, EST_HALF_W + MARGIN, containerRect.width - EST_HALF_W - MARGIN, containerRect.width / 2);
+  const y = clampOrCenter(relY, EST_ABOVE + MARGIN, containerRect.height - MARGIN, containerRect.height / 2);
   return { visible: true, x, y };
 }

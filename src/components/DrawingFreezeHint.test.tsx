@@ -62,6 +62,17 @@ describe('evaluateFreezeHint', () => {
     expect(br.y).toBe(300 - 8);
   });
 
+  it('centers the pill when the container is too narrow to honor the edge reserve', () => {
+    // width 200 < 2*(EST_HALF_W+MARGIN)=256 → no valid clamp range → center at width/2.
+    const r = evaluateFreezeHint(
+      frozen({ client: { x: 10, y: 150 }, containerRect: { left: 0, top: 0, width: 200, height: 300 } }),
+      62_500,
+      TH,
+    );
+    expect(r.visible).toBe(true);
+    expect(r.x).toBe(100); // width / 2, not pinned to the left edge
+  });
+
   it('translates client coords to container-relative using the container offset', () => {
     const r = evaluateFreezeHint(
       frozen({ client: { x: 250, y: 200 }, containerRect: { left: 50, top: 40, width: 400, height: 300 } }),

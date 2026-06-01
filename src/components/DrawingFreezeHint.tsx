@@ -2,9 +2,10 @@ import { useEffect, useState, type RefObject } from 'react';
 import { Box, Typography } from '@mui/material';
 import { Pause } from 'lucide-react';
 import { t } from '../i18n';
-import { evaluateFreezeHint, type FreezeHintResult } from './freezeHintLogic';
+import { evaluateFreezeHint, isFreezeHintEligible, EST_HALF_W, type FreezeHintResult } from './freezeHintLogic';
 
 const POLL_MS = 300;
+const HIDDEN: FreezeHintResult = { visible: false, x: 0, y: 0 };
 
 /**
  * Production mitigation for the confirmed Apple Pencil input-freeze bug
@@ -47,17 +48,16 @@ export function DrawingFreezeHint({
 
   useEffect(() => {
     const id = setInterval(() => {
-      const container = containerRef.current;
-      const rect = container ? container.getBoundingClientRect() : null;
-      const next = evaluateFreezeHint(
-        {
-          lastInputAt: lastInputAtRef.current ?? 0,
-          streakStartAt: streakStartAtRef.current ?? 0,
-          client: lastClientRef.current,
-          containerRect: rect,
-        },
-        performance.now(),
-      );
+      const now = performance.now();
+      const lastInputAt = lastInputAtRef.current ?? 0;
+      const streakStartAt = streakStartAtRef.current ?? 0;
+      // Cheap time-only gate first: on the common ticks (recently drew, or no
+      // long streak) we skip the getBoundingClientRect layout read entirely.
+      let next = HIDDEN;
+      if (isFreezeHintEligible(lastInputAt, streakStartAt, now)) {
+        const rect = containerRef.current?.getBoundingClientRect() ?? null;
+        next = evaluateFreezeHint({ lastInputAt, streakStartAt, client: lastClientRef.current, containerRect: rect }, now);
+      }
       // Only re-render on an actual change (visibility flip or moved anchor).
       setHint(prev =>
         prev.visible === next.visible && prev.x === next.x && prev.y === next.y ? prev : next,
@@ -82,7 +82,9 @@ export function DrawingFreezeHint({
         display: 'flex',
         alignItems: 'center',
         gap: 0.75,
-        maxWidth: 220,
+        // Keep the rendered half-width within the clamp reserve (EST_HALF_W) so
+        // the on-screen pill matches the geometry the clamp assumes.
+        maxWidth: EST_HALF_W * 2,
         bgcolor: 'rgba(0,0,0,0.78)',
         color: 'white',
         borderRadius: 1,
