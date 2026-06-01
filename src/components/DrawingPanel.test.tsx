@@ -25,6 +25,8 @@ type StubCanvasProps = {
   strokeManager: StrokeManager;
   onStrokeCountChange: (info?: { flush?: boolean }) => void;
   onStrokeStart?: () => void;
+  redrawVersion: number;
+  strokeEditVersion?: number;
 };
 const canvasPropsRef: { current: StubCanvasProps | null } = { current: null };
 vi.mock('./DrawingCanvas', () => ({
@@ -642,5 +644,49 @@ describe('DrawingPanel collapse toggle', () => {
     );
     expect(elementsWithTransform).toHaveLength(0);
     expect(onToggle).not.toHaveBeenCalled();
+  });
+});
+
+// The input-freeze hint resets its continuous-draw streak when DrawingCanvas
+// sees strokeEditVersion change. That signal MUST bump only on discrete edits
+// (undo/redo/clear/delete), never on freehand commits — otherwise the streak
+// resets after every stroke and the hint can never become eligible in the
+// many-short-strokes pattern. (Regression guard: a previous version keyed the
+// reset on redrawVersion, which also bumps on every commit, silently disabling
+// the hint.)
+describe('DrawingPanel freeze-hint streak signal (strokeEditVersion)', () => {
+  beforeEach(() => {
+    canvasPropsRef.current = null;
+  });
+
+  function drawAndNotify(harness: Harness) {
+    addStroke(harness.sm!, 0, 0);
+    canvasPropsRef.current!.onStrokeCountChange();
+  }
+
+  it('does NOT bump strokeEditVersion on freehand stroke commits', () => {
+    const { harness } = setup();
+    const editV0 = canvasPropsRef.current!.strokeEditVersion;
+    const redrawV0 = canvasPropsRef.current!.redrawVersion;
+
+    act(() => { drawAndNotify(harness); });
+    act(() => { drawAndNotify(harness); });
+    act(() => { drawAndNotify(harness); });
+
+    // Freehand commits must leave the freeze-streak signal untouched...
+    expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV0);
+    // ...even though redrawVersion does advance on each commit (the trap that
+    // the earlier redrawVersion-keyed reset fell into).
+    expect(canvasPropsRef.current!.redrawVersion).toBeGreaterThan(redrawV0);
+  });
+
+  it('bumps strokeEditVersion on a discrete edit (clear) so the streak resets around a button press', () => {
+    const { container, harness } = setup();
+    act(() => { drawAndNotify(harness); }); // enable the trash button
+    const editV = canvasPropsRef.current!.strokeEditVersion ?? 0;
+
+    act(() => { fireEvent.click(findIconButton(container, 'lucide-trash-2')); });
+
+    expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV + 1);
   });
 });
