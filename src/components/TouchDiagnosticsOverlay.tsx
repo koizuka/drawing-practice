@@ -35,6 +35,10 @@ const RAF_STALL_MS = 500;
 // the streak floor avoids flagging an idle-at-rest as a freeze.
 const FREEZE_GAP_MS = 1500;
 const FREEZE_MIN_STREAK_MS = 2000;
+// How long into a detected freeze to keep emitting the unconditional 1Hz tick
+// (rAF-liveness probe). The raf-alive verdict settles in a few seconds; bounding
+// it keeps a minutes-long freeze from overwriting the 200-entry ring's run-up.
+const FREEZE_LOG_WINDOW_MS = 30000;
 
 interface Snapshot {
   counters: typeof diag;
@@ -203,13 +207,20 @@ export default function TouchDiagnosticsOverlay() {
         // delta and may sample state.drawing=false between contacts. Without this
         // those seconds would log nothing now that per-stroke start/end events
         // are suppressed, losing the very rate `start` is meant to carry.
-        // Emit during a detected freeze too (`|| inFreezeRef.current`), bypassing
-        // the input-activity gate. Input is silent during a freeze so the normal
-        // gate logs nothing — leaving us blind to whether rAF/redraw keep running
-        // *inside* the freeze. With `frozen:1` + `sinceRaf`, the during-freeze
-        // ticks settle "input-only suspension (raf keeps ~60)" vs "rAF/main-thread
-        // death (raf→0, sinceRaf climbs)".
-        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing || inFreezeRef.current) {
+        // Emit during a detected freeze too, bypassing the input-activity gate.
+        // Input is silent during a freeze so the normal gate logs nothing —
+        // leaving us blind to whether rAF/redraw keep running *inside* the freeze.
+        // With `frozen:1` + `sinceRaf`, the during-freeze ticks settle "input-only
+        // suspension (raf keeps ~60)" vs "rAF/main-thread death (raf→0, sinceRaf
+        // climbs)". Capped to the first FREEZE_LOG_WINDOW_MS of the episode: the
+        // raf-alive verdict is settled within a few seconds, and an unbounded 1Hz
+        // emission would overwrite the 200-entry ring (losing the run-up and the
+        // freezeOnset entry) if a freeze persisted for minutes. Recovery is still
+        // captured by the `freeze` event, and a late rAF death by the rafStalled
+        // watchdog, regardless of this window.
+        const frozenLogging = inFreezeRef.current
+          && (now - freezeOnsetAtRef.current) < FREEZE_LOG_WINDOW_MS;
+        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing || frozenLogging) {
           const detail: Record<string, unknown> = {
             // Per-second stroke-start count: per-stroke `start` logging is now
             // suppressed in DrawingCanvas, so the tick carries the rate instead.
@@ -229,11 +240,13 @@ export default function TouchDiagnosticsOverlay() {
             open: cur.touchstart - cur.touchend - cur.touchcancel,
             mode: state?.mode,
           };
-          if (inFreezeRef.current) {
+          if (frozenLogging) {
             // The decisive fields while frozen: is rAF still ticking (raf ~60 vs
-            // 0) and how stale is the last rAF callback?
+            // 0) and how stale is the last rAF callback? Guard lastRafAt: a reset
+            // (overlay recovery / manual) zeroes it, which would otherwise report
+            // sinceRaf ≈ now. -1 = "no rAF timestamp yet", matching rafAge below.
             detail.frozen = 1;
-            detail.sinceRaf = Math.round(now - cur.lastRafAt);
+            detail.sinceRaf = cur.lastRafAt > 0 ? Math.round(now - cur.lastRafAt) : -1;
           }
           logEvent('tick', detail);
         }
