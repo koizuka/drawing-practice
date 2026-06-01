@@ -203,8 +203,14 @@ export default function TouchDiagnosticsOverlay() {
         // delta and may sample state.drawing=false between contacts. Without this
         // those seconds would log nothing now that per-stroke start/end events
         // are suppressed, losing the very rate `start` is meant to carry.
-        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing) {
-          logEvent('tick', {
+        // Emit during a detected freeze too (`|| inFreezeRef.current`), bypassing
+        // the input-activity gate. Input is silent during a freeze so the normal
+        // gate logs nothing — leaving us blind to whether rAF/redraw keep running
+        // *inside* the freeze. With `frozen:1` + `sinceRaf`, the during-freeze
+        // ticks settle "input-only suspension (raf keeps ~60)" vs "rAF/main-thread
+        // death (raf→0, sinceRaf climbs)".
+        if (dStart > 0 || dMove > 0 || dDoc > 0 || dPtr > 0 || state?.drawing || inFreezeRef.current) {
+          const detail: Record<string, unknown> = {
             // Per-second stroke-start count: per-stroke `start` logging is now
             // suppressed in DrawingCanvas, so the tick carries the rate instead.
             start: dStart,
@@ -222,7 +228,14 @@ export default function TouchDiagnosticsOverlay() {
             // the suspected 664108 trigger — in the run-up to a freeze.
             open: cur.touchstart - cur.touchend - cur.touchcancel,
             mode: state?.mode,
-          });
+          };
+          if (inFreezeRef.current) {
+            // The decisive fields while frozen: is rAF still ticking (raf ~60 vs
+            // 0) and how stale is the last rAF callback?
+            detail.frozen = 1;
+            detail.sinceRaf = Math.round(now - cur.lastRafAt);
+          }
+          logEvent('tick', detail);
         }
         secRef.current = { ...cur };
       }
