@@ -749,6 +749,19 @@ export function DrawingCanvas({
     lastTouchAtRef.current = now;
   }, []);
 
+  // Reset the input-freeze hint's streak on discrete, non-drawing operations:
+  // stroke edits (undo / redo / clear / delete bump redrawVersion), the
+  // zoom-reset button (viewResetVersion), and flip (isFlipped). The pause around
+  // such a button press is normal interaction, not a frozen draw — without this
+  // a stale pre-op streak would let the hint fire the moment the user resumes
+  // drawing (e.g. tap the trash, then start a stroke). We move only
+  // streakStartAtRef (forward of lastTouchAt → streak goes non-positive → gated
+  // out); lastTouchAtRef is left untouched so the synthetic-mouse guard is
+  // unaffected. The next real stroke re-establishes the streak via noteTouch.
+  useEffect(() => {
+    streakStartAtRef.current = performance.now();
+  }, [redrawVersion, viewResetVersion, isFlipped]);
+
   // Touch handlers — registered as native NON-passive listeners so we can
   // preventDefault. Reverted from a passive experiment (#207): passive dropped
   // preventDefault, which let iOS's gesture recognizer steal the first ~0.2s of
