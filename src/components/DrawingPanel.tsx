@@ -133,6 +133,11 @@ export function DrawingPanel({
   // Inline reads pick up new values on the same commit that bumps
   // restoreVersion / historySyncVersion.
   const [redrawVersion, setRedrawVersion] = useState(0);
+  // Bumped ONLY on discrete stroke-edit ops (undo/redo/clear/delete) via
+  // triggerRedraw — distinct from redrawVersion, which also bumps on every
+  // freehand commit. The input-freeze hint uses this to reset its streak around
+  // a button press without being reset by ordinary drawing.
+  const [strokeEditVersion, setStrokeEditVersion] = useState(0);
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
   const [showGallery, setShowGallery] = useState(false);
@@ -193,6 +198,10 @@ export function DrawingPanel({
   const triggerRedraw = useCallback((opts?: { flush?: boolean }) => {
     onStrokesChanged?.(opts);
     setRedrawVersion(v => v + 1);
+    // Discrete stroke edit (undo/redo/clear/delete all funnel through here, and
+    // only they do — freehand commits bump redrawVersion via
+    // handleStrokeCountChange instead). Signals the freeze-hint streak reset.
+    setStrokeEditVersion(v => v + 1);
   }, [onStrokesChanged]);
 
   const handleUndo = useCallback(() => {
@@ -752,6 +761,7 @@ export function DrawingPanel({
             onStrokeCountChange={handleStrokeCountChange}
             strokeManager={strokeManager}
             redrawVersion={redrawVersion}
+            strokeEditVersion={strokeEditVersion}
             viewResetVersion={viewResetVersion}
             grid={grid}
             guideLines={lines}
