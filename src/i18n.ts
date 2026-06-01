@@ -20,6 +20,7 @@ const messages = {
     collapseReference: 'Hide reference (free drawing)',
     expandReference: 'Show reference',
     collapseLockedSketchfabBrowse: 'Fix the angle first to free-draw',
+    inputFrozenHint: 'Input paused. Lift your pen for ~2s to recover.',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',
@@ -187,6 +188,7 @@ const messages = {
     collapseReference: 'お手本を畳む（フリードローイング）',
     expandReference: 'お手本を表示',
     collapseLockedSketchfabBrowse: '角度を確定してから畳めます',
+    inputFrozenHint: '入力が一時停止しています。ペンを2秒ほど離すと復帰します。',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',

@@ -10,6 +10,7 @@ import type { Point, Stroke } from '../drawing/types';
 import type { GridSettings, GuideLine } from '../guides/types';
 import type { TraceFeedback, TraceStroke } from '../trace/types';
 import { DIAG_ENABLED, diag, logEvent, persistLog, registerStateProbe, registerRecoveryActions, type ResetTrigger } from '../drawing/touchDiagnostics';
+import { DrawingFreezeHint } from './DrawingFreezeHint';
 
 // Unified erase/select mode: a tap selects the nearest stroke (eraser), a
 // drag-to-enclose acts as a lasso. The pen mode is unchanged. See
@@ -132,8 +133,15 @@ export function DrawingCanvas({
   // SYNTHETIC_MOUSE_GUARD_MS of a touch so a finger draw (before any stylus, when
   // hasStylusRef is still false) can't also fire handleMouseDown and double up.
   const lastTouchAtRef = useRef(0);
-  // Start of the current continuous-drawing streak (for diag.drawStreakMs).
+  // Start of the current continuous-drawing streak (for diag.drawStreakMs and
+  // the input-freeze hint's streak gate).
   const streakStartAtRef = useRef(0);
+  // Last touch position in viewport (client) px. The input-freeze hint anchors
+  // itself here so it appears where the user was drawing; it converts to
+  // container-relative coords at its own (low-frequency) poll, so the hot touch
+  // path stores raw clientX/Y with no getBoundingClientRect cost. Null until the
+  // first touch.
+  const lastDrawClientRef = useRef<{ x: number; y: number } | null>(null);
   const rendererRef = useRef<CanvasRenderer | null>(null);
   // Lazy-init: useRef's argument runs every render, so a plain default would
   // allocate a throw-away ViewTransform on each render. The non-null cast is
@@ -725,13 +733,16 @@ export function DrawingCanvas({
     }
   }, [strokeManager, getCurrentScale, highlightedStrokeIndex, onDeleteHighlightedStroke, onHighlightStroke, finishLasso]);
 
-  // Record touch activity: stamps lastTouchAt (for the synthetic-mouse guard,
-  // always) and advances the continuous-drawing streak (diag only). Must run
-  // before lastTouchAt is overwritten so the gap test sees the previous touch.
+  // Record touch activity: stamps lastTouchAt (for the synthetic-mouse guard)
+  // and advances the continuous-drawing streak. Both are always-on: the
+  // production input-freeze hint (DrawingFreezeHint) reads lastTouchAtRef +
+  // streakStartAtRef to gate on a long enough continuous-draw run. The diag
+  // counters layer on top when enabled. Must run before lastTouchAt is
+  // overwritten so the gap test sees the previous touch.
   const noteTouch = useCallback(() => {
     const now = performance.now();
+    if (now - lastTouchAtRef.current > DRAW_STREAK_RESET_MS) streakStartAtRef.current = now;
     if (DIAG_ENABLED) {
-      if (now - lastTouchAtRef.current > DRAW_STREAK_RESET_MS) streakStartAtRef.current = now;
       diag.drawStreakMs = now - streakStartAtRef.current;
       if (diag.drawStreakMs > diag.maxDrawStreakMs) diag.maxDrawStreakMs = diag.drawStreakMs;
     }
@@ -748,6 +759,8 @@ export function DrawingCanvas({
   const handleTouchStart = useCallback((e: TouchEvent) => {
     e.preventDefault();
     noteTouch();
+    const ct0 = e.changedTouches[0];
+    if (ct0) lastDrawClientRef.current = { x: ct0.clientX, y: ct0.clientY };
 
     if (DIAG_ENABLED) {
       diag.touchstart++;
@@ -873,6 +886,8 @@ export function DrawingCanvas({
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
     noteTouch();
+    const ct0 = e.changedTouches[0];
+    if (ct0) lastDrawClientRef.current = { x: ct0.clientX, y: ct0.clientY };
 
     if (DIAG_ENABLED) {
       diag.touchmove++;
@@ -1317,6 +1332,12 @@ export function DrawingCanvas({
           transform: 'translateZ(0)',
           backfaceVisibility: 'hidden',
         }}
+      />
+      <DrawingFreezeHint
+        lastInputAtRef={lastTouchAtRef}
+        streakStartAtRef={streakStartAtRef}
+        lastClientRef={lastDrawClientRef}
+        containerRef={containerRef}
       />
     </Box>
   );
