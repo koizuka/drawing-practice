@@ -35,6 +35,15 @@ interface DrawingCanvasProps {
   strokeManager: StrokeManager;
   /** Increment this to force a canvas redraw (e.g. after undo/redo/clear). */
   redrawVersion: number;
+  /**
+   * Increment on a discrete stroke-edit operation (undo / redo / clear /
+   * delete) — i.e. only the toolbar funnel, NOT freehand stroke commits (those
+   * bump `redrawVersion` too, so `redrawVersion` can't be used to detect them).
+   * The input-freeze hint resets its streak on this so the pause around a
+   * button press isn't misread as a frozen draw. Optional (defaults to 0) so
+   * direct test renders need not supply it.
+   */
+  strokeEditVersion?: number;
   /** Increment this to reset zoom/pan to home. */
   viewResetVersion: number;
   grid: GridSettings;
@@ -106,6 +115,7 @@ export function DrawingCanvas({
   onStrokeCountChange,
   strokeManager,
   redrawVersion,
+  strokeEditVersion = 0,
   viewResetVersion,
   grid,
   guideLines,
@@ -750,17 +760,20 @@ export function DrawingCanvas({
   }, []);
 
   // Reset the input-freeze hint's streak on discrete, non-drawing operations:
-  // stroke edits (undo / redo / clear / delete bump redrawVersion), the
+  // stroke edits (undo / redo / clear / delete → strokeEditVersion), the
   // zoom-reset button (viewResetVersion), and flip (isFlipped). The pause around
   // such a button press is normal interaction, not a frozen draw — without this
   // a stale pre-op streak would let the hint fire the moment the user resumes
-  // drawing (e.g. tap the trash, then start a stroke). We move only
-  // streakStartAtRef (forward of lastTouchAt → streak goes non-positive → gated
-  // out); lastTouchAtRef is left untouched so the synthetic-mouse guard is
+  // drawing (e.g. tap the trash, then start a stroke). NOTE: depend on
+  // strokeEditVersion, NOT redrawVersion — redrawVersion also bumps on every
+  // freehand commit, which would reset the streak after each stroke and stop it
+  // ever reaching the threshold (the common many-short-strokes pattern). We move
+  // only streakStartAtRef (forward of lastTouchAt → streak goes non-positive →
+  // gated out); lastTouchAtRef is left untouched so the synthetic-mouse guard is
   // unaffected. The next real stroke re-establishes the streak via noteTouch.
   useEffect(() => {
     streakStartAtRef.current = performance.now();
-  }, [redrawVersion, viewResetVersion, isFlipped]);
+  }, [strokeEditVersion, viewResetVersion, isFlipped]);
 
   // Touch handlers — registered as native NON-passive listeners so we can
   // preventDefault. Reverted from a passive experiment (#207): passive dropped
