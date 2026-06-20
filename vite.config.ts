@@ -16,5 +16,14 @@ export default defineConfig({
     env: {
       TZ: 'UTC',
     },
+    server: {
+      deps: {
+        // Inline @mui/material so Vite resolves its internal directory import
+        // of `react-transition-group/TransitionGroupContext` (MUI 9.1.0+).
+        // Node's native ESM loader can't resolve that bare directory import
+        // when the package is externalized, breaking every component test.
+        inline: ['@mui/material'],
+      },
+    },
   },
 });
