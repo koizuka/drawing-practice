@@ -166,8 +166,10 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
   catch (e) {
     if (e instanceof PoseParseError) {
       // Surface the raw reply so on-device failures can be diagnosed from
-      // the console (Safari Web Inspector) without extra instrumentation.
-      console.error('[pose] unparsable model reply:', text);
+      // the console without extra instrumentation. `text` alone can be ''
+      // (no text block at all — e.g. an empty/refused completion), so log
+      // the whole response body too.
+      console.error('[pose] unparsable model reply:', text || '(no text block)', data);
     }
     throw e;
   }

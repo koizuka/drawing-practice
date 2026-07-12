@@ -33,10 +33,10 @@ interface PoseSketchPadProps {
 export function PoseSketchPad({ ref, displaySize }: PoseSketchPadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [strokeManager] = useState(() => new StrokeManager());
-  // Pointer id of the in-progress stroke; null when idle. Events from any
-  // other pointer are ignored so a resting palm can't hijack or block a
-  // stroke.
-  const activePointerRef = useRef<number | null>(null);
+  // In-progress stroke's pointer (id + whether it's a pen); null when idle.
+  // Events from any other pointer are ignored so a resting palm can't hijack
+  // or block a stroke.
+  const activePointerRef = useRef<{ id: number; isPen: boolean } | null>(null);
   // Once a pen (Apple Pencil) has touched the pad, finger/palm touches no
   // longer start strokes — same pencil-priority palm rejection as
   // DrawingCanvas's stylus filter, on the Pointer Events model.
@@ -85,11 +85,11 @@ export function PoseSketchPad({ ref, displaySize }: PoseSketchPadProps) {
     if (activePointerRef.current !== null) {
       // A pen touching down while a finger/palm stroke is in progress wins:
       // discard the touch stroke and let the pen draw. Anything else (second
-      // finger, second pen event) is ignored.
-      if (!isPen) return;
+      // finger, duplicate pen pointer) is ignored.
+      if (!isPen || activePointerRef.current.isPen) return;
       strokeManager.cancelStroke();
     }
-    activePointerRef.current = e.pointerId;
+    activePointerRef.current = { id: e.pointerId, isPen };
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     }
@@ -99,12 +99,12 @@ export function PoseSketchPad({ ref, displaySize }: PoseSketchPadProps) {
   }, [strokeManager, toLogicalPoint, redraw]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerId !== activePointerRef.current) return;
+    if (e.pointerId !== activePointerRef.current?.id) return;
     if (strokeManager.appendStroke(toLogicalPoint(e))) redraw();
   }, [strokeManager, toLogicalPoint, redraw]);
 
   const endStroke = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerId !== activePointerRef.current) return;
+    if (e.pointerId !== activePointerRef.current?.id) return;
     activePointerRef.current = null;
     strokeManager.endStroke();
     setStrokeVersion(v => v + 1);

@@ -49,6 +49,11 @@ describe('parsePoseJson', () => {
     expect(parsePoseJson(raw)).toEqual({ body: { turn: 90 }, leftArm: { raise: 90 } });
   });
 
+  it('picks the LAST JSON object, not a valid example embedded in the prose', () => {
+    const raw = 'A raised arm would be {"raise": 90} in this schema.\nFinal pose:\n{"body":{"turn":-90},"rightArm":{"raise":45}}';
+    expect(parsePoseJson(raw)).toEqual({ body: { turn: -90 }, rightArm: { raise: 45 } });
+  });
+
   it('extracts the JSON when prose braces appear both before and after it', () => {
     const raw = 'Analysis {rough}:\n{"head":{"nod":20}}\ntrailing note {end}';
     expect(parsePoseJson(raw)).toEqual({ head: { nod: 20 } });

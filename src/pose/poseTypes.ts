@@ -138,33 +138,29 @@ function sanitizeHead(raw: unknown): HeadPose | undefined {
  * @throws PoseParseError when no parsable JSON object is found.
  */
 export function parsePoseJson(raw: string): PoseJson {
-  // The prompt asks for a short prose analysis followed by the JSON object,
-  // so the reply may contain stray braces before (or, defensively, after)
-  // the actual object. Try every '{' paired with every '}' at or after it,
-  // preferring the widest span, until one slice parses.
-  const starts: number[] = [];
-  for (let i = raw.indexOf('{'); i !== -1; i = raw.indexOf('{', i + 1)) {
-    starts.push(i);
-  }
-  const ends: number[] = [];
-  for (let i = raw.lastIndexOf('}'); i !== -1; i = raw.lastIndexOf('}', i - 1)) {
-    ends.push(i);
-  }
-  if (starts.length === 0 || ends.length === 0 || ends[0] <= starts[0]) {
+  // The prompt asks for a short prose analysis followed by the JSON object
+  // as the LAST thing in the reply — and the prose may itself contain stray
+  // braces or even small valid JSON snippets (schema echoes, examples).
+  // Scan candidates from the END: for each closing brace (last first), try
+  // opening braces from the nearest one outward, so the first slice that
+  // parses is the last complete top-level JSON object in the text — never an
+  // earlier prose fragment.
+  if (raw.indexOf('{') === -1 || raw.indexOf('}') === -1) {
     throw new PoseParseError('no JSON object in response');
   }
   let parsed: unknown;
-  outer: {
-    for (const start of starts) {
-      for (const end of ends) {
-        if (end <= start) break;
-        try {
-          parsed = JSON.parse(raw.slice(start, end + 1));
-          break outer;
-        }
-        catch { /* keep scanning */ }
+  let found = false;
+  for (let end = raw.lastIndexOf('}'); end !== -1 && !found; end = raw.lastIndexOf('}', end - 1)) {
+    for (let start = raw.lastIndexOf('{', end); start !== -1; start = raw.lastIndexOf('{', start - 1)) {
+      try {
+        parsed = JSON.parse(raw.slice(start, end + 1));
+        found = true;
+        break;
       }
+      catch { /* keep scanning */ }
     }
+  }
+  if (!found) {
     throw new PoseParseError('invalid JSON in response');
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

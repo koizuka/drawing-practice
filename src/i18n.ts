@@ -361,7 +361,7 @@ const messages = {
 
     // Pose reference source
     pose: 'ポーズ',
-    poseDescription: '棒人間かヒントの言葉からAIが3Dマネキンにポーズさせます',
+    poseDescription: '人物ラフを描くかヒントを書くとAIが3Dマネキンにポーズさせます',
     poseHintLabel: 'ヒント(任意)',
     poseHintPlaceholder: '例:「右向きに走っている」',
     poseGenerate: 'ポーズ生成',
