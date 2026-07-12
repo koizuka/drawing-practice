@@ -145,12 +145,22 @@ export default function PoseViewer({ pose, vrmSource, onReady, onLoadError, acti
       url = bundledVrmUrl(entry);
     }
 
+    // Revoking twice (callback + cleanup) is a harmless no-op; the cleanup
+    // revoke covers teardown while the load is still in flight, where the
+    // loader callbacks might never run.
+    const revokeObjectUrl = () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+    };
+
     const loader = new GLTFLoader();
     loader.register(parser => new VRMLoaderPlugin(parser));
     loader.load(
       url,
       (gltf) => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        revokeObjectUrl();
         const vrm = gltf.userData.vrm as VRM | undefined;
         if (!vrm) {
           if (!cancelled) onLoadError?.(new Error('not a VRM file'));
@@ -174,13 +184,14 @@ export default function PoseViewer({ pose, vrmSource, onReady, onLoadError, acti
       },
       undefined,
       (e) => {
-        if (objectUrl) URL.revokeObjectURL(objectUrl);
+        revokeObjectUrl();
         if (!cancelled) onLoadError?.(e);
       },
     );
 
     return () => {
       cancelled = true;
+      revokeObjectUrl();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey, userBlob]);
