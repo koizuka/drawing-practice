@@ -101,7 +101,7 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const l = raw as Record<string, unknown>;
   return pruneUndefined<LegPose>({
-    forward: sanitizeNumber(l.forward, -60, 130),
+    forward: sanitizeNumber(l.forward, -60, 150),
     spread: sanitizeNumber(l.spread, 0, 80),
     rotation: sanitizeNumber(l.rotation, -30, 90),
     kneeBend: sanitizeNumber(l.kneeBend, 0, 150),
