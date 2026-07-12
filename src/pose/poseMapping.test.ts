@@ -318,6 +318,19 @@ describe('applyPose', () => {
     expect(bones.get('hips')!.position.y).toBeCloseTo(-0.9 * 0.35);
     expect(bones.get('leftUpperLeg')!.rotation.x).toBeCloseTo(-(0.9 * 90) * DEG);
     expect(bones.get('leftLowerLeg')!.rotation.x).toBeCloseTo(0.9 * 130 * DEG);
+    // A fully synthesized leg also grounds the sole: ankle = kneeBend -
+    // forward (dorsiflexion, foot rotation.x is sign-flipped) — 0 would put
+    // the figure on pointe.
+    expect(bones.get('leftFoot')!.rotation.x).toBeCloseTo(-(0.9 * 40) * DEG);
+  });
+
+  it('does not synthesize an ankle for a leg with explicit angles', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      body: { crouch: 1 },
+      leftLeg: { forward: 100, kneeBend: 145 },
+    });
+    expect(bones.get('leftFoot')!.rotation.x).toBeCloseTo(0);
   });
 
   it('does not floor legs beyond explicitly larger angles', () => {
