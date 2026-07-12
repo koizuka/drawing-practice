@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Alert, Box, Button, CircularProgress, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { t } from '../i18n';
-import type { ReferenceInfo } from '../types';
+import { referenceKey, type ReferenceInfo } from '../types';
 import type { ReferenceSetters } from './ReferencePanel';
 import type { PoseJson } from '../pose/poseTypes';
 import { PoseParseError } from '../pose/poseTypes';
@@ -62,6 +62,20 @@ export default function PoseSourcePanel({
 
   const pose: PoseJson | null = poseInfo?.pose ?? null;
 
+  // Re-seed hint/vrmId when poseInfo is swapped from the outside (undo/redo,
+  // gallery load) — otherwise the hint field, model toggle, and Fix-Angle
+  // metadata keep stale values. Render-time prev-comparison per React docs
+  // (same pattern as ReferencePanel's YouTube state reset).
+  const poseKey = poseInfo ? referenceKey(poseInfo) : null;
+  const [prevPoseKey, setPrevPoseKey] = useState(poseKey);
+  if (prevPoseKey !== poseKey) {
+    setPrevPoseKey(poseKey);
+    if (poseInfo) {
+      setHint(poseInfo.hint ?? '');
+      setVrmId(poseInfo.vrmId);
+    }
+  }
+
   // Resolve the saved user VRM on mount — also when the bundled model is
   // selected, so the "My VRM" toggle is enabled in a fresh session. The
   // missing-model fallback only fires when 'user' was actually requested
@@ -104,6 +118,10 @@ export default function PoseSourcePanel({
     setGenerating(true);
     generatePose(png, hint, controller.signal)
       .then((generated) => {
+        // A superseded run can still resolve (fetch may complete before
+        // abort lands) — never let a stale pose overwrite a newer one, and
+        // never apply after unmount.
+        if (controller.signal.aborted || abortRef.current !== controller) return;
         onReferenceChange((s) => {
           s.setReferenceInfo({
             source: 'pose',
@@ -117,6 +135,7 @@ export default function PoseSourcePanel({
       })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
+        if (controller.signal.aborted || abortRef.current !== controller) return;
         if (e instanceof PoseParseError) {
           setError({ message: t('posePoseParseError'), keyAction: false });
           return;
@@ -166,7 +185,6 @@ export default function PoseSourcePanel({
           }
         })
         .then(() => {
-          onViewerReadyChange?.(false); // see handleVrmChoice
           setUserVrmBlob(file);
           setVrmLoadFailed(false);
           setVrmId(USER_VRM_ID);
@@ -174,17 +192,13 @@ export default function PoseSourcePanel({
         .catch(() => { /* size error already surfaced */ });
     };
     input.click();
-  }, [onViewerReadyChange]);
+  }, []);
 
   const handleVrmChoice = useCallback((_: unknown, value: string | null) => {
     if (!value) return;
     setVrmLoadFailed(false);
-    // Disable Fix-Angle until the newly selected model reports ready —
-    // otherwise a capture in the loading window would screenshot the old
-    // mannequin while recording the new vrmId.
-    onViewerReadyChange?.(false);
     setVrmId(value);
-  }, [onViewerReadyChange]);
+  }, []);
 
   const handleViewerReady = useCallback(() => {
     setVrmLoadFailed(false);
@@ -220,6 +234,19 @@ export default function PoseSourcePanel({
   const vrmSource: PoseVrmSource = vrmId === USER_VRM_ID && userVrmBlob
     ? { kind: 'user', blob: userVrmBlob }
     : { kind: 'bundled', vrmId: vrmId === USER_VRM_ID ? DEFAULT_VRM_ID : vrmId };
+
+  // Disable Fix-Angle whenever the effective model source changes (toggle,
+  // file load, undo/redo swapping vrmId) — a capture in the loading window
+  // would screenshot the old mannequin while recording the new vrmId. The
+  // new model's onReady re-enables it. Effect (not inline in the handlers)
+  // so every path that changes the source is covered.
+  const vrmSourceKey = vrmSource.kind === 'user' ? 'user' : `bundled:${vrmSource.vrmId}`;
+  useEffect(() => {
+    onViewerReadyChange?.(false);
+    // Re-run only on source-identity change; the callback identity is stable
+    // in practice (parent useState setter wrapper).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vrmSourceKey, userVrmBlob]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
