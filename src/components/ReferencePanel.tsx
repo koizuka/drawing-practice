@@ -1790,8 +1790,14 @@ export function ReferencePanel({
 
       <AnthropicApiKeyDialog
         open={anthropicKeyDialogOpen}
-        onClose={() => setAnthropicKeyDialogOpen(false)}
-        onKeyChanged={() => setAnthropicKeyVersion(v => v + 1)}
+        onClose={() => {
+          setAnthropicKeyDialogOpen(false);
+          // Bump on EVERY close (save, clear, or cancel) — PoseSourcePanel
+          // resolves its pending-generate intent on this signal, and a
+          // cancelled dialog must clear the intent rather than leave it armed
+          // for a later unrelated key save.
+          setAnthropicKeyVersion(v => v + 1);
+        }}
       />
 
       <PexelsApiKeyDialog

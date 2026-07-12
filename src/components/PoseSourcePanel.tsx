@@ -23,7 +23,7 @@ interface PoseSourcePanelProps {
   onReferenceChange: (mutate: (setters: ReferenceSetters) => void) => void;
   /** Open the Anthropic API key dialog (parent owns it). */
   onRequestApiKey: () => void;
-  /** Bumped by the parent after the key dialog saves/clears. */
+  /** Bumped by the parent whenever the key dialog closes (save OR cancel). */
   apiKeyVersion: number;
   actionsRef?: Ref<PoseSourceActions>;
   /** Reports whether the 3D viewer is ready (enables the Fix-Angle button). */
@@ -157,7 +157,9 @@ export default function PoseSourcePanel({
     runGenerate();
   }, [onRequestApiKey, runGenerate]);
 
-  // Finish a pending generate after the key dialog saved a key.
+  // Resolve a pending generate when the key dialog closes: run it if a key
+  // was saved, otherwise drop the intent (a cancelled dialog must not leave
+  // it armed for a later unrelated key save).
   const prevKeyVersionRef = useRef(apiKeyVersion);
   useEffect(() => {
     if (prevKeyVersionRef.current === apiKeyVersion) return;
@@ -239,14 +241,18 @@ export default function PoseSourcePanel({
   // file load, undo/redo swapping vrmId) — a capture in the loading window
   // would screenshot the old mannequin while recording the new vrmId. The
   // new model's onReady re-enables it. Effect (not inline in the handlers)
-  // so every path that changes the source is covered.
+  // so every path that changes the source is covered. Deps mirror exactly
+  // what makes PoseViewer reload: keying on userVrmBlob while the bundled
+  // model is shown would reset readiness on the mount-time user-VRM preload
+  // (which triggers no reload), leaving Fix-Angle stuck disabled.
   const vrmSourceKey = vrmSource.kind === 'user' ? 'user' : `bundled:${vrmSource.vrmId}`;
+  const activeUserBlob = vrmSource.kind === 'user' ? vrmSource.blob : null;
   useEffect(() => {
     onViewerReadyChange?.(false);
     // Re-run only on source-identity change; the callback identity is stable
     // in practice (parent useState setter wrapper).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vrmSourceKey, userVrmBlob]);
+  }, [vrmSourceKey, activeUserBlob]);
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
