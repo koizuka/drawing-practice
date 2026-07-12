@@ -81,6 +81,17 @@ export default function PoseSourcePanel({
     }
   }
 
+  // Any poseInfo swap also invalidates an in-flight/deferred generation — a
+  // late result must not overwrite a reference the user just restored via
+  // undo/redo/gallery (it would even add a new undo entry on top). This also
+  // fires after our own generation success, where aborting the already-
+  // settled request is a harmless no-op.
+  useEffect(() => {
+    abortRef.current?.abort();
+    pendingGenerateRef.current = false;
+    setGenerating(false);
+  }, [poseInfo]);
+
   // Resolve the saved user VRM on mount — also when the bundled model is
   // selected, so the "My VRM" toggle is enabled in a fresh session. The
   // missing-model fallback only fires when 'user' was actually requested
