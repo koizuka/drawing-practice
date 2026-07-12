@@ -109,6 +109,15 @@ export default function PoseSourcePanel({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Latest committed vrmId, for the generate success handler: the pose is
+  // model-independent, so the result should respect a model switch made
+  // while the request was in flight instead of snapping the toggle back to
+  // the click-time selection via the poseInfo re-seed above.
+  const vrmIdRef = useRef(vrmId);
+  useEffect(() => {
+    vrmIdRef.current = vrmId;
+  }, [vrmId]);
+
   const runGenerate = useCallback(() => {
     const png = sketchRef.current?.exportPng() ?? null;
     if (!png) {
@@ -130,9 +139,11 @@ export default function PoseSourcePanel({
         onReferenceChange((s) => {
           s.setReferenceInfo({
             source: 'pose',
+            // hint/title deliberately stay the REQUEST-time values — they
+            // describe the pose that was generated, not the textbox draft.
             title: hint.trim() || t('pose'),
             author: '',
-            vrmId,
+            vrmId: vrmIdRef.current,
             pose: generated,
             hint: hint.trim() || undefined,
           });
@@ -151,7 +162,7 @@ export default function PoseSourcePanel({
       .finally(() => {
         if (abortRef.current === controller) setGenerating(false);
       });
-  }, [hint, vrmId, onReferenceChange]);
+  }, [hint, onReferenceChange]);
 
   const handleGenerate = useCallback(() => {
     if (getAnthropicApiKey() === '') {
