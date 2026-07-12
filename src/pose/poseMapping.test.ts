@@ -35,6 +35,18 @@ describe('applyPose', () => {
     expect(resetPose).toHaveBeenCalledTimes(1);
   });
 
+  it('absent arms default to relaxed hanging, not the T-pose rest', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {});
+    const left = limbDirection(bones.get('leftUpperArm')!, new Vector3(1, 0, 0));
+    const right = limbDirection(bones.get('rightUpperArm')!, new Vector3(-1, 0, 0));
+    // Mostly downward, slightly away from the body so it doesn't clip.
+    expect(left.y).toBeLessThan(-0.9);
+    expect(right.y).toBeLessThan(-0.9);
+    expect(left.x).toBeGreaterThan(0.05);
+    expect(right.x).toBeLessThan(-0.05);
+  });
+
   it('raise=90/forward=0 keeps the arm at the T-pose direction', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, { leftArm: { raise: 90, forward: 0 } });
@@ -129,6 +141,31 @@ describe('applyPose', () => {
       .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
     expect(forearmWorld('left', 1).x).toBeLessThan(-0.3);
     expect(forearmWorld('right', -1).x).toBeGreaterThan(0.3);
+  });
+
+  it('shinTwist reorients the foot outward without moving the shin direction', () => {
+    const plain = makeRig();
+    applyPose(plain.resolve, plain.resetPose, { leftLeg: { kneeBend: 145 } });
+    const twisted = makeRig();
+    applyPose(twisted.resolve, twisted.resetPose, { leftLeg: { kneeBend: 145, shinTwist: 30 } });
+
+    const shinDir = (rig: ReturnType<typeof makeRig>) =>
+      limbDirection(rig.bones.get('leftLowerLeg')!, new Vector3(0, -1, 0));
+    // The shin's own axis is unchanged by the twist…
+    expect(shinDir(twisted).distanceTo(shinDir(plain))).toBeLessThan(1e-6);
+    // …but the toe direction swings outward (+X for the left leg).
+    const toeDir = (rig: ReturnType<typeof makeRig>) =>
+      limbDirection(rig.bones.get('leftLowerLeg')!, new Vector3(0, 0, 1));
+    expect(toeDir(plain).x).toBeCloseTo(0);
+    expect(toeDir(twisted).x).toBeGreaterThan(0.3);
+  });
+
+  it('shinTwist + is external (outward) on both sides', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    const leg = { kneeBend: 145, shinTwist: 30 };
+    applyPose(resolve, resetPose, { leftLeg: leg, rightLeg: leg });
+    expect(bones.get('leftLowerLeg')!.rotation.y).toBeCloseTo(30 * DEG);
+    expect(bones.get('rightLowerLeg')!.rotation.y).toBeCloseTo(-30 * DEG);
   });
 
   it('maps ankle to a sign-flipped foot X rotation (+ = dorsiflexion)', () => {

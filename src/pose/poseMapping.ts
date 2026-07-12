@@ -43,6 +43,14 @@ export const TOUCH_PRESETS: Record<TouchTarget, ArmPose> = {
 /** How far the hips sink at crouch = 1, in normalized-space meters. */
 const CROUCH_HIP_DROP = 0.35;
 
+/**
+ * Applied when the pose omits an arm entirely: the normalized rest pose is a
+ * T-pose, which reads as unnatural for any pose that simply doesn't involve
+ * the arms. Slightly abducted/bent so the arm hangs without clipping the
+ * torso or thigh.
+ */
+const RELAXED_ARM: ArmPose = { raise: 12, forward: 5, elbowBend: 8 };
+
 type Side = 'left' | 'right';
 const SIDE_SIGN: Record<Side, 1 | -1> = { left: 1, right: -1 };
 
@@ -147,7 +155,14 @@ function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
     side * (leg.spread ?? 0) * DEG,
     'XZY',
   );
-  resolve(`${sideName}LowerLeg`)?.rotation.set((leg.kneeBend ?? 0) * DEG, 0, 0);
+  // Default 'XYZ' order applies Y before X, so shinTwist is a pure twist
+  // about the shin's own bone axis (tibial rotation carried through the
+  // bend) — it reorients the foot without moving the shin's direction.
+  resolve(`${sideName}LowerLeg`)?.rotation.set(
+    (leg.kneeBend ?? 0) * DEG,
+    side * (leg.shinTwist ?? 0) * DEG,
+    0,
+  );
   // Positive X on the foot bone plantar-flexes (toes down); ankle is defined
   // as + = dorsiflexion (toes toward the shin), hence the sign flip.
   resolve(`${sideName}Foot`)?.rotation.set(-(leg.ankle ?? 0) * DEG, 0, 0);
@@ -198,8 +213,8 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
     -(head.tilt ?? 0) * DEG,
   );
 
-  if (pose.leftArm) applyArm(resolve, 'left', pose.leftArm);
-  if (pose.rightArm) applyArm(resolve, 'right', pose.rightArm);
+  applyArm(resolve, 'left', pose.leftArm ?? RELAXED_ARM);
+  applyArm(resolve, 'right', pose.rightArm ?? RELAXED_ARM);
 
   // A deep crouch bends the legs even when the LLM omitted them entirely.
   const crouch = body.crouch ?? 0;

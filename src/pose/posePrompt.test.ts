@@ -20,6 +20,18 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('LEFT/RIGHT RULES');
     expect(prompt).toContain('End your reply with the JSON object');
   });
+
+  it('includes the girl-style sitting recipe with internal rotation', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('onnanoko-zuwari');
+    expect(prompt).toContain('INTERNAL rotation');
+  });
+
+  it('documents shinTwist in the schema and leg conventions', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('"shinTwist"');
+    expect(prompt).toContain('tibial rotation');
+  });
 });
 
 describe('buildTextPosePrompt', () => {

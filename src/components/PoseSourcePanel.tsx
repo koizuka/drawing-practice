@@ -6,7 +6,7 @@ import type { ReferenceSetters } from './ReferencePanel';
 import type { PoseJson } from '../pose/poseTypes';
 import { PoseParseError } from '../pose/poseTypes';
 import { DEFAULT_VRM_ID, USER_VRM_ID } from '../pose/bundledVrms';
-import { generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey } from '../utils/anthropic';
+import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey } from '../utils/anthropic';
 import { isAbortError } from '../utils/pexels';
 import { getUserVrm, saveUserVrm, VrmTooLargeError } from '../storage';
 import PoseViewer, { type PoseViewerActions, type PoseVrmSource } from './PoseViewer';
@@ -54,7 +54,7 @@ export default function PoseSourcePanel({
   const [vrmId, setVrmId] = useState(() => poseInfo?.vrmId ?? DEFAULT_VRM_ID);
   const [userVrmBlob, setUserVrmBlob] = useState<Blob | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<{ message: string; keyAction: boolean } | null>(null);
+  const [error, setError] = useState<{ message: string; detail?: string; keyAction: boolean } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [vrmLoadFailed, setVrmLoadFailed] = useState(false);
   const [vrmRetryToken, setVrmRetryToken] = useState(0);
@@ -170,7 +170,7 @@ export default function PoseSourcePanel({
           return;
         }
         const key = mapAnthropicErrorKey(e);
-        setError({ message: t(key), keyAction: isAnthropicAuthError(e) });
+        setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
       })
       .finally(() => {
         if (abortRef.current === controller) setGenerating(false);
@@ -344,6 +344,11 @@ export default function PoseSourcePanel({
                 : undefined}
             >
               {error.message}
+              {error.detail && (
+                <Box component="div" sx={{ mt: 0.5, fontSize: '0.75rem', fontFamily: 'monospace', opacity: 0.8, overflowWrap: 'anywhere' }}>
+                  {error.detail}
+                </Box>
+              )}
             </Alert>
           )}
           {notice && <Alert severity="info" onClose={() => setNotice(null)}>{notice}</Alert>}
