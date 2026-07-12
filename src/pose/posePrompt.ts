@@ -13,7 +13,7 @@ const SCHEMA_AND_CONVENTIONS = `{
     "leanSide": number,      // + = leans toward figure's left
     "twist": number,         // + = shoulders twist toward figure's left
     "turn": number,          // whole-body facing, VIEWER-relative: 0 = faces the viewer; +90 = faces the viewer's LEFT (you then see the figure's RIGHT profile); -90 = faces the viewer's RIGHT (you see its LEFT profile)
-    "crouch": number         // 0 = standing tall .. 1 = hips fully lowered. For a deep squat follow the deep-squat recipe in Leg conventions (crouch alone does not bend the legs or ground the feet)
+    "crouch": number         // 0 = standing tall .. 1 = hips fully lowered. With the legs omitted, crouch alone falls back to a generic synthesized squat; for a proper deep squat give explicit legs per the deep-squat recipe in Leg conventions
   },
   "head": { "nod": number /* + looks down */, "turn": number /* + toward figure's left */, "tilt": number /* + = head tilts toward the figure's left shoulder */ },
   "leftArm":  { "raise": number, "forward": number, "elbowBend": number, "elbowDirection": "front"|"down"|"up"|"back"|"in"|"out", "wrist": number, "forearmTwist": number }
