@@ -27,6 +27,17 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('INTERNAL rotation');
   });
 
+  it('includes the all-fours recipe and the torso-relative ground-support rule', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('yotsunbai');
+    expect(prompt).toContain('relative to the TORSO');
+    expect(prompt).toContain('bear weight');
+    expect(prompt).toContain('"wrist"');
+    expect(prompt).toContain('"bend"');
+    expect(prompt).toContain('sakadachi');
+    expect(prompt).toContain('"forearmTwist"');
+  });
+
   it('documents shinTwist in the schema and leg conventions', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('"shinTwist"');
