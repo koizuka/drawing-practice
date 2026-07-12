@@ -7,6 +7,11 @@ export default defineConfig({
   define: {
     'import.meta.env.BUILD_DATE': JSON.stringify(new Date().toISOString()),
   },
+  build: {
+    // The pose-source lazy chunk carries three.js + @pixiv/three-vrm
+    // (~770 kB min, ~190 kB gzip) — expected, loaded on demand only.
+    chunkSizeWarningLimit: 800,
+  },
   test: {
     globals: true,
     environment: 'jsdom',

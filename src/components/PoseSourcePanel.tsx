@@ -1,0 +1,292 @@
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
+import { Alert, Box, Button, CircularProgress, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { t } from '../i18n';
+import type { ReferenceInfo } from '../types';
+import type { ReferenceSetters } from './ReferencePanel';
+import type { PoseJson } from '../pose/poseTypes';
+import { PoseParseError } from '../pose/poseTypes';
+import { DEFAULT_VRM_ID, USER_VRM_ID } from '../pose/bundledVrms';
+import { generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey } from '../utils/anthropic';
+import { isAbortError } from '../utils/pexels';
+import { getUserVrm, saveUserVrm, VrmTooLargeError } from '../storage';
+import PoseViewer, { type PoseViewerActions, type PoseVrmSource } from './PoseViewer';
+import { PoseSketchPad, type PoseSketchPadHandle } from './PoseSketchPad';
+
+export interface PoseSourceActions {
+  /** Capture the current 3D view and fix it as the drawing reference. */
+  fixAngle: () => void;
+}
+
+interface PoseSourcePanelProps {
+  /** Current reference info when it is a pose (null before first generation). */
+  poseInfo: Extract<ReferenceInfo, { source: 'pose' }> | null;
+  onReferenceChange: (mutate: (setters: ReferenceSetters) => void) => void;
+  /** Open the Anthropic API key dialog (parent owns it). */
+  onRequestApiKey: () => void;
+  /** Bumped by the parent after the key dialog saves/clears. */
+  apiKeyVersion: number;
+  actionsRef?: Ref<PoseSourceActions>;
+  /** Reports whether the 3D viewer is ready (enables the Fix-Angle button). */
+  onViewerReadyChange?: (ready: boolean) => void;
+}
+
+const SKETCH_DISPLAY_SIZE = 160;
+
+/**
+ * Browse-mode UI for the 'pose' reference source: stick-figure sketch pad +
+ * hint field + generate button on top, free-orbiting VRM mannequin below.
+ * Loaded lazily — this module pulls in three.js via PoseViewer.
+ */
+export default function PoseSourcePanel({
+  poseInfo,
+  onReferenceChange,
+  onRequestApiKey,
+  apiKeyVersion,
+  actionsRef,
+  onViewerReadyChange,
+}: PoseSourcePanelProps) {
+  const sketchRef = useRef<PoseSketchPadHandle>(null);
+  const viewerActionsRef = useRef<PoseViewerActions>(null);
+  const [hint, setHint] = useState(() => poseInfo?.hint ?? '');
+  const [vrmId, setVrmId] = useState(() => poseInfo?.vrmId ?? DEFAULT_VRM_ID);
+  const [userVrmBlob, setUserVrmBlob] = useState<Blob | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<{ message: string; keyAction: boolean } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [vrmLoadFailed, setVrmLoadFailed] = useState(false);
+  const [vrmRetryToken, setVrmRetryToken] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  // Set when Generate was clicked without a key: the key dialog is open and a
+  // successful save should finish the original generate intent.
+  const pendingGenerateRef = useRef(false);
+
+  const pose: PoseJson | null = poseInfo?.pose ?? null;
+
+  // Resolve the user VRM blob when selected (restore path or manual switch).
+  useEffect(() => {
+    if (vrmId !== USER_VRM_ID || userVrmBlob) return;
+    let cancelled = false;
+    getUserVrm().then((record) => {
+      if (cancelled) return;
+      if (record) {
+        setUserVrmBlob(record.blob);
+      }
+      else {
+        setNotice(t('poseVrmUserMissing'));
+        setVrmId(DEFAULT_VRM_ID);
+      }
+    }).catch(() => {
+      if (cancelled) return;
+      setNotice(t('poseVrmUserMissing'));
+      setVrmId(DEFAULT_VRM_ID);
+    });
+    return () => { cancelled = true; };
+  }, [vrmId, userVrmBlob]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const runGenerate = useCallback(() => {
+    const png = sketchRef.current?.exportPng() ?? null;
+    if (!png) {
+      setError({ message: t('poseSketchEmpty'), keyAction: false });
+      return;
+    }
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setError(null);
+    setNotice(null);
+    setGenerating(true);
+    generatePose(png, hint, controller.signal)
+      .then((generated) => {
+        onReferenceChange((s) => {
+          s.setReferenceInfo({
+            source: 'pose',
+            title: hint.trim() || t('pose'),
+            author: '',
+            vrmId,
+            pose: generated,
+            hint: hint.trim() || undefined,
+          });
+        });
+      })
+      .catch((e: unknown) => {
+        if (isAbortError(e)) return;
+        if (e instanceof PoseParseError) {
+          setError({ message: t('posePoseParseError'), keyAction: false });
+          return;
+        }
+        const key = mapAnthropicErrorKey(e);
+        setError({ message: t(key), keyAction: isAnthropicAuthError(e) });
+      })
+      .finally(() => {
+        if (abortRef.current === controller) setGenerating(false);
+      });
+  }, [hint, vrmId, onReferenceChange]);
+
+  const handleGenerate = useCallback(() => {
+    if (getAnthropicApiKey() === '') {
+      pendingGenerateRef.current = true;
+      onRequestApiKey();
+      return;
+    }
+    runGenerate();
+  }, [onRequestApiKey, runGenerate]);
+
+  // Finish a pending generate after the key dialog saved a key.
+  const prevKeyVersionRef = useRef(apiKeyVersion);
+  useEffect(() => {
+    if (prevKeyVersionRef.current === apiKeyVersion) return;
+    prevKeyVersionRef.current = apiKeyVersion;
+    if (!pendingGenerateRef.current) return;
+    pendingGenerateRef.current = false;
+    if (getAnthropicApiKey() !== '') runGenerate();
+  }, [apiKeyVersion, runGenerate]);
+
+  const handleLoadVrmFile = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.vrm';
+    input.onchange = () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      setNotice(null);
+      setError(null);
+      saveUserVrm(file)
+        .catch((e: unknown) => {
+          // Persisting is best-effort (storage may be full); still preview it.
+          if (e instanceof VrmTooLargeError) {
+            setError({ message: t('poseVrmTooLarge'), keyAction: false });
+            throw e;
+          }
+        })
+        .then(() => {
+          setUserVrmBlob(file);
+          setVrmLoadFailed(false);
+          setVrmId(USER_VRM_ID);
+        })
+        .catch(() => { /* size error already surfaced */ });
+    };
+    input.click();
+  }, []);
+
+  const handleVrmChoice = useCallback((_: unknown, value: string | null) => {
+    if (!value) return;
+    setVrmLoadFailed(false);
+    setVrmId(value);
+  }, []);
+
+  const handleViewerReady = useCallback(() => {
+    setVrmLoadFailed(false);
+    onViewerReadyChange?.(true);
+  }, [onViewerReadyChange]);
+
+  const handleViewerLoadError = useCallback(() => {
+    setVrmLoadFailed(true);
+    onViewerReadyChange?.(false);
+  }, [onViewerReadyChange]);
+
+  useImperativeHandle(actionsRef, () => ({
+    fixAngle: () => {
+      const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
+      if (!screenshot) return;
+      onReferenceChange((s) => {
+        s.setFixedImageUrl(screenshot);
+        s.setLocalImageUrl(null);
+        s.setReferenceInfo({
+          source: 'pose',
+          title: (poseInfo?.hint ?? hint).trim() || t('pose'),
+          author: '',
+          vrmId,
+          pose: pose ?? undefined,
+          hint: poseInfo?.hint ?? (hint.trim() || undefined),
+          imageUrl: screenshot,
+        });
+        s.setReferenceMode('fixed');
+      });
+    },
+  }), [onReferenceChange, poseInfo, hint, vrmId, pose]);
+
+  const vrmSource: PoseVrmSource = vrmId === USER_VRM_ID && userVrmBlob
+    ? { kind: 'user', blob: userVrmBlob }
+    : { kind: 'bundled', vrmId: vrmId === USER_VRM_ID ? DEFAULT_VRM_ID : vrmId };
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Controls */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, p: 1, alignItems: 'flex-start' }}>
+        <PoseSketchPad ref={sketchRef} displaySize={SKETCH_DISPLAY_SIZE} />
+        <Box sx={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <TextField
+            size="small"
+            label={t('poseHintLabel')}
+            placeholder={t('poseHintPlaceholder')}
+            value={hint}
+            onChange={e => setHint(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !generating) handleGenerate(); }}
+            fullWidth
+          />
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              size="small"
+              variant="contained"
+              onClick={handleGenerate}
+              disabled={generating}
+              startIcon={generating ? <CircularProgress size={14} color="inherit" /> : undefined}
+            >
+              {generating ? t('poseGenerating') : t('poseGenerate')}
+            </Button>
+            <ToggleButtonGroup
+              size="small"
+              exclusive
+              value={vrmId}
+              onChange={handleVrmChoice}
+            >
+              <ToggleButton value={DEFAULT_VRM_ID}>{t('poseModelBundled')}</ToggleButton>
+              <ToggleButton value={USER_VRM_ID} disabled={!userVrmBlob && vrmId !== USER_VRM_ID}>
+                {t('poseModelUser')}
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button size="small" variant="outlined" onClick={handleLoadVrmFile}>
+              {t('poseLoadVrm')}
+            </Button>
+          </Box>
+          {error && (
+            <Alert
+              severity="error"
+              action={error.keyAction
+                ? <Button color="inherit" size="small" onClick={onRequestApiKey}>{t('pexelsApiKeySettings')}</Button>
+                : undefined}
+            >
+              {error.message}
+            </Alert>
+          )}
+          {notice && <Alert severity="info" onClose={() => setNotice(null)}>{notice}</Alert>}
+        </Box>
+      </Box>
+
+      {/* 3D viewer — free orbit, independent from the shared camera. */}
+      <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        {vrmLoadFailed
+          ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 1, p: 2 }}>
+                <Alert severity="error">{t('poseVrmLoadFailed')}</Alert>
+                <Button size="small" variant="outlined" onClick={() => { setVrmLoadFailed(false); setVrmRetryToken(v => v + 1); }}>
+                  {t('poseRetry')}
+                </Button>
+              </Box>
+            )
+          : (
+              <PoseViewer
+                key={vrmRetryToken}
+                pose={pose}
+                vrmSource={vrmSource}
+                onReady={handleViewerReady}
+                onLoadError={handleViewerLoadError}
+                actionsRef={viewerActionsRef}
+              />
+            )}
+      </Box>
+    </Box>
+  );
+}

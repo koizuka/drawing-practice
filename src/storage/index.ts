@@ -3,6 +3,7 @@ export { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory } fr
 export type { AddUrlHistoryOptions } from './urlHistoryStore';
 export { addPexelsSearchHistory, getPexelsSearchHistory, deletePexelsSearchHistory } from './pexelsSearchHistoryStore';
 export { addSketchfabSearchHistory, getSketchfabSearchHistory, deleteSketchfabSearchHistory } from './sketchfabSearchHistoryStore';
+export { saveUserVrm, getUserVrm, deleteUserVrm, VrmTooLargeError, MAX_USER_VRM_BYTES } from './poseAssetStore';
 export { computeStorageUsage, formatBytes } from './storageUsage';
 export type { StorageUsage } from './storageUsage';
-export type { DrawingRecord, UrlHistoryEntry, UrlHistoryType, PexelsSearchHistoryEntry, SketchfabSearchHistoryEntry } from './db';
+export type { DrawingRecord, UrlHistoryEntry, UrlHistoryType, PexelsSearchHistoryEntry, SketchfabSearchHistoryEntry, PoseAssetRecord } from './db';

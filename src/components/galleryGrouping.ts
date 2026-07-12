@@ -49,6 +49,8 @@ export function canLoadReference(ref: ReferenceInfo | undefined): boolean {
   // Trace templates are bundled, so a recorded templateId always resolves —
   // no urlHistory or remote dependency that could be evicted.
   if (ref.source === 'trace-template' && ref.templateId) return true;
+  // Pose references restore the Fix-Angle screenshot stored on the record.
+  if (ref.source === 'pose' && ref.imageUrl) return true;
   return false;
 }
 
@@ -64,6 +66,7 @@ export function syncThumbUrl(ref: ReferenceInfo): string | null {
     case 'pexels': return ref.pexelsImageUrl;
     case 'image': return null;
     case 'trace-template': return null;
+    case 'pose': return ref.imageUrl ?? null;
   }
 }
 

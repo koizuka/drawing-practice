@@ -16,7 +16,7 @@ export type FitLeader = 'reference' | 'drawing';
  */
 export function computeFitLeader(source: ReferenceSource, referenceMode: ReferenceMode): FitLeader {
   if (source === 'youtube') return 'reference';
-  if (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab' || source === 'trace-template')) {
+  if (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab' || source === 'trace-template' || source === 'pose')) {
     return 'reference';
   }
   return 'drawing';

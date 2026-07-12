@@ -1,4 +1,6 @@
-export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels' | 'trace-template';
+import type { PoseJson } from './pose/poseTypes';
+
+export type ReferenceSource = 'none' | 'sketchfab' | 'image' | 'url' | 'youtube' | 'pexels' | 'trace-template' | 'pose';
 export type ReferenceMode = 'browse' | 'fixed';
 
 interface ReferenceInfoBase {
@@ -48,6 +50,17 @@ export type ReferenceInfo
     source: 'trace-template';
     /** Bundled templates: 'bundle:<slug>'. External SVG support is future work. */
     templateId: string;
+  })
+  | (ReferenceInfoBase & {
+    source: 'pose';
+    /** Bundled registry key (see BUNDLED_VRMS) or 'user' for a user-loaded .vrm. */
+    vrmId: string;
+    /** Screenshot data URL captured by "Fix This Angle". */
+    imageUrl?: string;
+    /** LLM-generated pose applied to the mannequin. */
+    pose?: PoseJson;
+    /** User's one-line hint that accompanied the stick-figure sketch. */
+    hint?: string;
   });
 
 /**
@@ -65,5 +78,6 @@ export function referenceKey(info: ReferenceInfo): string {
     case 'youtube': return `youtube:${info.youtubeVideoId}`;
     case 'pexels': return `pexels:${info.pexelsPhotoId}`;
     case 'trace-template': return `trace-template:${info.templateId}`;
+    case 'pose': return `pose:${info.vrmId}`;
   }
 }

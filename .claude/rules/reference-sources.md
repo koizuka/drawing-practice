@@ -10,11 +10,16 @@ paths:
   - "src/utils/sketchfab.ts"
   - "src/utils/pexels.ts"
   - "src/utils/youtube.ts"
+  - "src/utils/anthropic.ts"
+  - "src/components/PoseSourcePanel.tsx"
+  - "src/components/PoseViewer.tsx"
+  - "src/components/PoseSketchPad.tsx"
+  - "src/pose/**"
 ---
 
 # Reference source rules
 
-Reference sources: Sketchfab 3D model, local image file, URL (auto-routed), YouTube video, Pexels photo, bundled trace template (curve-tracing practice with scoring — see also `trace-template.md`).
+Reference sources: Sketchfab 3D model, local image file, URL (auto-routed), YouTube video, Pexels photo, bundled trace template (curve-tracing practice with scoring — see also `trace-template.md`), pose mannequin (stick-figure → Claude → posed VRM).
 
 ## ReferencePanel
 
@@ -80,3 +85,11 @@ Bundled curve practice. `browse` mode shows `BundledTemplatePicker` (5 templates
 **Gallery integration.** `canLoadReference` returns true for trace-template (bundled IDs never get evicted), and `handleLoadReference` has a trace-template branch mirroring `handleSelectTraceTemplate`. So "Use this reference" on a gallery record drawn with a trace template restores the active template + fixed mode.
 
 **Scoring + replace-vs-undo semantics** live in `trace-template.md` — read that for the attempt-map design, the live-vs-lifetime stats split, and why rejected attempts must use `StrokeManager.discardLastStroke()` instead of `deleteStroke()`.
+
+## Pose mannequin (`source: 'pose'`)
+
+Browse mode = `PoseSourcePanel` (lazy chunk carrying three.js + @pixiv/three-vrm — keep it lazy): stick-figure `PoseSketchPad` (private StrokeManager, fixed 512² logical space, no ViewTransform) + hint field + Generate + bundled/user VRM toggle + free-orbit `PoseViewer`. Generation calls `generatePose` in `src/utils/anthropic.ts` (BYOK raw-fetch funnel, `localStorage['anthropicApiKey']`, `anthropic-dangerous-direct-browser-access` header — same pattern as pexels.ts) and writes the sanitized `PoseJson` into `referenceInfo` via `onReferenceChange` (= one undo entry). Errors stay inline (`Alert`); key-missing opens `AnthropicApiKeyDialog` with a pending-generate resume keyed off `apiKeyVersion`.
+
+**Browse never touches the shared ViewTransform** (Sketchfab-browse style — the drawing panel is fit leader; no grid over the 3D view). "Fix This Angle" captures a PNG from the WebGL canvas (render right before `toDataURL`; no preserveDrawingBuffer) and rides the standard fixed path: `fixedImageUrl` + `referenceInfo.imageUrl` + mode 'fixed' → ImageViewer (grid-synced). Autosave stores the screenshot in `referenceImageData` (same branch as sketchfab); browse restore re-applies `referenceInfo.pose` through PoseViewer's `pose` prop. Sketch strokes and the 3D orbit camera are deliberately NOT persisted — the pose JSON and the fixed screenshot are the artifacts. No urlHistory entry (like trace-template); gallery "Use this reference" restores fixed mode from `imageUrl`.
+
+**Pose domain invariant**: `src/pose/posePrompt.ts` (schema + viewer-relative turn convention + natural-pose bias), `poseTypes.ts` (`parsePoseJson` sanitizer), and `poseMapping.ts` (joint application) must stay in sync. `poseMapping` pins the upper-arm twist with a full-basis rotation so the elbow fold plane faces the anatomically natural direction, and `elbowDirection` is interpreted as a WORLD direction projected onto the elbow hinge — don't revert to shortest-arc `setFromUnitVectors`, it leaves the twist arbitrary and sends forearms in unrelated directions. `TOUCH_PRESETS` values were tuned visually against this basis. User VRM = single `poseAssets` record ('userVrm', 50MB cap); load failure falls back to the bundled model with a notice, never `onReferenceResetOnError` (sketch/hint must survive a retry).

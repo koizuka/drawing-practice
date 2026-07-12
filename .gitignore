@@ -26,3 +26,6 @@ dist-ssr
 
 # Claude Code local state
 .claude/scheduled_tasks.lock
+
+# Phase-0 pose spike (local verification artifacts, ~12MB; results captured in PR/docs)
+/spike/
