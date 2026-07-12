@@ -155,13 +155,15 @@ function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
     side * (leg.spread ?? 0) * DEG,
     'XZY',
   );
-  // Default 'XYZ' order applies Y before X, so shinTwist is a pure twist
-  // about the shin's own bone axis (tibial rotation carried through the
-  // bend) — it reorients the foot without moving the shin's direction.
+  // 'XYZ' applies Y before X, so shinTwist is a pure twist about the shin's
+  // own bone axis (tibial rotation carried through the bend) — it reorients
+  // the foot without moving the shin's direction. Explicit order: the
+  // kinematics depend on it, so don't rely on the Euler default.
   resolve(`${sideName}LowerLeg`)?.rotation.set(
     (leg.kneeBend ?? 0) * DEG,
     side * (leg.shinTwist ?? 0) * DEG,
     0,
+    'XYZ',
   );
   // Positive X on the foot bone plantar-flexes (toes down); ankle is defined
   // as + = dorsiflexion (toes toward the shin), hence the sign flip.

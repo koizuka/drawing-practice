@@ -213,18 +213,21 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
   // Debug-level so pose tuning can inspect the model's analysis + JSON from
   // the console (Safari Web Inspector) without noisy default output.
   console.debug('[pose] model reply:', text);
-  // Cut off before (or mid-) JSON: without this check the failure surfaces
-  // as an unhelpful parse error. stop_reason is checked before parsing so
-  // the user sees the actual cause (budget exhausted, incl. thinking).
-  if (data.stop_reason === 'max_tokens') {
-    console.error('[pose] reply truncated by max_tokens:', data);
-    throw new AnthropicTruncatedError('stop_reason: max_tokens');
-  }
+  // Parse FIRST: stop_reason 'max_tokens' can also fire after the pose JSON
+  // was fully emitted (budget ran out on trailing text) — those replies are
+  // usable and must not be rejected. Only when no pose can be extracted does
+  // the stop reason explain the failure (cut off before/mid-JSON, e.g. by
+  // thinking consuming the budget) — report that instead of a parse error.
+  let pose: PoseJson;
   try {
-    return parsePoseJson(text);
+    pose = parsePoseJson(text);
   }
   catch (e) {
     if (e instanceof PoseParseError) {
+      if (data.stop_reason === 'max_tokens') {
+        console.error('[pose] reply truncated by max_tokens:', data);
+        throw new AnthropicTruncatedError('stop_reason: max_tokens');
+      }
       // Surface the raw reply so on-device failures can be diagnosed from
       // the console without extra instrumentation. `text` alone can be ''
       // (no text block at all — e.g. an empty/refused completion), so log
@@ -233,4 +236,11 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
     }
     throw e;
   }
+  // A truncated reply can still "parse" into an empty pose (the scanner
+  // finds a stray complete {...} in the prose) — treat that as truncation.
+  if (data.stop_reason === 'max_tokens' && Object.keys(pose).length === 0) {
+    console.error('[pose] reply truncated by max_tokens:', data);
+    throw new AnthropicTruncatedError('stop_reason: max_tokens');
+  }
+  return pose;
 }

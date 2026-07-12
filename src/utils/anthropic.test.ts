@@ -144,6 +144,33 @@ describe('generatePose', () => {
     expect(anthropicErrorDetail(err)).toBe('max_tokens: must be positive');
   });
 
+  it('returns the pose when max_tokens hit AFTER a complete pose JSON', async () => {
+    setAnthropicApiKey('sk-test');
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        content: [{ type: 'text', text: 'Analysis…\n{"leftArm":{"raise":90}}' }],
+        stop_reason: 'max_tokens',
+      }),
+      { status: 200 },
+    ));
+    await expect(generatePose('AAAA', '')).resolves.toEqual({ leftArm: { raise: 90 } });
+  });
+
+  it('treats an empty parsed pose under max_tokens as truncation', async () => {
+    setAnthropicApiKey('sk-test');
+    // The reply was cut mid-JSON but the prose contained a stray complete
+    // object — parsing "succeeds" with an empty pose, which must not pass.
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        content: [{ type: 'text', text: 'The figure {as drawn} sits…\n{"body":{"crouch":1},"leftLeg":{"forw' }],
+        stop_reason: 'max_tokens',
+      }),
+      { status: 200 },
+    ));
+    const err = await generatePose('AAAA', '').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AnthropicTruncatedError);
+  });
+
   it('throws AnthropicTruncatedError when stop_reason is max_tokens (instead of a parse error)', async () => {
     setAnthropicApiKey('sk-test');
     // Thinking consumed the whole budget: HTTP 200 but no usable text block.
