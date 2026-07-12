@@ -48,12 +48,23 @@ const SIDE_SIGN: Record<Side, 1 | -1> = { left: 1, right: -1 };
 const FRONT = new Vector3(0, 0, 1);
 const UP = new Vector3(0, 1, 0);
 
-const ELBOW_WORLD_DIR: Record<ElbowDirection, Vector3> = {
+const ELBOW_WORLD_DIR: Record<Exclude<ElbowDirection, 'in' | 'out'>, Vector3> = {
   front: new Vector3(0, 0, 1),
   back: new Vector3(0, 0, -1),
   up: new Vector3(0, 1, 0),
   down: new Vector3(0, -1, 0),
 };
+
+/**
+ * World direction the forearm should fold toward. 'in' / 'out' are
+ * side-dependent (medial = toward the body's midline, lateral = away) —
+ * the model's left is +X, so left-arm 'in' points -X and right-arm 'in' +X.
+ */
+function elbowWorldDir(dir: ElbowDirection, side: 1 | -1): Vector3 {
+  if (dir === 'in') return new Vector3(-side, 0, 0);
+  if (dir === 'out') return new Vector3(side, 0, 0);
+  return ELBOW_WORLD_DIR[dir];
+}
 
 /**
  * Direction the forearm should fold toward for elbowDirection 'front', given
@@ -103,7 +114,7 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
       // wording, e.g. 'down' = the forearm hangs down from a raised upper
       // arm). Convert it into the upper arm's local space and fold the
       // forearm toward it, so the meaning holds for any arm orientation.
-      const world = ELBOW_WORLD_DIR[a.elbowDirection ?? 'front'];
+      const world = elbowWorldDir(a.elbowDirection ?? 'front', side);
       const upperQuat = upper ? upper.quaternion : new Quaternion();
       const e1 = new Vector3(side, 0, 0); // forearm rest direction (local)
       const target = world.clone().applyQuaternion(upperQuat.clone().invert());
@@ -139,15 +150,17 @@ function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
 }
 
 /**
- * Deep crouch implies bent legs: keep feet plausibly grounded even if the
- * model under-reported the leg angles.
+ * Deep crouch implies bent legs: fill in leg angles the model OMITTED so the
+ * feet stay plausibly grounded. Explicit values are respected as-is — e.g.
+ * knee-hug sitting legitimately uses a shallower kneeBend than a squat, and
+ * forcing a floor over an explicit value bent the knees visibly too far.
  */
 function withCrouchFloor(leg: LegPose, crouch: number): LegPose {
   if (crouch <= 0.3) return leg;
   return {
     ...leg,
-    forward: Math.max(leg.forward ?? 0, crouch * 90),
-    kneeBend: Math.max(leg.kneeBend ?? 0, crouch * 130),
+    forward: leg.forward ?? crouch * 90,
+    kneeBend: leg.kneeBend ?? crouch * 130,
   };
 }
 

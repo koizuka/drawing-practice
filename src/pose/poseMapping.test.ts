@@ -116,6 +116,31 @@ describe('applyPose', () => {
       .toEqual(bones.get('leftUpperArm')!.quaternion.toArray());
   });
 
+  it('elbowDirection "in" folds the forearm toward the midline on both sides', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    const arm = { raise: 50, forward: 80, elbowBend: 90, elbowDirection: 'in' as const };
+    applyPose(resolve, resetPose, { leftArm: arm, rightArm: arm });
+    // World forearm direction = upper ∘ lower applied to the forearm rest
+    // direction (side, 0, 0). Medial means -X for the left arm, +X for the
+    // right (model's left is +X).
+    const forearmWorld = (side: 'left' | 'right', sign: number) => new Vector3(sign, 0, 0)
+      .applyQuaternion(bones.get(`${side}LowerArm` as const)!.quaternion)
+      .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
+    expect(forearmWorld('left', 1).x).toBeLessThan(-0.3);
+    expect(forearmWorld('right', -1).x).toBeGreaterThan(0.3);
+  });
+
+  it('respects an explicit shallow kneeBend under deep crouch (knee-hug sitting)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      body: { crouch: 1 },
+      leftLeg: { forward: 115, kneeBend: 115 },
+    });
+    // The crouch floor only fills in OMITTED values — an explicit 115 must
+    // not be forced up to crouch*130.
+    expect(bones.get('leftLowerLeg')!.rotation.x).toBeCloseTo(115 * DEG);
+  });
+
   it('maps leg forward/spread/kneeBend to hip and knee rotations', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, { leftLeg: { forward: 90, spread: 20, kneeBend: 45 } });

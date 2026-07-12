@@ -33,6 +33,12 @@ describe('parsePoseJson', () => {
     expect(pose.rightLeg?.rotation).toBe(-30);
   });
 
+  it('accepts the in/out elbow directions', () => {
+    const pose = parsePoseJson('{"leftArm":{"elbowBend":90,"elbowDirection":"in"},"rightArm":{"elbowBend":90,"elbowDirection":"out"}}');
+    expect(pose.leftArm?.elbowDirection).toBe('in');
+    expect(pose.rightArm?.elbowDirection).toBe('out');
+  });
+
   it('accepts touch presets', () => {
     const pose = parsePoseJson('{"rightArm":{"touch":"hip"}}');
     expect(pose.rightArm).toEqual({ touch: 'hip' });

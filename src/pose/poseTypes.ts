@@ -5,7 +5,7 @@
  * files must stay in sync.
  */
 
-export const ELBOW_DIRECTIONS = ['front', 'down', 'up', 'back'] as const;
+export const ELBOW_DIRECTIONS = ['front', 'down', 'up', 'back', 'in', 'out'] as const;
 export type ElbowDirection = (typeof ELBOW_DIRECTIONS)[number];
 
 export const TOUCH_TARGETS = ['hip', 'head', 'chest'] as const;
