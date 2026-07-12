@@ -38,6 +38,7 @@ import type { ReferenceInfo } from '../types';
 import { t } from '../i18n';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { resetPageZoom } from '../utils/resetPageZoom';
+import { isSubmitEnter } from '../utils/imeSafeEnter';
 
 /** Config payload for starting a gesture-drawing session from the search
  *  results. The parent shuffles + drives the session via useGestureSession. */
@@ -340,7 +341,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
               size="small"
               placeholder={t('pexelsSearchPlaceholder')}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing && query.trim()) {
+                if (isSubmitEnter(e) && query.trim()) {
                   e.preventDefault();
                   void runSearch(query, orientation);
                 }

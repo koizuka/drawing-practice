@@ -103,6 +103,25 @@ describe('PexelsSearcher search error feedback', () => {
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 
+  it('does not run a search on an IME composition Enter', async () => {
+    const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
+    );
+
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
+    await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
+
+    const input = screen.getByRole('combobox');
+    fireEvent.change(input, { target: { value: 'ポーズ' } });
+    // Enter while composing (typical Chrome/Firefox ordering).
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    // Safari ordering: compositionend already delivered (isComposing false) but keyCode is 229.
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+
+    await waitFor(() => expect(screen.queryByRole('progressbar')).not.toBeInTheDocument());
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it('does not surface an Alert when fetch succeeds', async () => {
     const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
