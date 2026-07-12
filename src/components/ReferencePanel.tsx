@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
 import { Box, Button, CircularProgress, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound, Spline } from 'lucide-react';
+import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound, Spline, PersonStanding } from 'lucide-react';
 import type { SketchfabActions, SketchfabFixAngleExtras, SketchfabModelMeta } from './SketchfabViewer';
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer';
 import { TraceTemplateViewer } from './TraceTemplateViewer';
@@ -12,12 +12,16 @@ import type { TraceFeedback } from '../trace/types';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer';
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog';
+import { AnthropicApiKeyDialog } from './AnthropicApiKeyDialog';
 import { LazyErrorBoundary } from './LazyErrorBoundary';
+import type { PoseSourceActions } from './PoseSourcePanel';
 
 // Heavy on-demand panels — only mounted when the user picks the matching
 // reference source. Splitting them out keeps them off the initial bundle.
 const SketchfabViewer = lazy(() => import('./SketchfabViewer').then(m => ({ default: m.SketchfabViewer })));
 const PexelsSearcher = lazy(() => import('./PexelsSearcher').then(m => ({ default: m.PexelsSearcher })));
+// Pulls in three.js + @pixiv/three-vrm — must stay a lazy chunk.
+const PoseSourcePanel = lazy(() => import('./PoseSourcePanel'));
 
 function LazyPanelFallback() {
   return (
@@ -413,6 +417,13 @@ export function ReferencePanel({
   // an exit the user has no way off the screen.)
   const pendingPexelsRecoveryRef = useRef(false);
 
+  // Anthropic (pose generation) API key dialog state. The pending-generate
+  // handling lives inside PoseSourcePanel, keyed off anthropicKeyVersion.
+  const [anthropicKeyDialogOpen, setAnthropicKeyDialogOpen] = useState(false);
+  const [anthropicKeyVersion, setAnthropicKeyVersion] = useState(0);
+  const poseActionsRef = useRef<PoseSourceActions | null>(null);
+  const [poseViewerReady, setPoseViewerReady] = useState(false);
+
   // Per-URL-history-entry Pexels search context restore. Bumping `token`
   // remounts PexelsSearcher with the entry's saved query+orientation so
   // "back to search" returns to the search that originally produced this
@@ -471,6 +482,13 @@ export function ReferencePanel({
     setPrevYoutubeKey(nextYoutubeKey);
     setYoutubeVideoInteractMode(false);
     setYoutubePlaying(false);
+  }
+
+  // Leaving the pose source unmounts PoseSourcePanel without a ready=false
+  // callback; reset during render (same pattern as the YouTube state above)
+  // so re-entering doesn't show "Fix This Angle" before the viewer loads.
+  if (source !== 'pose' && poseViewerReady) {
+    setPoseViewerReady(false);
   }
 
   const handleLoadLocalImage = useCallback(() => {
@@ -940,8 +958,33 @@ export function ReferencePanel({
       s.setReferenceInfo(null);
     });
   }, [onReferenceChange]);
+
+  const handleOpenPose = useCallback(() => {
+    // Unlike Pexels, entering without an API key is fine — the user can
+    // sketch first; generation prompts for the key when actually needed.
+    onReferenceChange((s) => {
+      s.setSource('pose');
+      s.setReferenceMode('browse');
+      s.setFixedImageUrl(null);
+      s.setLocalImageUrl(null);
+      s.setReferenceInfo(null);
+    });
+  }, [onReferenceChange]);
+
+  const handlePoseChangeAngle = useCallback(() => {
+    onReferenceChange((s) => {
+      s.setReferenceMode('browse');
+      s.setFixedImageUrl(null);
+    });
+  }, [onReferenceChange]);
+
+  const handleRequestAnthropicKey = useCallback(() => {
+    setAnthropicKeyDialogOpen(true);
+  }, []);
   // Sketchfab browse mode: either searching or viewing a model
   const isSfBrowse = source === 'sketchfab' && referenceMode === 'browse';
+  const isPoseBrowse = source === 'pose' && referenceMode === 'browse';
+  const poseInfo = refInfo?.source === 'pose' ? refInfo : null;
   const isYouTube = source === 'youtube';
   // Canvas-bound tools are hidden while the overlay is transparent — they
   // have nothing to act on in that mode.
@@ -1009,6 +1052,25 @@ export function ReferencePanel({
         {isFixed && source === 'pexels' && (
           <Button size="small" variant="outlined" onClick={handleBackToPexelsSearch}>
             {t('pexelsBackToSearch')}
+          </Button>
+        )}
+
+        {/* Pose browse: title + Fix This Angle */}
+        {isPoseBrowse && (
+          <Typography variant="subtitle2" color="text.secondary" noWrap sx={{ ml: 0.5 }}>
+            {t('pose')}
+          </Typography>
+        )}
+        {isPoseBrowse && poseViewerReady && (
+          <Button size="small" variant="contained" color="success" onClick={() => poseActionsRef.current?.fixAngle()}>
+            {t('fixThisAngle')}
+          </Button>
+        )}
+
+        {/* Fixed mode: Change Angle (pose) */}
+        {isFixed && source === 'pose' && (
+          <Button size="small" variant="outlined" onClick={handlePoseChangeAngle}>
+            {t('changeAngle')}
           </Button>
         )}
 
@@ -1306,6 +1368,30 @@ export function ReferencePanel({
                     </Typography>
                   </Box>
                 </Button>
+                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'stretch' }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={handleOpenPose}
+                    startIcon={<PersonStanding size={20} />}
+                    sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
+                  >
+                    <Box sx={{ textAlign: 'left' }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('pose')}</Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                        {t('poseDescription')}
+                      </Typography>
+                    </Box>
+                  </Button>
+                  <ToolbarTooltip title={t('anthropicApiKeyTitle')}>
+                    <IconButton
+                      onClick={() => setAnthropicKeyDialogOpen(true)}
+                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
+                    >
+                      <KeyRound size={18} />
+                    </IconButton>
+                  </ToolbarTooltip>
+                </Box>
               </Box>
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>
                 <Typography variant="caption" color="text.secondary">{t('urlSectionLabel')}</Typography>
@@ -1595,6 +1681,27 @@ export function ReferencePanel({
           </Box>
         )}
 
+        {/* Pose mannequin panel — kept mounted while source is 'pose' so the
+            generated pose, sketch, and orbit camera survive fixed ↔ browse
+            transitions ("Change Angle"), same as the Pexels searcher. */}
+        {source === 'pose' && (
+          <Box sx={{ height: '100%', display: referenceMode === 'browse' ? 'block' : 'none' }}>
+            <LazyErrorBoundary>
+              <Suspense fallback={<LazyPanelFallback />}>
+                <PoseSourcePanel
+                  poseInfo={poseInfo}
+                  onReferenceChange={onReferenceChange}
+                  onRequestApiKey={handleRequestAnthropicKey}
+                  apiKeyVersion={anthropicKeyVersion}
+                  active={referenceMode === 'browse'}
+                  actionsRef={poseActionsRef}
+                  onViewerReadyChange={setPoseViewerReady}
+                />
+              </Suspense>
+            </LazyErrorBoundary>
+          </Box>
+        )}
+
         {/* YouTube viewer */}
         {refInfo?.source === 'youtube' && (
           <YouTubeViewer
@@ -1681,6 +1788,18 @@ export function ReferencePanel({
           />
         )}
       </Box>
+
+      <AnthropicApiKeyDialog
+        open={anthropicKeyDialogOpen}
+        onClose={() => {
+          setAnthropicKeyDialogOpen(false);
+          // Bump on EVERY close (save, clear, or cancel) — PoseSourcePanel
+          // resolves its pending-generate intent on this signal, and a
+          // cancelled dialog must clear the intent rather than leave it armed
+          // for a later unrelated key save.
+          setAnthropicKeyVersion(v => v + 1);
+        }}
+      />
 
       <PexelsApiKeyDialog
         open={pexelsKeyDialogOpen}

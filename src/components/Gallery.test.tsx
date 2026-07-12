@@ -14,6 +14,7 @@ vi.mock('../storage', () => ({
   computeStorageUsage: () => Promise.resolve({
     drawings: { strokes: 0, thumbnails: 0, sketchfabImages: 0 },
     urlHistoryImageBytes: 0,
+    poseAssetsBytes: 0,
     sessionBytes: 0,
     estimateUsage: null,
     estimateQuota: null,

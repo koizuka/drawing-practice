@@ -123,12 +123,21 @@ const basePath = import.meta.env.BASE_URL ?? '/';
 const isMainDeployment = basePath === '/' || basePath === '/drawing-practice/';
 const dbName = isMainDeployment ? DB_BASE_NAME : `${PR_DB_PREFIX}${basePath}`;
 
+export interface PoseAssetRecord {
+  /** Single-record table: always 'userVrm' (latest user-loaded model only). */
+  id: string;
+  blob: Blob;
+  fileName: string;
+  updatedAt: Date;
+}
+
 const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>;
   session: EntityTable<SessionDraft, 'id'>;
   urlHistory: EntityTable<UrlHistoryEntry, 'url'>;
   pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>;
   sketchfabSearchHistory: EntityTable<SketchfabSearchHistoryEntry, 'key'>;
+  poseAssets: EntityTable<PoseAssetRecord, 'id'>;
 };
 
 db.version(1).stores({
@@ -246,6 +255,19 @@ db.version(14).stores({
   urlHistory: 'url, lastUsedAt',
   pexelsSearchHistory: 'key, lastUsedAt',
   sketchfabSearchHistory: 'key, lastUsedAt',
+});
+
+// v15: adds the poseAssets table (user-loaded VRM mannequin Blob, single
+// 'userVrm' record) and anchors the additive 'pose' ReferenceInfo variant
+// (vrmId / imageUrl / pose / hint) stored inside session.referenceInfo and
+// drawings.reference.
+db.version(15).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+  poseAssets: 'id',
 });
 
 export { db };

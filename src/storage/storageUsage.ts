@@ -10,6 +10,8 @@ export interface StorageUsage {
     pointCount: number;
   };
   urlHistoryImageBytes: number;
+  /** User-loaded VRM mannequin blob(s) in the poseAssets table. */
+  poseAssetsBytes: number;
   sessionBytes: number;
   estimateUsage: number | null;
   estimateQuota: number | null;
@@ -54,6 +56,14 @@ async function sumUrlHistoryImageBytes(): Promise<number> {
   return total;
 }
 
+async function sumPoseAssetsBytes(): Promise<number> {
+  let total = 0;
+  await db.poseAssets.each((e) => {
+    total += e.blob.size;
+  });
+  return total;
+}
+
 async function getSessionBytes(): Promise<number> {
   const s = await db.session.get(1);
   return s ? jsonByteSize(s) : 0;
@@ -78,14 +88,16 @@ async function getStorageEstimate(): Promise<{ usage: number | null; quota: numb
  * users want to see.
  */
 export async function computeStorageUsage(drawings: readonly DrawingRecord[]): Promise<StorageUsage> {
-  const [urlHistoryImageBytes, sessionBytes, estimate] = await Promise.all([
+  const [urlHistoryImageBytes, poseAssetsBytes, sessionBytes, estimate] = await Promise.all([
     sumUrlHistoryImageBytes(),
+    sumPoseAssetsBytes(),
     getSessionBytes(),
     getStorageEstimate(),
   ]);
   return {
     drawings: computeDrawingsBreakdown(drawings),
     urlHistoryImageBytes,
+    poseAssetsBytes,
     sessionBytes,
     estimateUsage: estimate.usage,
     estimateQuota: estimate.quota,

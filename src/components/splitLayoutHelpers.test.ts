@@ -26,6 +26,11 @@ describe('computeFitLeader', () => {
     expect(computeFitLeader('trace-template', 'fixed')).toBe('reference');
     expect(computeFitLeader('trace-template', 'browse')).toBe('drawing');
   });
+
+  it('returns "reference" for pose in fixed mode (screenshot), "drawing" while orbiting the mannequin', () => {
+    expect(computeFitLeader('pose', 'fixed')).toBe('reference');
+    expect(computeFitLeader('pose', 'browse')).toBe('drawing');
+  });
 });
 
 describe('resolveDrawingFitSize', () => {

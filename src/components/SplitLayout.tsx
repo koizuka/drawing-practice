@@ -677,6 +677,16 @@ function SplitLayoutInner() {
         s.setLocalImageUrl(null);
         s.setReferenceInfo(info);
       }
+      else if (info.source === 'pose' && info.imageUrl) {
+        // Restore the Fix-Angle screenshot directly into fixed mode. The
+        // pose/hint on the record also revive the mannequin state, so
+        // "Change angle" drops back into browse with the pose applied.
+        s.setSource('pose');
+        s.setReferenceMode('fixed');
+        s.setFixedImageUrl(info.imageUrl);
+        s.setLocalImageUrl(null);
+        s.setReferenceInfo(info);
+      }
     });
 
     let historyAdd: Promise<void> | null = null;
@@ -722,7 +732,7 @@ function SplitLayoutInner() {
     referenceInfo,
     referenceImageData: (source === 'image' && localImageUrl)
       ? localImageUrl
-      : (source === 'sketchfab' && fixedImageUrl)
+      : ((source === 'sketchfab' || source === 'pose') && fixedImageUrl)
           ? fixedImageUrl
           : null,
     grid,
@@ -836,7 +846,10 @@ function SplitLayoutInner() {
           || draft.source === 'pexels'
           || draft.source === 'youtube'
           || draft.source === 'trace-template'
-          || (draft.source === 'sketchfab' && draft.referenceImageData !== null);
+          || (draft.source === 'sketchfab' && draft.referenceImageData !== null)
+          // Pose browse mounts the free-orbit 3D viewer (no size, no
+          // loadContent); only the fixed screenshot goes through ImageViewer.
+          || (draft.source === 'pose' && draft.referenceImageData !== null);
       const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
       const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
 
@@ -906,7 +919,7 @@ function SplitLayoutInner() {
           setLocalImageUrl(draft.referenceImageData);
           setReferenceMode('fixed');
         }
-        else if (draft.source === 'sketchfab' && draft.referenceImageData) {
+        else if ((draft.source === 'sketchfab' || draft.source === 'pose') && draft.referenceImageData) {
           setFixedImageUrl(draft.referenceImageData);
           setReferenceMode('fixed');
         }
