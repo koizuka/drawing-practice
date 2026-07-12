@@ -10,6 +10,7 @@ function makeRig() {
     'hips', 'spine', 'chest', 'head',
     'leftUpperArm', 'leftLowerArm', 'rightUpperArm', 'rightLowerArm',
     'leftUpperLeg', 'leftLowerLeg', 'rightUpperLeg', 'rightLowerLeg',
+    'leftFoot', 'rightFoot',
   ];
   for (const name of names) bones.set(name, new Object3D());
   const resolve: BoneResolver = name => bones.get(name) ?? null;
@@ -128,6 +129,16 @@ describe('applyPose', () => {
       .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
     expect(forearmWorld('left', 1).x).toBeLessThan(-0.3);
     expect(forearmWorld('right', -1).x).toBeGreaterThan(0.3);
+  });
+
+  it('maps ankle to a sign-flipped foot X rotation (+ = dorsiflexion)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { ankle: 20 },
+      rightLeg: { ankle: -30 },
+    });
+    expect(bones.get('leftFoot')!.rotation.x).toBeCloseTo(-20 * DEG);
+    expect(bones.get('rightFoot')!.rotation.x).toBeCloseTo(30 * DEG);
   });
 
   it('respects an explicit shallow kneeBend under deep crouch (knee-hug sitting)', () => {

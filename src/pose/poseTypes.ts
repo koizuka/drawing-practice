@@ -32,6 +32,8 @@ export interface LegPose {
   rotation?: number;
   /** 0 = straight, bends backward, up to 150. */
   kneeBend?: number;
+  /** Ankle flex relative to the shin. + = toes lift toward the shin (dorsiflexion), - = toes point away. */
+  ankle?: number;
 }
 
 export interface BodyPose {
@@ -105,6 +107,7 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
     spread: sanitizeNumber(l.spread, 0, 80),
     rotation: sanitizeNumber(l.rotation, -30, 90),
     kneeBend: sanitizeNumber(l.kneeBend, 0, 150),
+    ankle: sanitizeNumber(l.ankle, -60, 45),
   });
 }
 

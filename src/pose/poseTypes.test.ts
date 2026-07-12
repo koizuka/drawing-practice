@@ -33,6 +33,12 @@ describe('parsePoseJson', () => {
     expect(pose.rightLeg?.rotation).toBe(-30);
   });
 
+  it('clamps ankle to the flex range', () => {
+    const pose = parsePoseJson('{"leftLeg":{"ankle":80},"rightLeg":{"ankle":-90}}');
+    expect(pose.leftLeg?.ankle).toBe(45);
+    expect(pose.rightLeg?.ankle).toBe(-60);
+  });
+
   it('accepts the in/out elbow directions', () => {
     const pose = parsePoseJson('{"leftArm":{"elbowBend":90,"elbowDirection":"in"},"rightArm":{"elbowBend":90,"elbowDirection":"out"}}');
     expect(pose.leftArm?.elbowDirection).toBe('in');

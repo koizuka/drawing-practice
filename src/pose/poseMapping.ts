@@ -25,7 +25,8 @@ export interface PoseBoneLike {
 export type PoseBoneName
   = | 'hips' | 'spine' | 'chest' | 'head'
     | 'leftUpperArm' | 'leftLowerArm' | 'rightUpperArm' | 'rightLowerArm'
-    | 'leftUpperLeg' | 'leftLowerLeg' | 'rightUpperLeg' | 'rightLowerLeg';
+    | 'leftUpperLeg' | 'leftLowerLeg' | 'rightUpperLeg' | 'rightLowerLeg'
+    | 'leftFoot' | 'rightFoot';
 
 /** Resolves a humanoid bone; returns null for bones the model doesn't have. */
 export type BoneResolver = (name: PoseBoneName) => PoseBoneLike | null;
@@ -147,6 +148,9 @@ function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
     'XZY',
   );
   resolve(`${sideName}LowerLeg`)?.rotation.set((leg.kneeBend ?? 0) * DEG, 0, 0);
+  // Positive X on the foot bone plantar-flexes (toes down); ankle is defined
+  // as + = dorsiflexion (toes toward the shin), hence the sign flip.
+  resolve(`${sideName}Foot`)?.rotation.set(-(leg.ankle ?? 0) * DEG, 0, 0);
 }
 
 /**
