@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
 import { Alert, Box, Button, CircularProgress, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
 import { t } from '../i18n';
-import { referenceKey, type ReferenceInfo } from '../types';
+import type { ReferenceInfo } from '../types';
 import type { ReferenceSetters } from './ReferencePanel';
 import type { PoseJson } from '../pose/poseTypes';
 import { PoseParseError } from '../pose/poseTypes';
@@ -65,11 +65,13 @@ export default function PoseSourcePanel({
   // Re-seed hint/vrmId when poseInfo is swapped from the outside (undo/redo,
   // gallery load) — otherwise the hint field, model toggle, and Fix-Angle
   // metadata keep stale values. Render-time prev-comparison per React docs
-  // (same pattern as ReferencePanel's YouTube state reset).
-  const poseKey = poseInfo ? referenceKey(poseInfo) : null;
-  const [prevPoseKey, setPrevPoseKey] = useState(poseKey);
-  if (prevPoseKey !== poseKey) {
-    setPrevPoseKey(poseKey);
+  // (same pattern as ReferencePanel's YouTube state reset). Detect by object
+  // identity, NOT referenceKey — the key deliberately excludes hint (and
+  // imageUrl), so two infos differing only there would be missed, while every
+  // external swap necessarily supplies a different object.
+  const [prevPoseInfo, setPrevPoseInfo] = useState(poseInfo);
+  if (prevPoseInfo !== poseInfo) {
+    setPrevPoseInfo(poseInfo);
     if (poseInfo) {
       setHint(poseInfo.hint ?? '');
       setVrmId(poseInfo.vrmId);
@@ -220,9 +222,11 @@ export default function PoseSourcePanel({
       const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
       if (!screenshot) return;
       // Fixing commits to the CURRENT view: cancel any in-flight generation
-      // so a late result can't swap referenceInfo (new pose, no imageUrl)
-      // underneath the just-captured screenshot.
+      // AND any key-dialog-deferred one, so a late result can't swap
+      // referenceInfo (new pose, no imageUrl) underneath the just-captured
+      // screenshot.
       abortRef.current?.abort();
+      pendingGenerateRef.current = false;
       setGenerating(false);
       // Record the model actually on screen — while a user VRM is still
       // resolving, the viewer shows the bundled fallback, not 'user'.
