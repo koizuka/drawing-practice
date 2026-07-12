@@ -165,14 +165,14 @@ const messages = {
 
     // Pose reference source
     pose: 'Pose',
-    poseDescription: 'Sketch a stick figure, AI poses a 3D mannequin',
+    poseDescription: 'Sketch a figure or type a hint, AI poses a 3D mannequin',
     poseHintLabel: 'Hint (optional)',
     poseHintPlaceholder: 'e.g. "running to the right"',
     poseGenerate: 'Generate pose',
     poseGenerating: 'Generating…',
     poseSketchUndo: 'Undo stroke',
     poseSketchClear: 'Clear sketch',
-    poseSketchEmpty: 'Draw a stick figure first.',
+    poseInputEmpty: 'Draw a figure or type a pose hint first.',
     poseModelBundled: 'Bundled',
     poseModelUser: 'My VRM',
     poseLoadVrm: 'Open .vrm file…',
@@ -361,14 +361,14 @@ const messages = {
 
     // Pose reference source
     pose: 'ポーズ',
-    poseDescription: '棒人間を描くとAIが3Dマネキンにポーズさせます',
+    poseDescription: '棒人間かヒントの言葉からAIが3Dマネキンにポーズさせます',
     poseHintLabel: 'ヒント(任意)',
     poseHintPlaceholder: '例:「右向きに走っている」',
     poseGenerate: 'ポーズ生成',
     poseGenerating: '生成中…',
     poseSketchUndo: '1画戻す',
     poseSketchClear: 'スケッチを消す',
-    poseSketchEmpty: 'まず棒人間を描いてください。',
+    poseInputEmpty: 'まず人物を描くか、ヒントを入力してください。',
     poseModelBundled: '同梱モデル',
     poseModelUser: '自分のVRM',
     poseLoadVrm: '.vrmファイルを開く…',

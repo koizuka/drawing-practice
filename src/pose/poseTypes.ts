@@ -28,6 +28,8 @@ export interface LegPose {
   forward?: number;
   /** Outward abduction. */
   spread?: number;
+  /** Hip rotation about the thigh axis. + = external (knee/toes turn outward), - = internal. */
+  rotation?: number;
   /** 0 = straight, bends backward, up to 150. */
   kneeBend?: number;
 }
@@ -101,6 +103,7 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
   return pruneUndefined<LegPose>({
     forward: sanitizeNumber(l.forward, -60, 130),
     spread: sanitizeNumber(l.spread, 0, 80),
+    rotation: sanitizeNumber(l.rotation, -30, 90),
     kneeBend: sanitizeNumber(l.kneeBend, 0, 150),
   });
 }
@@ -135,16 +138,33 @@ function sanitizeHead(raw: unknown): HeadPose | undefined {
  * @throws PoseParseError when no parsable JSON object is found.
  */
 export function parsePoseJson(raw: string): PoseJson {
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) {
+  // The prompt asks for a short prose analysis followed by the JSON object,
+  // so the reply may contain stray braces before (or, defensively, after)
+  // the actual object. Try every '{' paired with every '}' at or after it,
+  // preferring the widest span, until one slice parses.
+  const starts: number[] = [];
+  for (let i = raw.indexOf('{'); i !== -1; i = raw.indexOf('{', i + 1)) {
+    starts.push(i);
+  }
+  const ends: number[] = [];
+  for (let i = raw.lastIndexOf('}'); i !== -1; i = raw.lastIndexOf('}', i - 1)) {
+    ends.push(i);
+  }
+  if (starts.length === 0 || ends.length === 0 || ends[0] <= starts[0]) {
     throw new PoseParseError('no JSON object in response');
   }
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
-  }
-  catch {
+  outer: {
+    for (const start of starts) {
+      for (const end of ends) {
+        if (end <= start) break;
+        try {
+          parsed = JSON.parse(raw.slice(start, end + 1));
+          break outer;
+        }
+        catch { /* keep scanning */ }
+      }
+    }
     throw new PoseParseError('invalid JSON in response');
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

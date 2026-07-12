@@ -123,10 +123,17 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
 
 function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
   const side = SIDE_SIGN[sideName];
+  // Euler 'XZY' applies extrinsically Y → Z → X: the Y twist happens FIRST,
+  // while the thigh still points straight down, so it is a pure axial hip
+  // rotation (knee/toes turn outward); spread then abducts and X flexes the
+  // already-rotated thigh. With the default 'XYZ' the twist lands after
+  // spread, degenerates into a horizontal yaw, and swings the abducted thigh
+  // back to the front — knees ended up facing forward in cross-legged poses.
   resolve(`${sideName}UpperLeg`)?.rotation.set(
     -(leg.forward ?? 0) * DEG,
-    0,
+    side * (leg.rotation ?? 0) * DEG,
     side * (leg.spread ?? 0) * DEG,
+    'XZY',
   );
   resolve(`${sideName}LowerLeg`)?.rotation.set((leg.kneeBend ?? 0) * DEG, 0, 0);
 }

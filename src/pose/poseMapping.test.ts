@@ -125,6 +125,33 @@ describe('applyPose', () => {
     expect(bones.get('leftLowerLeg')!.rotation.x).toBeCloseTo(45 * DEG);
   });
 
+  it('maps leg rotation to a side-signed Y twist of the upper leg', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { rotation: 70 },
+      rightLeg: { rotation: 70 },
+    });
+    expect(bones.get('leftUpperLeg')!.rotation.y).toBeCloseTo(70 * DEG);
+    expect(bones.get('rightUpperLeg')!.rotation.y).toBeCloseTo(-70 * DEG);
+    // 'XZY' applies the twist before spread/flexion — see applyLeg.
+    expect(bones.get('leftUpperLeg')!.rotation.order).toBe('XZY');
+  });
+
+  it('cross-legged values point the kneecap outward, not forward', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { forward: 90, spread: 30, rotation: 70, kneeBend: 140 },
+    });
+    // Kneecap rest direction is +Z (faces the viewer). After external
+    // rotation it must face the figure's left (+X), and the thigh must keep
+    // its outward abduction instead of swinging back to the front.
+    const kneecap = limbDirection(bones.get('leftUpperLeg')!, new Vector3(0, 0, 1));
+    expect(kneecap.x).toBeGreaterThan(0.7);
+    const thigh = limbDirection(bones.get('leftUpperLeg')!, new Vector3(0, -1, 0));
+    expect(thigh.x).toBeCloseTo(Math.sin(30 * DEG), 1);
+    expect(thigh.z).toBeGreaterThan(0.7);
+  });
+
   it('body.turn +90 (faces viewer-left) rotates the hips by -90°', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, { body: { turn: 90 } });

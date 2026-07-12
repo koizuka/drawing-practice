@@ -27,6 +27,12 @@ describe('parsePoseJson', () => {
     expect(Object.keys(pose)).toEqual(['leftArm']);
   });
 
+  it('clamps leg rotation to the hip range', () => {
+    const pose = parsePoseJson('{"leftLeg":{"rotation":170},"rightLeg":{"rotation":-80}}');
+    expect(pose.leftLeg?.rotation).toBe(90);
+    expect(pose.rightLeg?.rotation).toBe(-30);
+  });
+
   it('accepts touch presets', () => {
     const pose = parsePoseJson('{"rightArm":{"touch":"hip"}}');
     expect(pose.rightArm).toEqual({ touch: 'hip' });
@@ -36,6 +42,16 @@ describe('parsePoseJson', () => {
     const pose = parsePoseJson('{"head":{"nod":"yes"},"leftLeg":{"forward":30}}');
     expect(pose.head).toBeUndefined();
     expect(pose.leftLeg).toEqual({ forward: 30 });
+  });
+
+  it('extracts the JSON even when the leading prose contains braces', () => {
+    const raw = 'The figure {as drawn} faces left, arms in a T shape.\n\n{"body":{"turn":90},"leftArm":{"raise":90}}';
+    expect(parsePoseJson(raw)).toEqual({ body: { turn: 90 }, leftArm: { raise: 90 } });
+  });
+
+  it('extracts the JSON when prose braces appear both before and after it', () => {
+    const raw = 'Analysis {rough}:\n{"head":{"nod":20}}\ntrailing note {end}';
+    expect(parsePoseJson(raw)).toEqual({ head: { nod: 20 } });
   });
 
   it('throws PoseParseError when no JSON object is present', () => {
