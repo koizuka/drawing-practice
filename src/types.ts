@@ -78,6 +78,10 @@ export function referenceKey(info: ReferenceInfo): string {
     case 'youtube': return `youtube:${info.youtubeVideoId}`;
     case 'pexels': return `pexels:${info.pexelsPhotoId}`;
     case 'trace-template': return `trace-template:${info.templateId}`;
-    case 'pose': return `pose:${info.vrmId}`;
+    // The pose JSON is part of the identity — two different generated poses
+    // on the same mannequin are different references (gallery grouping,
+    // overlay remount). JSON.stringify is deterministic here because
+    // parsePoseJson rebuilds the object with a fixed key order.
+    case 'pose': return `pose:${info.vrmId}:${info.pose ? JSON.stringify(info.pose) : ''}`;
   }
 }

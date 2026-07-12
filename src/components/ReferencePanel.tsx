@@ -484,6 +484,13 @@ export function ReferencePanel({
     setYoutubePlaying(false);
   }
 
+  // Leaving the pose source unmounts PoseSourcePanel without a ready=false
+  // callback; reset during render (same pattern as the YouTube state above)
+  // so re-entering doesn't show "Fix This Angle" before the viewer loads.
+  if (source !== 'pose' && poseViewerReady) {
+    setPoseViewerReady(false);
+  }
+
   const handleLoadLocalImage = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
