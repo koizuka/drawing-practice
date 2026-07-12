@@ -345,7 +345,7 @@ function StorageUsageRow({ usage }: { usage: StorageUsage }) {
   }, []);
 
   const drawingsBytes = usage.drawings.strokes + usage.drawings.thumbnails + usage.drawings.sketchfabImages;
-  const totalLogical = drawingsBytes + usage.urlHistoryImageBytes + usage.sessionBytes;
+  const totalLogical = drawingsBytes + usage.urlHistoryImageBytes + usage.poseAssetsBytes + usage.sessionBytes;
   const breakdownParts = [
     `${t('storageUsageStrokes')} ${formatBytes(usage.drawings.strokes)}`,
     `${t('storageUsageThumbnails')} ${formatBytes(usage.drawings.thumbnails)}`,
@@ -417,6 +417,13 @@ function StorageUsageRow({ usage }: { usage: StorageUsage }) {
               {t('storageUsageImageHistory')}
               {' '}
               {formatBytes(usage.urlHistoryImageBytes)}
+            </Typography>
+          )}
+          {usage.poseAssetsBytes > 0 && (
+            <Typography variant="caption" component="div">
+              {t('storageUsagePoseAssets')}
+              {' '}
+              {formatBytes(usage.poseAssetsBytes)}
             </Typography>
           )}
           {usage.estimateUsage != null && (

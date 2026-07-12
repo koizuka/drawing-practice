@@ -17,7 +17,7 @@ Interpret the pose and output ONLY a JSON object (no markdown fences, no comment
     "turn": number,          // whole-body facing, VIEWER-relative: 0 = faces the viewer; +90 = faces the viewer's LEFT (you then see the figure's RIGHT profile); -90 = faces the viewer's RIGHT (you see its LEFT profile)
     "crouch": number         // 0 = standing tall .. 1 = hips fully lowered. Deep squat = crouch 0.7-1.0 AND kneeBend 120-150 AND leg forward 90+
   },
-  "head": { "nod": number /* + looks down */, "turn": number /* + toward figure's left */, "tilt": number },
+  "head": { "nod": number /* + looks down */, "turn": number /* + toward figure's left */, "tilt": number /* + = head tilts toward the figure's left shoulder */ },
   "leftArm":  { "raise": number, "forward": number, "elbowBend": number, "elbowDirection": "front"|"down"|"up"|"back" }
               OR { "touch": "hip"|"head"|"chest" }  // use touch when the hand is placed on that body part (e.g. hand on hip); it replaces the angle fields
   "rightArm": ... same ...,

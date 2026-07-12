@@ -3,6 +3,7 @@ import { vi } from 'vitest';
 vi.mock('./db', () => ({
   db: {
     urlHistory: { each: vi.fn().mockResolvedValue(undefined) },
+    poseAssets: { each: vi.fn().mockResolvedValue(undefined) },
     session: { get: vi.fn().mockResolvedValue(undefined) },
   },
 }));

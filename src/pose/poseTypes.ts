@@ -49,6 +49,7 @@ export interface HeadPose {
   nod?: number;
   /** + = toward the figure's left. */
   turn?: number;
+  /** + = tilts toward the figure's left shoulder. */
   tilt?: number;
 }
 
@@ -146,7 +147,7 @@ export function parsePoseJson(raw: string): PoseJson {
   catch {
     throw new PoseParseError('invalid JSON in response');
   }
-  if (typeof parsed !== 'object' || parsed === null) {
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new PoseParseError('response is not a JSON object');
   }
   const p = parsed as Record<string, unknown>;

@@ -62,23 +62,28 @@ export default function PoseSourcePanel({
 
   const pose: PoseJson | null = poseInfo?.pose ?? null;
 
-  // Resolve the user VRM blob when selected (restore path or manual switch).
+  // Resolve the saved user VRM on mount — also when the bundled model is
+  // selected, so the "My VRM" toggle is enabled in a fresh session. The
+  // missing-model fallback only fires when 'user' was actually requested
+  // (draft restore pointing at a since-deleted record).
   useEffect(() => {
-    if (vrmId !== USER_VRM_ID || userVrmBlob) return;
+    if (userVrmBlob) return;
     let cancelled = false;
+    const fallbackToBundled = () => {
+      setNotice(t('poseVrmUserMissing'));
+      setVrmId(current => (current === USER_VRM_ID ? DEFAULT_VRM_ID : current));
+    };
     getUserVrm().then((record) => {
       if (cancelled) return;
       if (record) {
         setUserVrmBlob(record.blob);
       }
-      else {
-        setNotice(t('poseVrmUserMissing'));
-        setVrmId(DEFAULT_VRM_ID);
+      else if (vrmId === USER_VRM_ID) {
+        fallbackToBundled();
       }
     }).catch(() => {
       if (cancelled) return;
-      setNotice(t('poseVrmUserMissing'));
-      setVrmId(DEFAULT_VRM_ID);
+      if (vrmId === USER_VRM_ID) fallbackToBundled();
     });
     return () => { cancelled = true; };
   }, [vrmId, userVrmBlob]);
@@ -161,6 +166,7 @@ export default function PoseSourcePanel({
           }
         })
         .then(() => {
+          onViewerReadyChange?.(false); // see handleVrmChoice
           setUserVrmBlob(file);
           setVrmLoadFailed(false);
           setVrmId(USER_VRM_ID);
@@ -168,13 +174,17 @@ export default function PoseSourcePanel({
         .catch(() => { /* size error already surfaced */ });
     };
     input.click();
-  }, []);
+  }, [onViewerReadyChange]);
 
   const handleVrmChoice = useCallback((_: unknown, value: string | null) => {
     if (!value) return;
     setVrmLoadFailed(false);
+    // Disable Fix-Angle until the newly selected model reports ready —
+    // otherwise a capture in the loading window would screenshot the old
+    // mannequin while recording the new vrmId.
+    onViewerReadyChange?.(false);
     setVrmId(value);
-  }, []);
+  }, [onViewerReadyChange]);
 
   const handleViewerReady = useCallback(() => {
     setVrmLoadFailed(false);
