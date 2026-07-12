@@ -308,7 +308,7 @@ export default function PoseSourcePanel({
             placeholder={t('poseHintPlaceholder')}
             value={hint}
             onChange={e => setHint(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !generating) handleGenerate(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing && !generating) handleGenerate(); }}
             fullWidth
           />
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>

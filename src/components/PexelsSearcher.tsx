@@ -340,7 +340,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
               size="small"
               placeholder={t('pexelsSearchPlaceholder')}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && query.trim()) {
+                if (e.key === 'Enter' && !e.nativeEvent.isComposing && query.trim()) {
                   e.preventDefault();
                   void runSearch(query, orientation);
                 }
