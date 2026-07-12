@@ -195,10 +195,18 @@ function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
  */
 function withCrouchFloor(leg: LegPose, crouch: number): LegPose {
   if (crouch <= 0.3) return leg;
+  const synthesized = leg.forward === undefined && leg.kneeBend === undefined;
+  const forward = leg.forward ?? crouch * 90;
+  const kneeBend = leg.kneeBend ?? crouch * 130;
   return {
     ...leg,
-    forward: leg.forward ?? crouch * 90,
-    kneeBend: leg.kneeBend ?? crouch * 130,
+    forward,
+    kneeBend,
+    // A fully synthesized leg also grounds its sole (kneeBend - forward is
+    // the sole-flat dorsiflexion; 0 would leave the figure on pointe).
+    // Explicit legs keep their own ankle — sitting poses fold the feet in
+    // ways this formula doesn't cover.
+    ankle: leg.ankle ?? (synthesized ? kneeBend - forward : undefined),
   };
 }
 

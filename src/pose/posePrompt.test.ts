@@ -38,6 +38,13 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('"forearmTwist"');
   });
 
+  it('includes the deep-squat recipe with the corrected sole-flat formula', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('sonkyo');
+    expect(prompt).toContain('ankle = kneeBend - forward');
+    expect(prompt).not.toContain('ankle = forward - kneeBend');
+  });
+
   it('documents shinTwist in the schema and leg conventions', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('"shinTwist"');
