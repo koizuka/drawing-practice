@@ -136,8 +136,16 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
       },
       body: JSON.stringify({
         model: POSE_MODEL,
-        // Headroom for the prose pose analysis the prompt now asks for
-        // before the JSON (see posePrompt.ts).
+        // claude-sonnet-5 runs adaptive thinking BY DEFAULT when `thinking`
+        // is omitted, and thinking tokens count against max_tokens — we saw
+        // replies where thinking consumed the whole budget (2047/2048) and
+        // no text block was emitted at all. The prompt already elicits
+        // visible reasoning (prose pose analysis before the JSON), so
+        // internal thinking is redundant: disable it and give the entire
+        // budget to the reply.
+        thinking: { type: 'disabled' },
+        // Headroom for the prose pose analysis the prompt asks for before
+        // the JSON (see posePrompt.ts).
         max_tokens: 2048,
         messages: [{ role: 'user', content }],
       }),

@@ -63,6 +63,9 @@ describe('generatePose', () => {
 
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe(POSE_MODEL);
+    // Guards against thinking silently eating the whole max_tokens budget —
+    // see the comment in anthropic.ts.
+    expect(body.thinking).toEqual({ type: 'disabled' });
     expect(body.messages[0].content[0]).toEqual({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: 'BASE64PNG' },
