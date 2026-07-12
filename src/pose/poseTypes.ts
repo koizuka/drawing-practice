@@ -30,8 +30,13 @@ export interface LegPose {
   spread?: number;
   /** Hip rotation about the thigh axis. + = external (knee/toes turn outward), - = internal. */
   rotation?: number;
-  /** 0 = straight, bends backward, up to 150. */
+  /** 0 = straight, bends backward, up to 160. */
   kneeBend?: number;
+  /**
+   * Tibial rotation: twist of the lower leg about its own axis at the knee.
+   * + = foot/toes turn outward, - = inward. Only meaningful with a bent knee.
+   */
+  shinTwist?: number;
   /** Ankle flex relative to the shin. + = toes lift toward the shin (dorsiflexion), - = toes point away. */
   ankle?: number;
 }
@@ -105,8 +110,12 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
   return pruneUndefined<LegPose>({
     forward: sanitizeNumber(l.forward, -60, 150),
     spread: sanitizeNumber(l.spread, 0, 80),
-    rotation: sanitizeNumber(l.rotation, -30, 90),
-    kneeBend: sanitizeNumber(l.kneeBend, 0, 150),
+    // Symmetric: external rotation up to 90 (agura) AND internal down to -90
+    // (girl-style / W-sitting needs -45..-60 — an asymmetric floor here
+    // silently broke those poses even when the model emitted them right).
+    rotation: sanitizeNumber(l.rotation, -90, 90),
+    kneeBend: sanitizeNumber(l.kneeBend, 0, 160),
+    shinTwist: sanitizeNumber(l.shinTwist, -60, 60),
     ankle: sanitizeNumber(l.ankle, -60, 45),
   });
 }

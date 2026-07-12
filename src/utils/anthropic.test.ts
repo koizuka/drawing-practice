@@ -9,6 +9,8 @@ import {
   AnthropicRateLimitError,
   AnthropicOverloadedError,
   AnthropicNetworkError,
+  AnthropicTruncatedError,
+  anthropicErrorDetail,
   POSE_MODEL,
 } from './anthropic';
 import { PoseParseError } from '../pose/poseTypes';
@@ -16,7 +18,7 @@ import { PoseParseError } from '../pose/poseTypes';
 const fetchMock = vi.fn();
 
 function textResponse(text: string, status = 200): Response {
-  return new Response(JSON.stringify({ content: [{ type: 'text', text }] }), { status });
+  return new Response(JSON.stringify({ content: [{ type: 'text', text }], stop_reason: 'end_turn' }), { status });
 }
 
 beforeEach(() => {
@@ -63,9 +65,11 @@ describe('generatePose', () => {
 
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe(POSE_MODEL);
-    // Guards against thinking silently eating the whole max_tokens budget —
+    // Adaptive thinking on by omission (helps spatial reasoning); the budget
+    // must be generous because thinking tokens count against max_tokens —
     // see the comment in anthropic.ts.
-    expect(body.thinking).toEqual({ type: 'disabled' });
+    expect(body.thinking).toBeUndefined();
+    expect(body.max_tokens).toBeGreaterThanOrEqual(8192);
     expect(body.messages[0].content[0]).toEqual({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: 'BASE64PNG' },
@@ -128,6 +132,56 @@ describe('generatePose', () => {
     fetchMock.mockResolvedValueOnce(textResponse('I cannot see a figure.'));
     await expect(generatePose('AAAA', '')).rejects.toBeInstanceOf(PoseParseError);
   });
+
+  it('surfaces the API error message as detail on HTTP errors', async () => {
+    setAnthropicApiKey('sk-test');
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens: must be positive' } }),
+      { status: 400 },
+    ));
+    const err = await generatePose('AAAA', '').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AnthropicNetworkError);
+    expect(anthropicErrorDetail(err)).toBe('max_tokens: must be positive');
+  });
+
+  it('returns the pose when max_tokens hit AFTER a complete pose JSON', async () => {
+    setAnthropicApiKey('sk-test');
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        content: [{ type: 'text', text: 'Analysis…\n{"leftArm":{"raise":90}}' }],
+        stop_reason: 'max_tokens',
+      }),
+      { status: 200 },
+    ));
+    await expect(generatePose('AAAA', '')).resolves.toEqual({ leftArm: { raise: 90 } });
+  });
+
+  it('treats an empty parsed pose under max_tokens as truncation', async () => {
+    setAnthropicApiKey('sk-test');
+    // The reply was cut mid-JSON but the prose contained a stray complete
+    // object — parsing "succeeds" with an empty pose, which must not pass.
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({
+        content: [{ type: 'text', text: 'The figure {as drawn} sits…\n{"body":{"crouch":1},"leftLeg":{"forw' }],
+        stop_reason: 'max_tokens',
+      }),
+      { status: 200 },
+    ));
+    const err = await generatePose('AAAA', '').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AnthropicTruncatedError);
+  });
+
+  it('throws AnthropicTruncatedError when stop_reason is max_tokens (instead of a parse error)', async () => {
+    setAnthropicApiKey('sk-test');
+    // Thinking consumed the whole budget: HTTP 200 but no usable text block.
+    fetchMock.mockResolvedValueOnce(new Response(
+      JSON.stringify({ content: [], stop_reason: 'max_tokens' }),
+      { status: 200 },
+    ));
+    const err = await generatePose('AAAA', '').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AnthropicTruncatedError);
+    expect(anthropicErrorDetail(err)).toContain('max_tokens');
+  });
 });
 
 describe('mapAnthropicErrorKey', () => {
@@ -136,6 +190,7 @@ describe('mapAnthropicErrorKey', () => {
     expect(mapAnthropicErrorKey(new AnthropicAuthError())).toBe('anthropicKeyInvalid');
     expect(mapAnthropicErrorKey(new AnthropicRateLimitError())).toBe('anthropicRateLimit');
     expect(mapAnthropicErrorKey(new AnthropicOverloadedError())).toBe('anthropicOverloaded');
+    expect(mapAnthropicErrorKey(new AnthropicTruncatedError())).toBe('anthropicTruncated');
     expect(mapAnthropicErrorKey(new Error('x'))).toBe('anthropicNetworkError');
   });
 });

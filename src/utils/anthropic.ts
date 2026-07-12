@@ -15,32 +15,59 @@ export class AnthropicKeyMissingError extends Error {
   }
 }
 
-export class AnthropicAuthError extends Error {
-  constructor() {
-    super('Anthropic API key is invalid');
+/**
+ * Base for errors carrying a server-provided detail (the API error JSON's
+ * `error.message`, or a stop_reason note). Shown verbatim in the UI under the
+ * translated message so the user can diagnose without opening the console.
+ */
+export class AnthropicApiError extends Error {
+  readonly detail?: string;
+  constructor(message: string, detail?: string) {
+    super(detail ? `${message}: ${detail}` : message);
+    this.name = 'AnthropicApiError';
+    this.detail = detail;
+  }
+}
+
+export class AnthropicAuthError extends AnthropicApiError {
+  constructor(detail?: string) {
+    super('Anthropic API key is invalid', detail);
     this.name = 'AnthropicAuthError';
   }
 }
 
-export class AnthropicRateLimitError extends Error {
-  constructor() {
-    super('Anthropic rate limit reached');
+export class AnthropicRateLimitError extends AnthropicApiError {
+  constructor(detail?: string) {
+    super('Anthropic rate limit reached', detail);
     this.name = 'AnthropicRateLimitError';
   }
 }
 
-export class AnthropicOverloadedError extends Error {
-  constructor() {
-    super('Anthropic API is overloaded');
+export class AnthropicOverloadedError extends AnthropicApiError {
+  constructor(detail?: string) {
+    super('Anthropic API is overloaded', detail);
     this.name = 'AnthropicOverloadedError';
   }
 }
 
-export class AnthropicNetworkError extends Error {
-  constructor(message?: string) {
-    super(message ?? 'Anthropic network error');
+export class AnthropicNetworkError extends AnthropicApiError {
+  constructor(detail?: string) {
+    super('Anthropic network error', detail);
     this.name = 'AnthropicNetworkError';
   }
+}
+
+/** HTTP 200 but the reply was cut off by max_tokens before the JSON. */
+export class AnthropicTruncatedError extends AnthropicApiError {
+  constructor(detail?: string) {
+    super('Anthropic reply truncated by max_tokens', detail);
+    this.name = 'AnthropicTruncatedError';
+  }
+}
+
+/** Server detail string for UI display, if the error carries one. */
+export function anthropicErrorDetail(e: unknown): string | undefined {
+  return e instanceof AnthropicApiError ? e.detail : undefined;
 }
 
 export function getAnthropicApiKey(): string {
@@ -83,11 +110,13 @@ export function mapAnthropicErrorKey(e: unknown):
   | 'anthropicKeyInvalid'
   | 'anthropicRateLimit'
   | 'anthropicOverloaded'
+  | 'anthropicTruncated'
   | 'anthropicNetworkError' {
   if (e instanceof AnthropicKeyMissingError) return 'anthropicKeyRequired';
   if (e instanceof AnthropicAuthError) return 'anthropicKeyInvalid';
   if (e instanceof AnthropicRateLimitError) return 'anthropicRateLimit';
   if (e instanceof AnthropicOverloadedError) return 'anthropicOverloaded';
+  if (e instanceof AnthropicTruncatedError) return 'anthropicTruncated';
   return 'anthropicNetworkError';
 }
 
@@ -98,6 +127,22 @@ interface AnthropicContentBlock {
 
 interface AnthropicMessagesResponse {
   content: AnthropicContentBlock[];
+  stop_reason?: string | null;
+}
+
+/**
+ * Extract the API error JSON's `error.message` from a non-OK response body,
+ * for UI display. Best-effort — returns undefined on any parse failure.
+ */
+async function readErrorDetail(res: Response): Promise<string | undefined> {
+  try {
+    const data = await res.json() as { error?: { type?: string; message?: string } };
+    const msg = data.error?.message;
+    return typeof msg === 'string' && msg.length > 0 ? msg : undefined;
+  }
+  catch {
+    return undefined;
+  }
 }
 
 /**
@@ -136,17 +181,14 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
       },
       body: JSON.stringify({
         model: POSE_MODEL,
-        // claude-sonnet-5 runs adaptive thinking BY DEFAULT when `thinking`
-        // is omitted, and thinking tokens count against max_tokens — we saw
-        // replies where thinking consumed the whole budget (2047/2048) and
-        // no text block was emitted at all. The prompt already elicits
-        // visible reasoning (prose pose analysis before the JSON), so
-        // internal thinking is redundant: disable it and give the entire
-        // budget to the reply.
-        thinking: { type: 'disabled' },
-        // Headroom for the prose pose analysis the prompt asks for before
-        // the JSON (see posePrompt.ts).
-        max_tokens: 2048,
+        // claude-sonnet-5 runs adaptive thinking by default when `thinking`
+        // is omitted. Thinking helps exactly here (spatial/anatomical
+        // reasoning), so leave it on — but its tokens count against
+        // max_tokens, and at 2048 we saw thinking consume the whole budget
+        // (2047/2048) with no text block at all. Budget generously instead
+        // of disabling; stop_reason 'max_tokens' below catches the residual
+        // case with a user-visible error rather than a cryptic parse error.
+        max_tokens: 8192,
         messages: [{ role: 'user', content }],
       }),
       signal,
@@ -158,21 +200,34 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
     throw new AnthropicNetworkError(e instanceof Error ? e.message : undefined);
   }
 
-  if (res.status === 401 || res.status === 403) throw new AnthropicAuthError();
-  if (res.status === 429) throw new AnthropicRateLimitError();
-  if (res.status === 529) throw new AnthropicOverloadedError();
-  if (!res.ok) throw new AnthropicNetworkError(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const detail = await readErrorDetail(res);
+    if (res.status === 401 || res.status === 403) throw new AnthropicAuthError(detail);
+    if (res.status === 429) throw new AnthropicRateLimitError(detail);
+    if (res.status === 529) throw new AnthropicOverloadedError(detail);
+    throw new AnthropicNetworkError(detail ?? `HTTP ${res.status}`);
+  }
 
   const data = await res.json() as AnthropicMessagesResponse;
   const text = data.content?.find(block => block.type === 'text')?.text ?? '';
   // Debug-level so pose tuning can inspect the model's analysis + JSON from
   // the console (Safari Web Inspector) without noisy default output.
   console.debug('[pose] model reply:', text);
+  // Parse FIRST: stop_reason 'max_tokens' can also fire after the pose JSON
+  // was fully emitted (budget ran out on trailing text) — those replies are
+  // usable and must not be rejected. Only when no pose can be extracted does
+  // the stop reason explain the failure (cut off before/mid-JSON, e.g. by
+  // thinking consuming the budget) — report that instead of a parse error.
+  let pose: PoseJson;
   try {
-    return parsePoseJson(text);
+    pose = parsePoseJson(text);
   }
   catch (e) {
     if (e instanceof PoseParseError) {
+      if (data.stop_reason === 'max_tokens') {
+        console.error('[pose] reply truncated by max_tokens:', data);
+        throw new AnthropicTruncatedError('stop_reason: max_tokens');
+      }
       // Surface the raw reply so on-device failures can be diagnosed from
       // the console without extra instrumentation. `text` alone can be ''
       // (no text block at all — e.g. an empty/refused completion), so log
@@ -181,4 +236,11 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
     }
     throw e;
   }
+  // A truncated reply can still "parse" into an empty pose (the scanner
+  // finds a stray complete {...} in the prose) — treat that as truncation.
+  if (data.stop_reason === 'max_tokens' && Object.keys(pose).length === 0) {
+    console.error('[pose] reply truncated by max_tokens:', data);
+    throw new AnthropicTruncatedError('stop_reason: max_tokens');
+  }
+  return pose;
 }

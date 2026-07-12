@@ -27,10 +27,28 @@ describe('parsePoseJson', () => {
     expect(Object.keys(pose)).toEqual(['leftArm']);
   });
 
-  it('clamps leg rotation to the hip range', () => {
-    const pose = parsePoseJson('{"leftLeg":{"rotation":170},"rightLeg":{"rotation":-80}}');
+  it('clamps leg rotation to the symmetric hip range', () => {
+    const pose = parsePoseJson('{"leftLeg":{"rotation":170},"rightLeg":{"rotation":-120}}');
     expect(pose.leftLeg?.rotation).toBe(90);
-    expect(pose.rightLeg?.rotation).toBe(-30);
+    expect(pose.rightLeg?.rotation).toBe(-90);
+  });
+
+  it('keeps deep internal rotation intact (girl-style sitting)', () => {
+    const pose = parsePoseJson('{"leftLeg":{"rotation":-55},"rightLeg":{"rotation":-55}}');
+    expect(pose.leftLeg?.rotation).toBe(-55);
+    expect(pose.rightLeg?.rotation).toBe(-55);
+  });
+
+  it('clamps kneeBend to the 160-degree flexion limit', () => {
+    const pose = parsePoseJson('{"leftLeg":{"kneeBend":155},"rightLeg":{"kneeBend":200}}');
+    expect(pose.leftLeg?.kneeBend).toBe(155);
+    expect(pose.rightLeg?.kneeBend).toBe(160);
+  });
+
+  it('clamps shinTwist and keeps in-range values', () => {
+    const pose = parsePoseJson('{"leftLeg":{"shinTwist":35},"rightLeg":{"shinTwist":-100}}');
+    expect(pose.leftLeg?.shinTwist).toBe(35);
+    expect(pose.rightLeg?.shinTwist).toBe(-60);
   });
 
   it('clamps ankle to the flex range', () => {

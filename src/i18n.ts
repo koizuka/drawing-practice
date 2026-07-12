@@ -189,6 +189,7 @@ const messages = {
     anthropicRateLimit: 'Claude rate limit reached. Please try again later.',
     anthropicOverloaded: 'Claude is temporarily overloaded. Please try again shortly.',
     anthropicNetworkError: 'Couldn\'t reach the Claude API. Check your connection.',
+    anthropicTruncated: 'The reply was cut off before the pose data (token limit reached). Try again with a shorter hint or a simpler sketch.',
 
     // Lazy chunk load failure (e.g. transient network error or stale tab
     // referencing chunks that were removed by a redeploy)
@@ -385,6 +386,7 @@ const messages = {
     anthropicRateLimit: 'Claudeのレート制限に達しました。しばらくしてから再試行してください。',
     anthropicOverloaded: 'Claudeが一時的に混雑しています。少し待って再試行してください。',
     anthropicNetworkError: 'Claude APIに接続できませんでした。通信環境を確認してください。',
+    anthropicTruncated: '応答がトークン上限で途切れ、ポーズデータを受け取れませんでした。もう一度試すか、ヒントやスケッチを簡潔にしてください。',
 
     // Lazy chunk load failure
     lazyChunkLoadFailed: 'この機能の読み込みに失敗しました。ページを再読み込みすると通常は解決します。',
