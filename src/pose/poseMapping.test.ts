@@ -10,6 +10,7 @@ function makeRig() {
     'hips', 'spine', 'chest', 'head',
     'leftUpperArm', 'leftLowerArm', 'rightUpperArm', 'rightLowerArm',
     'leftUpperLeg', 'leftLowerLeg', 'rightUpperLeg', 'rightLowerLeg',
+    'leftFoot', 'rightFoot',
   ];
   for (const name of names) bones.set(name, new Object3D());
   const resolve: BoneResolver = name => bones.get(name) ?? null;
@@ -116,6 +117,41 @@ describe('applyPose', () => {
       .toEqual(bones.get('leftUpperArm')!.quaternion.toArray());
   });
 
+  it('elbowDirection "in" folds the forearm toward the midline on both sides', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    const arm = { raise: 50, forward: 80, elbowBend: 90, elbowDirection: 'in' as const };
+    applyPose(resolve, resetPose, { leftArm: arm, rightArm: arm });
+    // World forearm direction = upper ∘ lower applied to the forearm rest
+    // direction (side, 0, 0). Medial means -X for the left arm, +X for the
+    // right (model's left is +X).
+    const forearmWorld = (side: 'left' | 'right', sign: number) => new Vector3(sign, 0, 0)
+      .applyQuaternion(bones.get(`${side}LowerArm` as const)!.quaternion)
+      .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
+    expect(forearmWorld('left', 1).x).toBeLessThan(-0.3);
+    expect(forearmWorld('right', -1).x).toBeGreaterThan(0.3);
+  });
+
+  it('maps ankle to a sign-flipped foot X rotation (+ = dorsiflexion)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { ankle: 20 },
+      rightLeg: { ankle: -30 },
+    });
+    expect(bones.get('leftFoot')!.rotation.x).toBeCloseTo(-20 * DEG);
+    expect(bones.get('rightFoot')!.rotation.x).toBeCloseTo(30 * DEG);
+  });
+
+  it('respects an explicit shallow kneeBend under deep crouch (knee-hug sitting)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      body: { crouch: 1 },
+      leftLeg: { forward: 115, kneeBend: 115 },
+    });
+    // The crouch floor only fills in OMITTED values — an explicit 115 must
+    // not be forced up to crouch*130.
+    expect(bones.get('leftLowerLeg')!.rotation.x).toBeCloseTo(115 * DEG);
+  });
+
   it('maps leg forward/spread/kneeBend to hip and knee rotations', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, { leftLeg: { forward: 90, spread: 20, kneeBend: 45 } });
@@ -123,6 +159,33 @@ describe('applyPose', () => {
     expect(upper.rotation.x).toBeCloseTo(-90 * DEG);
     expect(upper.rotation.z).toBeCloseTo(20 * DEG);
     expect(bones.get('leftLowerLeg')!.rotation.x).toBeCloseTo(45 * DEG);
+  });
+
+  it('maps leg rotation to a side-signed Y twist of the upper leg', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { rotation: 70 },
+      rightLeg: { rotation: 70 },
+    });
+    expect(bones.get('leftUpperLeg')!.rotation.y).toBeCloseTo(70 * DEG);
+    expect(bones.get('rightUpperLeg')!.rotation.y).toBeCloseTo(-70 * DEG);
+    // 'XZY' applies the twist before spread/flexion — see applyLeg.
+    expect(bones.get('leftUpperLeg')!.rotation.order).toBe('XZY');
+  });
+
+  it('cross-legged values point the kneecap outward, not forward', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftLeg: { forward: 90, spread: 30, rotation: 70, kneeBend: 140 },
+    });
+    // Kneecap rest direction is +Z (faces the viewer). After external
+    // rotation it must face the figure's left (+X), and the thigh must keep
+    // its outward abduction instead of swinging back to the front.
+    const kneecap = limbDirection(bones.get('leftUpperLeg')!, new Vector3(0, 0, 1));
+    expect(kneecap.x).toBeGreaterThan(0.7);
+    const thigh = limbDirection(bones.get('leftUpperLeg')!, new Vector3(0, -1, 0));
+    expect(thigh.x).toBeCloseTo(Math.sin(30 * DEG), 1);
+    expect(thigh.z).toBeGreaterThan(0.7);
   });
 
   it('body.turn +90 (faces viewer-left) rotates the hips by -90°', () => {

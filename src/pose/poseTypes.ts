@@ -5,7 +5,7 @@
  * files must stay in sync.
  */
 
-export const ELBOW_DIRECTIONS = ['front', 'down', 'up', 'back'] as const;
+export const ELBOW_DIRECTIONS = ['front', 'down', 'up', 'back', 'in', 'out'] as const;
 export type ElbowDirection = (typeof ELBOW_DIRECTIONS)[number];
 
 export const TOUCH_TARGETS = ['hip', 'head', 'chest'] as const;
@@ -28,8 +28,12 @@ export interface LegPose {
   forward?: number;
   /** Outward abduction. */
   spread?: number;
+  /** Hip rotation about the thigh axis. + = external (knee/toes turn outward), - = internal. */
+  rotation?: number;
   /** 0 = straight, bends backward, up to 150. */
   kneeBend?: number;
+  /** Ankle flex relative to the shin. + = toes lift toward the shin (dorsiflexion), - = toes point away. */
+  ankle?: number;
 }
 
 export interface BodyPose {
@@ -99,9 +103,11 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const l = raw as Record<string, unknown>;
   return pruneUndefined<LegPose>({
-    forward: sanitizeNumber(l.forward, -60, 130),
+    forward: sanitizeNumber(l.forward, -60, 150),
     spread: sanitizeNumber(l.spread, 0, 80),
+    rotation: sanitizeNumber(l.rotation, -30, 90),
     kneeBend: sanitizeNumber(l.kneeBend, 0, 150),
+    ankle: sanitizeNumber(l.ankle, -60, 45),
   });
 }
 
@@ -135,16 +141,29 @@ function sanitizeHead(raw: unknown): HeadPose | undefined {
  * @throws PoseParseError when no parsable JSON object is found.
  */
 export function parsePoseJson(raw: string): PoseJson {
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end <= start) {
+  // The prompt asks for a short prose analysis followed by the JSON object
+  // as the LAST thing in the reply — and the prose may itself contain stray
+  // braces or even small valid JSON snippets (schema echoes, examples).
+  // Scan candidates from the END: for each closing brace (last first), try
+  // opening braces from the nearest one outward, so the first slice that
+  // parses is the last complete top-level JSON object in the text — never an
+  // earlier prose fragment.
+  if (raw.indexOf('{') === -1 || raw.indexOf('}') === -1) {
     throw new PoseParseError('no JSON object in response');
   }
   let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.slice(start, end + 1));
+  let found = false;
+  for (let end = raw.lastIndexOf('}'); end !== -1 && !found; end = raw.lastIndexOf('}', end - 1)) {
+    for (let start = raw.lastIndexOf('{', end); start !== -1; start = raw.lastIndexOf('{', start - 1)) {
+      try {
+        parsed = JSON.parse(raw.slice(start, end + 1));
+        found = true;
+        break;
+      }
+      catch { /* keep scanning */ }
+    }
   }
-  catch {
+  if (!found) {
     throw new PoseParseError('invalid JSON in response');
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {

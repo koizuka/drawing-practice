@@ -130,9 +130,11 @@ export default function PoseSourcePanel({
   }, [vrmId]);
 
   const runGenerate = useCallback(() => {
+    // Sketch is optional when a hint is given — a clear enough hint alone
+    // (e.g. 「両手を上げてジャンプ」) generates via the text-only prompt.
     const png = sketchRef.current?.exportPng() ?? null;
-    if (!png) {
-      setError({ message: t('poseSketchEmpty'), keyAction: false });
+    if (!png && hint.trim() === '') {
+      setError({ message: t('poseInputEmpty'), keyAction: false });
       return;
     }
     abortRef.current?.abort();

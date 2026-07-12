@@ -63,12 +63,34 @@ describe('generatePose', () => {
 
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe(POSE_MODEL);
+    // Guards against thinking silently eating the whole max_tokens budget —
+    // see the comment in anthropic.ts.
+    expect(body.thinking).toEqual({ type: 'disabled' });
     expect(body.messages[0].content[0]).toEqual({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: 'BASE64PNG' },
     });
     expect(body.messages[0].content[1].type).toBe('text');
     expect(body.messages[0].content[1].text).toContain('「走っている」');
+  });
+
+  it('sends a text-only prompt when the sketch is null', async () => {
+    setAnthropicApiKey('sk-test');
+    fetchMock.mockResolvedValueOnce(textResponse('{"body":{"crouch":1}}'));
+
+    await generatePose(null, '深くしゃがんでいる');
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.messages[0].content).toHaveLength(1);
+    expect(body.messages[0].content[0].type).toBe('text');
+    expect(body.messages[0].content[0].text).toContain('「深くしゃがんでいる」');
+  });
+
+  it('rejects a null sketch with an empty hint before fetching', async () => {
+    setAnthropicApiKey('sk-test');
+    await expect(generatePose(null, '  ')).rejects.toThrow();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('parses the text block into a sanitized PoseJson', async () => {

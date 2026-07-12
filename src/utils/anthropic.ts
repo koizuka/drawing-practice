@@ -1,5 +1,5 @@
-import { parsePoseJson, type PoseJson } from '../pose/poseTypes';
-import { buildPosePrompt } from '../pose/posePrompt';
+import { parsePoseJson, PoseParseError, type PoseJson } from '../pose/poseTypes';
+import { buildPosePrompt, buildTextPosePrompt } from '../pose/posePrompt';
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages';
 const ANTHROPIC_VERSION = '2023-06-01';
@@ -105,12 +105,23 @@ interface AnthropicMessagesResponse {
  * API, called directly from the browser with the user's own key (same BYOK
  * model as Pexels).
  *
- * @param pngBase64 PNG image data, base64 WITHOUT the data-URL prefix.
+ * @param pngBase64 PNG image data, base64 WITHOUT the data-URL prefix — or
+ *   null to generate from the hint text alone (hint must be non-empty then).
  * @throws PoseParseError when the model's reply contains no usable JSON.
  */
-export async function generatePose(pngBase64: string, hint: string, signal?: AbortSignal): Promise<PoseJson> {
+export async function generatePose(pngBase64: string | null, hint: string, signal?: AbortSignal): Promise<PoseJson> {
   const key = getAnthropicApiKey();
   if (!key) throw new AnthropicKeyMissingError();
+  if (pngBase64 === null && hint.trim() === '') {
+    throw new Error('generatePose requires a sketch or a non-empty hint');
+  }
+
+  const content: unknown[] = pngBase64 !== null
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngBase64 } },
+        { type: 'text', text: buildPosePrompt(hint) },
+      ]
+    : [{ type: 'text', text: buildTextPosePrompt(hint) }];
 
   let res: Response;
   try {
@@ -125,14 +136,18 @@ export async function generatePose(pngBase64: string, hint: string, signal?: Abo
       },
       body: JSON.stringify({
         model: POSE_MODEL,
-        max_tokens: 1024,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngBase64 } },
-            { type: 'text', text: buildPosePrompt(hint) },
-          ],
-        }],
+        // claude-sonnet-5 runs adaptive thinking BY DEFAULT when `thinking`
+        // is omitted, and thinking tokens count against max_tokens — we saw
+        // replies where thinking consumed the whole budget (2047/2048) and
+        // no text block was emitted at all. The prompt already elicits
+        // visible reasoning (prose pose analysis before the JSON), so
+        // internal thinking is redundant: disable it and give the entire
+        // budget to the reply.
+        thinking: { type: 'disabled' },
+        // Headroom for the prose pose analysis the prompt asks for before
+        // the JSON (see posePrompt.ts).
+        max_tokens: 2048,
+        messages: [{ role: 'user', content }],
       }),
       signal,
     });
@@ -150,5 +165,20 @@ export async function generatePose(pngBase64: string, hint: string, signal?: Abo
 
   const data = await res.json() as AnthropicMessagesResponse;
   const text = data.content?.find(block => block.type === 'text')?.text ?? '';
-  return parsePoseJson(text);
+  // Debug-level so pose tuning can inspect the model's analysis + JSON from
+  // the console (Safari Web Inspector) without noisy default output.
+  console.debug('[pose] model reply:', text);
+  try {
+    return parsePoseJson(text);
+  }
+  catch (e) {
+    if (e instanceof PoseParseError) {
+      // Surface the raw reply so on-device failures can be diagnosed from
+      // the console without extra instrumentation. `text` alone can be ''
+      // (no text block at all — e.g. an empty/refused completion), so log
+      // the whole response body too.
+      console.error('[pose] unparsable model reply:', text || '(no text block)', data);
+    }
+    throw e;
+  }
 }

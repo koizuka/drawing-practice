@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildPosePrompt } from './posePrompt';
+import { buildPosePrompt, buildTextPosePrompt } from './posePrompt';
 
 describe('buildPosePrompt', () => {
   it('interpolates a non-empty hint', () => {
@@ -18,6 +18,17 @@ describe('buildPosePrompt', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('"elbowDirection"');
     expect(prompt).toContain('LEFT/RIGHT RULES');
-    expect(prompt).toContain('Output the JSON only');
+    expect(prompt).toContain('End your reply with the JSON object');
+  });
+});
+
+describe('buildTextPosePrompt', () => {
+  it('interpolates the hint and keeps the shared schema', () => {
+    const prompt = buildTextPosePrompt(' 両手を上げてジャンプ ');
+    expect(prompt).toContain('「両手を上げてジャンプ」');
+    expect(prompt).toContain('"elbowDirection"');
+    expect(prompt).toContain('End your reply with the JSON object');
+    expect(prompt).not.toContain('{HINT}');
+    expect(prompt).not.toContain('attached image');
   });
 });
