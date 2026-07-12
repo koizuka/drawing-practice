@@ -25,6 +25,8 @@ interface PoseSourcePanelProps {
   onRequestApiKey: () => void;
   /** Bumped by the parent whenever the key dialog closes (save OR cancel). */
   apiKeyVersion: number;
+  /** False while the panel is mounted but hidden (fixed mode) — pauses the 3D render loop. */
+  active?: boolean;
   actionsRef?: Ref<PoseSourceActions>;
   /** Reports whether the 3D viewer is ready (enables the Fix-Angle button). */
   onViewerReadyChange?: (ready: boolean) => void;
@@ -42,6 +44,7 @@ export default function PoseSourcePanel({
   onReferenceChange,
   onRequestApiKey,
   apiKeyVersion,
+  active = true,
   actionsRef,
   onViewerReadyChange,
 }: PoseSourcePanelProps) {
@@ -339,6 +342,7 @@ export default function PoseSourcePanel({
                 key={vrmRetryToken}
                 pose={pose}
                 vrmSource={vrmSource}
+                active={active}
                 onReady={handleViewerReady}
                 onLoadError={handleViewerLoadError}
                 actionsRef={viewerActionsRef}

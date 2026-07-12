@@ -1693,6 +1693,7 @@ export function ReferencePanel({
                   onReferenceChange={onReferenceChange}
                   onRequestApiKey={handleRequestAnthropicKey}
                   apiKeyVersion={anthropicKeyVersion}
+                  active={referenceMode === 'browse'}
                   actionsRef={poseActionsRef}
                   onViewerReadyChange={setPoseViewerReady}
                 />

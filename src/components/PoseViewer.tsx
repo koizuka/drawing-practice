@@ -27,6 +27,12 @@ interface PoseViewerProps {
   /** Applied whenever it changes (undo/restore swap it from the outside). */
   pose: PoseJson | null;
   vrmSource: PoseVrmSource;
+  /**
+   * When false, the render loop is stopped (the component stays mounted but
+   * hidden — e.g. fixed mode — and shouldn't burn GPU/battery). Screenshot
+   * capture renders explicitly and is unaffected.
+   */
+  active?: boolean;
   onReady?: () => void;
   onLoadError?: (e: unknown) => void;
   actionsRef?: Ref<PoseViewerActions>;
@@ -41,9 +47,10 @@ const CAMERA_DISTANCE = 4.5;
  * browse iframe, the drawing panel leads while this is on screen, and grid
  * sync only happens after Fix-Angle captures a still image.
  */
-export default function PoseViewer({ pose, vrmSource, onReady, onLoadError, actionsRef }: PoseViewerProps) {
+export default function PoseViewer({ pose, vrmSource, active = true, onReady, onLoadError, actionsRef }: PoseViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
+  const animationLoopRef = useRef<(() => void) | null>(null);
   const sceneRef = useRef<Scene | null>(null);
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const vrmRef = useRef<VRM | null>(null);
@@ -91,14 +98,18 @@ export default function PoseViewer({ pose, vrmSource, onReady, onLoadError, acti
     controls.update();
 
     let lastTime = performance.now();
-    renderer.setAnimationLoop(() => {
+    const animationLoop = () => {
       const now = performance.now();
-      const delta = (now - lastTime) / 1000;
+      // Clamp so resuming after a pause doesn't feed a huge delta to
+      // spring-bone physics.
+      const delta = Math.min((now - lastTime) / 1000, 0.1);
       lastTime = now;
       vrmRef.current?.update(delta);
       controls.update();
       renderer.render(scene, camera);
-    });
+    };
+    animationLoopRef.current = animationLoop;
+    renderer.setAnimationLoop(animationLoop);
 
     const resizeObserver = new ResizeObserver(() => {
       const w = container.clientWidth;
@@ -127,6 +138,13 @@ export default function PoseViewer({ pose, vrmSource, onReady, onLoadError, acti
       cameraRef.current = null;
     };
   }, []);
+
+  // Pause the render loop while hidden (fixed mode keeps the panel mounted).
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    renderer.setAnimationLoop(active ? animationLoopRef.current : null);
+  }, [active]);
 
   // VRM load (re-runs when the source changes).
   const sourceKey = vrmSource.kind === 'bundled' ? `bundled:${vrmSource.vrmId}` : 'user';
