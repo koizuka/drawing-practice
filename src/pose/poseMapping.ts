@@ -222,8 +222,9 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
     // turn convention: +90 = figure faces the viewer's left (screen left).
     // The camera fronts +Z, so that is a -90° rotation about +Y.
     // bend = hip hinge: pitches the pelvis (and the whole body with it)
-    // forward, spine staying straight. 'YXZ' applies the pitch before the
-    // yaw, so bend stays a pure forward pitch for any facing.
+    // forward, spine staying straight. 'YXZ' makes the pitch happen about
+    // the figure's own left-right axis (intrinsically: yaw first, then
+    // pitch), so bend stays a pure forward pitch for any facing.
     hips.rotation.set((body.bend ?? 0) * DEG, -(body.turn ?? 0) * DEG, 0, 'YXZ');
     if (body.crouch) hips.position.y -= body.crouch * CROUCH_HIP_DROP;
   }
