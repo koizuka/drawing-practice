@@ -9,6 +9,7 @@ function makeRig() {
   const names: PoseBoneName[] = [
     'hips', 'spine', 'chest', 'head',
     'leftUpperArm', 'leftLowerArm', 'rightUpperArm', 'rightLowerArm',
+    'leftHand', 'rightHand',
     'leftUpperLeg', 'leftLowerLeg', 'rightUpperLeg', 'rightLowerLeg',
     'leftFoot', 'rightFoot',
   ];
@@ -120,6 +121,44 @@ describe('applyPose', () => {
     expect(forearmDir.y).toBeCloseTo(-1, 5);
   });
 
+  it('maps wrist to a side-signed hand Z rotation (+ = extension lifts the fingertips)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { raise: 90, wrist: 90 },
+      rightArm: { raise: 90, wrist: -30 },
+    });
+    expect(bones.get('leftHand')!.rotation.z).toBeCloseTo(90 * DEG);
+    expect(bones.get('rightHand')!.rotation.z).toBeCloseTo(30 * DEG);
+    // T-pose + full extension: fingertips point straight up on the left.
+    const fingers = limbDirection(bones.get('leftHand')!, new Vector3(1, 0, 0));
+    expect(fingers.y).toBeCloseTo(1);
+  });
+
+  it('forearmTwist + rolls the palm toward the front on both sides', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    const arm = { raise: 90, forearmTwist: 90 };
+    applyPose(resolve, resetPose, { leftArm: arm, rightArm: arm });
+    // Palm-down T-pose rest: the palm normal is -Y; +90 twist must face it +Z.
+    for (const side of ['left', 'right'] as const) {
+      const palm = limbDirection(bones.get(`${side}Hand`)!, new Vector3(0, -1, 0));
+      expect(palm.z).toBeCloseTo(1);
+    }
+  });
+
+  it('the wrist hinge rides on the pronated frame (extension folds toward the back of the hand)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { raise: 90, forearmTwist: 90, wrist: 90 },
+    });
+    // Twist first: palm faces +Z, so the hinge axis is now vertical.
+    // Extension then folds the hand toward its dorsal side: fingers point
+    // back (-Z) and the palm normal swings to +X (along the arm line). If
+    // the hinge ignored the twist, the fingers would fold upward instead.
+    const hand = bones.get('leftHand')!;
+    expect(limbDirection(hand, new Vector3(1, 0, 0)).z).toBeCloseTo(-1);
+    expect(limbDirection(hand, new Vector3(0, -1, 0)).x).toBeCloseTo(1);
+  });
+
   it('touch replaces the angle fields with the preset', () => {
     const { bones, resolve, resetPose } = makeRig();
     const withTouch = makeRig();
@@ -223,6 +262,48 @@ describe('applyPose', () => {
     const thigh = limbDirection(bones.get('leftUpperLeg')!, new Vector3(0, -1, 0));
     expect(thigh.x).toBeCloseTo(Math.sin(30 * DEG), 1);
     expect(thigh.z).toBeGreaterThan(0.7);
+  });
+
+  it('body.bend pitches the hips forward with the spine untouched', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { body: { bend: 90 } });
+    expect(bones.get('hips')!.rotation.x).toBeCloseTo(90 * DEG);
+    expect(bones.get('spine')!.rotation.x).toBeCloseTo(0);
+    expect(bones.get('chest')!.rotation.x).toBeCloseTo(0);
+  });
+
+  it('body.bend stays a pure forward pitch when combined with turn', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { body: { bend: 90, turn: 90 } });
+    const hips = bones.get('hips')!;
+    expect(hips.rotation.order).toBe('YXZ');
+    // The body's own down axis (-Y at rest) must pitch toward the FIGURE's
+    // front: facing viewer-left (turn +90 → figure front = world -X), a 90°
+    // hip hinge sends the legs' rest direction to world +X (behind the figure).
+    const down = new Vector3(0, -1, 0).applyQuaternion(hips.quaternion);
+    expect(down.x).toBeCloseTo(1);
+    expect(down.y).toBeCloseTo(0);
+  });
+
+  it('body.bend 180 fully inverts the body (handstand)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      body: { bend: 180 },
+      leftArm: { raise: 180, forward: 0 },
+      leftLeg: { forward: 0, kneeBend: 0 },
+    });
+    const hipsQuat = bones.get('hips')!.quaternion;
+    // Legs point world-up…
+    const legDir = new Vector3(0, -1, 0)
+      .applyQuaternion(bones.get('leftUpperLeg')!.quaternion)
+      .applyQuaternion(hipsQuat);
+    expect(legDir.y).toBeCloseTo(1);
+    // …and the overhead arm points world-down (spine/chest are unrotated, so
+    // composing hips ∘ upperArm covers the whole chain).
+    const armDir = new Vector3(1, 0, 0)
+      .applyQuaternion(bones.get('leftUpperArm')!.quaternion)
+      .applyQuaternion(hipsQuat);
+    expect(armDir.y).toBeCloseTo(-1);
   });
 
   it('body.turn +90 (faces viewer-left) rotates the hips by -90°', () => {

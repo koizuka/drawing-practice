@@ -57,6 +57,23 @@ describe('parsePoseJson', () => {
     expect(pose.rightLeg?.ankle).toBe(-60);
   });
 
+  it('clamps bend to the full inversion range', () => {
+    const pose = parsePoseJson('{"body":{"bend":270}}');
+    expect(pose.body?.bend).toBe(180);
+  });
+
+  it('clamps wrist to the extension/flexion range', () => {
+    const pose = parsePoseJson('{"leftArm":{"wrist":120},"rightArm":{"wrist":-100}}');
+    expect(pose.leftArm?.wrist).toBe(90);
+    expect(pose.rightArm?.wrist).toBe(-80);
+  });
+
+  it('clamps forearmTwist to the pronation/supination range', () => {
+    const pose = parsePoseJson('{"leftArm":{"forearmTwist":200},"rightArm":{"forearmTwist":-120}}');
+    expect(pose.leftArm?.forearmTwist).toBe(180);
+    expect(pose.rightArm?.forearmTwist).toBe(-90);
+  });
+
   it('accepts the in/out elbow directions', () => {
     const pose = parsePoseJson('{"leftArm":{"elbowBend":90,"elbowDirection":"in"},"rightArm":{"elbowBend":90,"elbowDirection":"out"}}');
     expect(pose.leftArm?.elbowDirection).toBe('in');

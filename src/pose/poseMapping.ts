@@ -25,6 +25,7 @@ export interface PoseBoneLike {
 export type PoseBoneName
   = | 'hips' | 'spine' | 'chest' | 'head'
     | 'leftUpperArm' | 'leftLowerArm' | 'rightUpperArm' | 'rightLowerArm'
+    | 'leftHand' | 'rightHand'
     | 'leftUpperLeg' | 'leftLowerLeg' | 'rightUpperLeg' | 'rightLowerLeg'
     | 'leftFoot' | 'rightFoot';
 
@@ -139,6 +140,22 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
       lower.quaternion.setFromAxisAngle(axis, bend);
     }
   }
+
+  // Hand: forearm pronation/supination (a twist about the hand bone's own
+  // X axis — kept on the hand so the elbow fold math above stays untouched),
+  // plus the wrist hinge. 'XYZ' composes intrinsically as twist-then-hinge:
+  // the flexion/extension axis rides on the pronated frame, so a planted
+  // palm stays flat while the twist aims the fingers — pronation reorients
+  // the whole wrist joint, as anatomy does. In the T-pose rest (palm down,
+  // fingers along ±X): -X rotation rolls the palm toward the front
+  // (forearmTwist +), and the hinge lifts the fingertips upward for wrist +
+  // (a +Z rotation on the left side, -Z on the right).
+  resolve(`${sideName}Hand`)?.rotation.set(
+    -(a.forearmTwist ?? 0) * DEG,
+    0,
+    side * (a.wrist ?? 0) * DEG,
+    'XYZ',
+  );
 }
 
 function applyLeg(resolve: BoneResolver, sideName: Side, leg: LegPose): void {
@@ -202,9 +219,12 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
 
   const hips = resolve('hips');
   if (hips) {
-    // Documented convention: +90 = figure faces the viewer's left (screen
-    // left). The camera fronts +Z, so that is a -90° rotation about +Y.
-    if (body.turn) hips.rotation.y = -body.turn * DEG;
+    // turn convention: +90 = figure faces the viewer's left (screen left).
+    // The camera fronts +Z, so that is a -90° rotation about +Y.
+    // bend = hip hinge: pitches the pelvis (and the whole body with it)
+    // forward, spine staying straight. 'YXZ' applies the pitch before the
+    // yaw, so bend stays a pure forward pitch for any facing.
+    hips.rotation.set((body.bend ?? 0) * DEG, -(body.turn ?? 0) * DEG, 0, 'YXZ');
     if (body.crouch) hips.position.y -= body.crouch * CROUCH_HIP_DROP;
   }
 

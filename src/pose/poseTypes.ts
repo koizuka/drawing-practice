@@ -19,6 +19,14 @@ export interface ArmPose {
   /** 0 = straight .. 150. */
   elbowBend?: number;
   elbowDirection?: ElbowDirection;
+  /** Wrist hinge. + = hand bends back (extension — palm pushes away), - = curls inward (flexion). 0 = in line with the forearm. */
+  wrist?: number;
+  /**
+   * Forearm pronation/supination: rolls the hand about the forearm's own
+   * axis. + = the palm rolls toward the body's front from its palm-down
+   * T-pose rest, - = toward the back; 180 = palm up.
+   */
+  forearmTwist?: number;
   /** When set, replaces the angle fields with a hand-on-body preset. */
   touch?: TouchTarget;
 }
@@ -42,6 +50,12 @@ export interface LegPose {
 }
 
 export interface BodyPose {
+  /**
+   * Hip hinge: pitches the pelvis (and with it the whole body) forward about
+   * the hip joints, spine staying straight. Legs are measured relative to the
+   * pelvis. 180 = fully inverted (handstand).
+   */
+  bend?: number;
   leanForward?: number;
   /** + = leans toward the figure's left. */
   leanSide?: number;
@@ -100,6 +114,8 @@ function sanitizeArm(raw: unknown): ArmPose | undefined {
     forward: sanitizeNumber(a.forward, -90, 135),
     elbowBend: sanitizeNumber(a.elbowBend, 0, 150),
     elbowDirection: sanitizeEnum(a.elbowDirection, ELBOW_DIRECTIONS),
+    wrist: sanitizeNumber(a.wrist, -80, 90),
+    forearmTwist: sanitizeNumber(a.forearmTwist, -90, 180),
     touch: sanitizeEnum(a.touch, TOUCH_TARGETS),
   });
 }
@@ -124,6 +140,7 @@ function sanitizeBody(raw: unknown): BodyPose | undefined {
   if (typeof raw !== 'object' || raw === null) return undefined;
   const b = raw as Record<string, unknown>;
   return pruneUndefined<BodyPose>({
+    bend: sanitizeNumber(b.bend, -180, 180),
     leanForward: sanitizeNumber(b.leanForward, -45, 90),
     leanSide: sanitizeNumber(b.leanSide, -60, 60),
     twist: sanitizeNumber(b.twist, -90, 90),
