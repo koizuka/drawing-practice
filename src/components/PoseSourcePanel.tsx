@@ -8,6 +8,7 @@ import { PoseParseError } from '../pose/poseTypes';
 import { DEFAULT_VRM_ID, USER_VRM_ID } from '../pose/bundledVrms';
 import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey } from '../utils/anthropic';
 import { isAbortError } from '../utils/pexels';
+import { isSubmitEnter } from '../utils/imeSafeEnter';
 import { getUserVrm, saveUserVrm, VrmTooLargeError } from '../storage';
 import PoseViewer, { type PoseViewerActions, type PoseVrmSource } from './PoseViewer';
 import { PoseSketchPad, type PoseSketchPadHandle } from './PoseSketchPad';
@@ -308,7 +309,7 @@ export default function PoseSourcePanel({
             placeholder={t('poseHintPlaceholder')}
             value={hint}
             onChange={e => setHint(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter' && !generating) handleGenerate(); }}
+            onKeyDown={(e) => { if (isSubmitEnter(e) && !generating) handleGenerate(); }}
             fullWidth
           />
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
