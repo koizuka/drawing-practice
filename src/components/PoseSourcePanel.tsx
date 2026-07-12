@@ -180,11 +180,14 @@ export default function PoseSourcePanel({
       setError(null);
       saveUserVrm(file)
         .catch((e: unknown) => {
-          // Persisting is best-effort (storage may be full); still preview it.
           if (e instanceof VrmTooLargeError) {
             setError({ message: t('poseVrmTooLarge'), keyAction: false });
             throw e;
           }
+          // Other persistence failures (e.g. quota): still preview the model
+          // this session, but say so — otherwise the UI implies it survives
+          // reload when it won't.
+          setNotice(t('poseVrmPersistFailed'));
         })
         .then(() => {
           setUserVrmBlob(file);
@@ -216,6 +219,14 @@ export default function PoseSourcePanel({
     fixAngle: () => {
       const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
       if (!screenshot) return;
+      // Fixing commits to the CURRENT view: cancel any in-flight generation
+      // so a late result can't swap referenceInfo (new pose, no imageUrl)
+      // underneath the just-captured screenshot.
+      abortRef.current?.abort();
+      setGenerating(false);
+      // Record the model actually on screen — while a user VRM is still
+      // resolving, the viewer shows the bundled fallback, not 'user'.
+      const effectiveVrmId = vrmId === USER_VRM_ID && !userVrmBlob ? DEFAULT_VRM_ID : vrmId;
       onReferenceChange((s) => {
         s.setFixedImageUrl(screenshot);
         s.setLocalImageUrl(null);
@@ -223,7 +234,7 @@ export default function PoseSourcePanel({
           source: 'pose',
           title: (poseInfo?.hint ?? hint).trim() || t('pose'),
           author: '',
-          vrmId,
+          vrmId: effectiveVrmId,
           pose: pose ?? undefined,
           hint: poseInfo?.hint ?? (hint.trim() || undefined),
           imageUrl: screenshot,
@@ -231,7 +242,7 @@ export default function PoseSourcePanel({
         s.setReferenceMode('fixed');
       });
     },
-  }), [onReferenceChange, poseInfo, hint, vrmId, pose]);
+  }), [onReferenceChange, poseInfo, hint, vrmId, userVrmBlob, pose]);
 
   const vrmSource: PoseVrmSource = vrmId === USER_VRM_ID && userVrmBlob
     ? { kind: 'user', blob: userVrmBlob }
