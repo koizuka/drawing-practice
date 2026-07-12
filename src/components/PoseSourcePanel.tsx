@@ -85,11 +85,11 @@ export default function PoseSourcePanel({
   // late result must not overwrite a reference the user just restored via
   // undo/redo/gallery (it would even add a new undo entry on top). This also
   // fires after our own generation success, where aborting the already-
-  // settled request is a harmless no-op.
+  // settled request is a harmless no-op. No setState here: the aborted run's
+  // .finally clears `generating` itself (abortRef still points at it).
   useEffect(() => {
     abortRef.current?.abort();
     pendingGenerateRef.current = false;
-    setGenerating(false);
   }, [poseInfo]);
 
   // Resolve the saved user VRM on mount — also when the bundled model is
