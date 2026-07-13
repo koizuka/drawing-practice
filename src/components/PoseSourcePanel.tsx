@@ -149,6 +149,12 @@ export default function PoseSourcePanel({
     setNotice(null);
     setGenerating(true);
     setRefining(false);
+    // Whether this run committed its result. measurePose leaves candidates
+    // applied to the viewer, so a run that ends WITHOUT committing must put
+    // the committed pose back — but only that case: restoring after a commit
+    // would flash the stale pre-commit pose (poseRef updates in the viewer's
+    // pose-prop effect, after this chain settles).
+    let committed = false;
     generatePose(png, hint, controller.signal)
       // Geometric validation loop (bounded, best-effort): apply the candidate
       // to the mannequin, measure it, and let the model correct physically
@@ -178,6 +184,7 @@ export default function PoseSourcePanel({
             hint: hint.trim() || undefined,
           });
         });
+        committed = true;
       })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
@@ -194,10 +201,14 @@ export default function PoseSourcePanel({
           setGenerating(false);
           setRefining(false);
         }
-        // measurePose may have left an uncommitted candidate applied (abort,
-        // refine failure). Re-applying the committed prop pose is a cheap
-        // no-op when the commit path already did it.
-        viewerActionsRef.current?.restorePose();
+        // measurePose may have left an uncommitted candidate applied — put
+        // the committed pose back, but only when this run still owns the
+        // viewer (a superseded run must not stomp the newer run's display)
+        // and didn't commit (the pose prop re-applies a committed result;
+        // restoring would flash the stale pre-effect poseRef value).
+        if (abortRef.current === controller && !committed) {
+          viewerActionsRef.current?.restorePose();
+        }
       });
   }, [hint, onReferenceChange]);
 

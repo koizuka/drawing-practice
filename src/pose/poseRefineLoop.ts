@@ -22,7 +22,7 @@ export interface PoseRefineOptions<G extends { pose: PoseJson }> {
   measure: (pose: PoseJson) => PoseMeasurement | null;
   /** One correction round in the same conversation. May reject. */
   refine: (prior: G, feedback: string) => Promise<G>;
-  /** UI hook, fired before the first correction request. */
+  /** UI hook, fired before each correction request (round is 1-based). */
   onRefineStart?: (round: number, feedback: string) => void;
   maxRounds?: number;
 }
