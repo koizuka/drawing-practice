@@ -6,7 +6,8 @@ import type { ReferenceSetters } from './ReferencePanel';
 import type { PoseJson } from '../pose/poseTypes';
 import { PoseParseError } from '../pose/poseTypes';
 import { DEFAULT_VRM_ID, USER_VRM_ID } from '../pose/bundledVrms';
-import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey } from '../utils/anthropic';
+import { refinePoseUntilValid } from '../pose/poseRefineLoop';
+import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey, refinePose } from '../utils/anthropic';
 import { isAbortError } from '../utils/pexels';
 import { isSubmitEnter } from '../utils/imeSafeEnter';
 import { getUserVrm, saveUserVrm, VrmTooLargeError } from '../storage';
@@ -55,6 +56,9 @@ export default function PoseSourcePanel({
   const [vrmId, setVrmId] = useState(() => poseInfo?.vrmId ?? DEFAULT_VRM_ID);
   const [userVrmBlob, setUserVrmBlob] = useState<Blob | null>(null);
   const [generating, setGenerating] = useState(false);
+  // True while a validation-correction round is in flight (subset of
+  // `generating`) — switches the button label to the refining message.
+  const [refining, setRefining] = useState(false);
   const [error, setError] = useState<{ message: string; detail?: string; keyAction: boolean } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [vrmLoadFailed, setVrmLoadFailed] = useState(false);
@@ -144,8 +148,26 @@ export default function PoseSourcePanel({
     setError(null);
     setNotice(null);
     setGenerating(true);
+    setRefining(false);
+    // Whether this run committed its result. measurePose leaves candidates
+    // applied to the viewer, so a run that ends WITHOUT committing must put
+    // the committed pose back — but only that case: restoring after a commit
+    // would flash the stale pre-commit pose (poseRef updates in the viewer's
+    // pose-prop effect, after this chain settles).
+    let committed = false;
     generatePose(png, hint, controller.signal)
-      .then((generated) => {
+      // Geometric validation loop (bounded, best-effort): apply the candidate
+      // to the mannequin, measure it, and let the model correct physically
+      // implausible results in the same conversation. measure() returning
+      // null on a superseded/aborted run stops the loop without extra calls.
+      .then(generation => refinePoseUntilValid(generation, {
+        measure: candidate => (controller.signal.aborted || abortRef.current !== controller)
+          ? null
+          : viewerActionsRef.current?.measurePose(candidate) ?? null,
+        refine: (prior, feedback) => refinePose(prior, feedback, controller.signal),
+        onRefineStart: () => setRefining(true),
+      }))
+      .then(({ pose: generated }) => {
         // A superseded run can still resolve (fetch may complete before
         // abort lands) — never let a stale pose overwrite a newer one, and
         // never apply after unmount.
@@ -162,6 +184,7 @@ export default function PoseSourcePanel({
             hint: hint.trim() || undefined,
           });
         });
+        committed = true;
       })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
@@ -174,7 +197,18 @@ export default function PoseSourcePanel({
         setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
       })
       .finally(() => {
-        if (abortRef.current === controller) setGenerating(false);
+        if (abortRef.current === controller) {
+          setGenerating(false);
+          setRefining(false);
+        }
+        // measurePose may have left an uncommitted candidate applied — put
+        // the committed pose back, but only when this run still owns the
+        // viewer (a superseded run must not stomp the newer run's display)
+        // and didn't commit (the pose prop re-applies a committed result;
+        // restoring would flash the stale pre-effect poseRef value).
+        if (abortRef.current === controller && !committed) {
+          viewerActionsRef.current?.restorePose();
+        }
       });
   }, [hint, onReferenceChange]);
 
@@ -247,6 +281,9 @@ export default function PoseSourcePanel({
 
   useImperativeHandle(actionsRef, () => ({
     fixAngle: () => {
+      // A mid-refinement measurePose may have an uncommitted candidate on
+      // screen — capture must show the COMMITTED pose that gets recorded.
+      viewerActionsRef.current?.restorePose();
       const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
       if (!screenshot) return;
       // Fixing commits to the CURRENT view: cancel any in-flight generation
@@ -320,7 +357,7 @@ export default function PoseSourcePanel({
               disabled={generating}
               startIcon={generating ? <CircularProgress size={14} color="inherit" /> : undefined}
             >
-              {generating ? t('poseGenerating') : t('poseGenerate')}
+              {generating ? t(refining ? 'poseRefining' : 'poseGenerating') : t('poseGenerate')}
             </Button>
             <ToggleButtonGroup
               size="small"

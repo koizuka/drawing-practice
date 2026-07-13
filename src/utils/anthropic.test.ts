@@ -11,6 +11,7 @@ import {
   AnthropicNetworkError,
   AnthropicTruncatedError,
   anthropicErrorDetail,
+  refinePose,
   POSE_MODEL,
 } from './anthropic';
 import { PoseParseError } from '../pose/poseTypes';
@@ -97,11 +98,16 @@ describe('generatePose', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('parses the text block into a sanitized PoseJson', async () => {
+  it('parses the text block into a sanitized PoseJson and records the conversation', async () => {
     setAnthropicApiKey('sk-test');
     fetchMock.mockResolvedValueOnce(textResponse('```json\n{"body":{"turn":-90},"junk":1}\n```'));
-    const pose = await generatePose('AAAA', '');
-    expect(pose).toEqual({ body: { turn: -90 } });
+    const result = await generatePose('AAAA', '');
+    expect(result.pose).toEqual({ body: { turn: -90 } });
+    // The conversation carries the request and the assistant's raw reply so
+    // refinePose can continue in-context.
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[0].role).toBe('user');
+    expect(result.messages[1]).toEqual({ role: 'assistant', content: '```json\n{"body":{"turn":-90},"junk":1}\n```' });
   });
 
   it.each([
@@ -153,7 +159,7 @@ describe('generatePose', () => {
       }),
       { status: 200 },
     ));
-    await expect(generatePose('AAAA', '')).resolves.toEqual({ leftArm: { raise: 90 } });
+    await expect(generatePose('AAAA', '').then(r => r.pose)).resolves.toEqual({ leftArm: { raise: 90 } });
   });
 
   it('treats an empty parsed pose under max_tokens as truncation', async () => {
@@ -181,6 +187,31 @@ describe('generatePose', () => {
     const err = await generatePose('AAAA', '').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AnthropicTruncatedError);
     expect(anthropicErrorDetail(err)).toContain('max_tokens');
+  });
+});
+
+describe('refinePose', () => {
+  it('sends the prior conversation plus the feedback as a new user turn', async () => {
+    setAnthropicApiKey('sk-test');
+    fetchMock.mockResolvedValueOnce(textResponse('{"leftArm":{"raise":90}}'));
+    const first = await generatePose(null, 'ジャンプ');
+    fetchMock.mockResolvedValueOnce(textResponse('Fixed.\n{"leftArm":{"raise":80}}'));
+
+    const refined = await refinePose(first, 'the left hand is 10cm below the floor.');
+
+    const [, init] = fetchMock.mock.calls[1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages[0].role).toBe('user');
+    expect(body.messages[1].role).toBe('assistant');
+    expect(body.messages[2]).toEqual({ role: 'user', content: 'the left hand is 10cm below the floor.' });
+    expect(refined.pose).toEqual({ leftArm: { raise: 80 } });
+    expect(refined.messages).toHaveLength(4);
+  });
+
+  it('throws AnthropicKeyMissingError without a key and does not fetch', async () => {
+    await expect(refinePose({ pose: {}, messages: [] }, 'x')).rejects.toBeInstanceOf(AnthropicKeyMissingError);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

@@ -10,8 +10,10 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
+import { Vector3 } from 'three';
 import { applyPose, type BoneResolver } from '../pose/poseMapping';
 import type { PoseJson } from '../pose/poseTypes';
+import { LANDMARK_NAMES, type LandmarkSet, type PoseMeasurement } from '../pose/poseValidation';
 import { bundledVrmUrl, getBundledVrm, BUNDLED_VRMS } from '../pose/bundledVrms';
 
 export type PoseVrmSource
@@ -21,6 +23,16 @@ export type PoseVrmSource
 export interface PoseViewerActions {
   /** PNG data URL of the current view, or null before the model is ready. */
   captureScreenshot: () => string | null;
+  /**
+   * Apply a candidate pose and sample rest + posed landmark positions (in
+   * the normalized rig's local space: +Y up, floor y=0, +Z front at turn 0)
+   * for geometric validation. The candidate stays applied — callers must
+   * either commit it (the `pose` prop re-applies) or call restorePose.
+   * Returns null before the model is ready.
+   */
+  measurePose: (candidate: PoseJson) => PoseMeasurement | null;
+  /** Re-apply the last committed `pose` prop (discard a measured candidate). */
+  restorePose: () => void;
 }
 
 interface PoseViewerProps {
@@ -41,6 +53,13 @@ interface PoseViewerProps {
 const CAMERA_TARGET_Y = 0.9;
 const CAMERA_DISTANCE = 4.5;
 
+function applyToVrm(vrm: VRM, poseJson: PoseJson | null): void {
+  const resolve: BoneResolver = name => vrm.humanoid.getNormalizedBoneNode(name);
+  const reset = () => vrm.humanoid.resetNormalizedPose();
+  if (poseJson) applyPose(resolve, reset, poseJson);
+  else reset();
+}
+
 /**
  * Free-orbiting 3D mannequin viewer (three.js + three-vrm). Deliberately
  * independent from the shared ViewTransform camera — like the Sketchfab
@@ -55,13 +74,6 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
   const cameraRef = useRef<PerspectiveCamera | null>(null);
   const vrmRef = useRef<VRM | null>(null);
   const poseRef = useRef<PoseJson | null>(pose);
-
-  const applyToVrm = (vrm: VRM, poseJson: PoseJson | null) => {
-    const resolve: BoneResolver = name => vrm.humanoid.getNormalizedBoneNode(name);
-    const reset = () => vrm.humanoid.resetNormalizedPose();
-    if (poseJson) applyPose(resolve, reset, poseJson);
-    else reset();
-  };
 
   // Scene / renderer lifecycle (once per mount).
   useEffect(() => {
@@ -232,6 +244,35 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
       // valid without preserveDrawingBuffer.
       renderer.render(scene, camera);
       return renderer.domElement.toDataURL('image/png');
+    },
+    measurePose: (candidate) => {
+      const vrm = vrmRef.current;
+      if (!vrm) return null;
+      const root = vrm.humanoid.normalizedHumanBonesRoot;
+      const collect = (): LandmarkSet => {
+        root.updateWorldMatrix(true, true);
+        const out: LandmarkSet = {};
+        const v = new Vector3();
+        for (const name of LANDMARK_NAMES) {
+          const node = vrm.humanoid.getNormalizedBoneNode(name);
+          if (!node) continue;
+          node.getWorldPosition(v);
+          // Rig-local = normalized humanoid space regardless of any VRM0
+          // 180° scene rotation.
+          root.worldToLocal(v);
+          out[name] = { x: v.x, y: v.y, z: v.z };
+        }
+        return out;
+      };
+      vrm.humanoid.resetNormalizedPose();
+      const rest = collect();
+      applyToVrm(vrm, candidate);
+      const posed = collect();
+      return { rest, posed };
+    },
+    restorePose: () => {
+      const vrm = vrmRef.current;
+      if (vrm) applyToVrm(vrm, poseRef.current);
     },
   }), []);
 

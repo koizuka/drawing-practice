@@ -125,6 +125,21 @@ interface AnthropicContentBlock {
   text?: string;
 }
 
+/** One turn of the pose conversation (content is the raw API block array or a string). */
+export interface AnthropicMessage {
+  role: 'user' | 'assistant';
+  content: unknown;
+}
+
+/**
+ * A generated pose together with the conversation that produced it, so a
+ * validation follow-up (refinePose) can continue in-context.
+ */
+export interface PoseGeneration {
+  pose: PoseJson;
+  messages: AnthropicMessage[];
+}
+
 interface AnthropicMessagesResponse {
   content: AnthropicContentBlock[];
   stop_reason?: string | null;
@@ -154,9 +169,7 @@ async function readErrorDetail(res: Response): Promise<string | undefined> {
  *   null to generate from the hint text alone (hint must be non-empty then).
  * @throws PoseParseError when the model's reply contains no usable JSON.
  */
-export async function generatePose(pngBase64: string | null, hint: string, signal?: AbortSignal): Promise<PoseJson> {
-  const key = getAnthropicApiKey();
-  if (!key) throw new AnthropicKeyMissingError();
+export async function generatePose(pngBase64: string | null, hint: string, signal?: AbortSignal): Promise<PoseGeneration> {
   if (pngBase64 === null && hint.trim() === '') {
     throw new Error('generatePose requires a sketch or a non-empty hint');
   }
@@ -167,6 +180,21 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
         { type: 'text', text: buildPosePrompt(hint) },
       ]
     : [{ type: 'text', text: buildTextPosePrompt(hint) }];
+
+  return requestPose([{ role: 'user', content }], signal);
+}
+
+/**
+ * One validation-correction round: appends the geometric feedback to the
+ * prior conversation and asks for a corrected pose JSON in-context.
+ */
+export async function refinePose(prior: PoseGeneration, feedback: string, signal?: AbortSignal): Promise<PoseGeneration> {
+  return requestPose([...prior.messages, { role: 'user', content: feedback }], signal);
+}
+
+async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): Promise<PoseGeneration> {
+  const key = getAnthropicApiKey();
+  if (!key) throw new AnthropicKeyMissingError();
 
   let res: Response;
   try {
@@ -189,7 +217,7 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
         // of disabling; stop_reason 'max_tokens' below catches the residual
         // case with a user-visible error rather than a cryptic parse error.
         max_tokens: 8192,
-        messages: [{ role: 'user', content }],
+        messages,
       }),
       signal,
     });
@@ -242,5 +270,5 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
     console.error('[pose] reply truncated by max_tokens:', data);
     throw new AnthropicTruncatedError('stop_reason: max_tokens');
   }
-  return pose;
+  return { pose, messages: [...messages, { role: 'assistant', content: text }] };
 }
