@@ -513,6 +513,62 @@ describe('applyPose placement targets', () => {
     expect(new Vector3(1, 0, 0).applyQuaternion(handWorld).z).toBeGreaterThan(0.9);
   });
 
+  it('touch presets become IK targets with a rig (chest hand lands ON the chest, not inside)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { leftArm: { touch: 'chest' } }, REST);
+    const wrist = leftWristWorld(bones);
+    // The angle preset used to fold the hand past the midline into the chest
+    // volume (z ≈ -0.04); the IK target pins it on the front surface.
+    expect(wrist.z).toBeGreaterThan(0.08);
+    expect(Math.abs(wrist.x)).toBeLessThan(0.12);
+    expect(wrist.y).toBeCloseTo(1.20, 1);
+  });
+
+  it('pushes a handAt target EXACTLY on the torso centerline out sideways', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { handAt: { x: 0, y: 0.90, z: 0 } }, // zero radial direction
+    }, REST);
+    const wrist = leftWristWorld(bones);
+    const radial = Math.sqrt(wrist.x * wrist.x + wrist.z * wrist.z);
+    expect(radial).toBeGreaterThan(0.12);
+    expect(wrist.x).toBeGreaterThan(0.1); // toward the LEFT arm's own side
+  });
+
+  it('pushes a handAt target out of the torso volume (body is an obstacle)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    // Target ON the torso centerline — inside the flesh.
+    applyPose(resolve, resetPose, {
+      leftArm: { handAt: { x: 0, y: 0.90, z: 0.02 } },
+    }, REST);
+    const wrist = leftWristWorld(bones);
+    const radial = Math.sqrt(wrist.x * wrist.x + wrist.z * wrist.z);
+    expect(radial).toBeGreaterThan(0.12);
+  });
+
+  it('lays the palm against the torso for a self-touch handAt (covering the crotch)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.10 }, elbowDirection: 'in' },
+    }, REST);
+    const handWorld = bones.get('hips')!.quaternion.clone()
+      .multiply(bones.get('rightUpperArm')!.quaternion)
+      .multiply(bones.get('rightLowerArm')!.quaternion)
+      .multiply(bones.get('rightHand')!.quaternion);
+    // Palm normal points at the torso axis (inward/backward), not forward.
+    const palm = new Vector3(0, -1, 0).applyQuaternion(handWorld);
+    expect(palm.z).toBeLessThan(-0.5);
+  });
+
+  it('an explicit wrist/forearmTwist overrides the palm-on-body auto-orientation', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.10 }, forearmTwist: 0, wrist: 0 },
+    }, REST);
+    expect(bones.get('rightHand')!.rotation.x).toBeCloseTo(0);
+    expect(bones.get('rightHand')!.rotation.z).toBeCloseTo(0);
+  });
+
   it('targets follow body.turn (figure frame, not viewer frame)', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, {

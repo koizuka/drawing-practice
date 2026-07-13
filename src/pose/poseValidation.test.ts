@@ -130,6 +130,33 @@ describe('diagnosePose', () => {
     expect(problems.some(p => p.includes('center of mass') && p.includes('tip forward'))).toBe(true);
   });
 
+  it('reports a forearm sunk into the torso volume (hand covering the crotch/chest)', () => {
+    // The torso segment is the hips–chest axis, but the flesh extends ~0.1
+    // around it: a forearm 6cm from the axis is inside the belly even though
+    // it never comes near the old 5cm line-crossing threshold.
+    const posed = standingRest();
+    posed.leftLowerArm = v(0.15, 0.95, 0.06);
+    posed.leftHand = v(-0.05, 0.90, 0.06);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('left forearm') && p.includes('torso'))).toBe(true);
+  });
+
+  it('reports a forearm buried in the pelvis (crotch sits BELOW the hips–chest axis)', () => {
+    const posed = standingRest();
+    posed.leftLowerArm = v(0.12, 0.72, 0.05);
+    posed.leftHand = v(0.0, 0.70, 0.05);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('left forearm') && p.includes('torso'))).toBe(true);
+  });
+
+  it('allows surface-level contact in front of the torso (crossed arms, hand on chest)', () => {
+    const posed = standingRest();
+    posed.leftLowerArm = v(0.15, 0.95, 0.12);
+    posed.leftHand = v(-0.05, 0.90, 0.12);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems).toEqual([]);
+  });
+
   it('reports crossing limbs', () => {
     const posed = standingRest();
     // Right shin swung across the left shin's line, center lines ~1cm apart.

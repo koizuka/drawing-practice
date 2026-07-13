@@ -119,12 +119,19 @@ const LIMB_SEGMENTS: ReadonlyArray<readonly [string, LandmarkName, LandmarkName]
   ['torso', 'hips', 'chest'],
 ] as const;
 
-/** Segment pairs worth checking (same-limb neighbours always "touch"). */
-const SEGMENT_PAIRS: ReadonlyArray<readonly [number, number]> = [
+/**
+ * Segment pairs worth checking (same-limb neighbours always "touch"). The
+ * optional third element overrides INTERSECTION_DISTANCE: the torso is a
+ * VOLUME, not a line — a forearm or hand sinks into the belly/chest well
+ * before reaching the hips–chest axis, so torso pairs use the body's rough
+ * half-depth. 0.08 still permits genuine surface contact (crossed arms,
+ * a hand covering the chest sits ~0.10-0.13 from the axis).
+ */
+const SEGMENT_PAIRS: ReadonlyArray<readonly [number, number] | readonly [number, number, number]> = [
   [0, 1], // thigh × thigh
   [2, 3], // shin × shin
   [0, 3], [1, 2], // thigh × opposite shin
-  [4, 6], [5, 6], // forearm × torso
+  [4, 6, 0.08], [5, 6, 0.08], // forearm × torso
   [4, 5], // forearm × forearm
 ] as const;
 
@@ -271,12 +278,26 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
     const b = posed[to];
     return a && b ? { label, a, b } : null;
   });
-  for (const [i, j] of SEGMENT_PAIRS) {
+  // Extend the torso capsule past the hips joint to cover the pelvis — a
+  // hand buried in the crotch sits BELOW the hips–chest axis and would
+  // otherwise never come near the segment.
+  const torso = segments.find(s => s?.label === 'torso');
+  if (torso) {
+    const dx = torso.a.x - torso.b.x;
+    const dy = torso.a.y - torso.b.y;
+    const dz = torso.a.z - torso.b.z;
+    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (len > 1e-6) {
+      const k = 0.18 / len;
+      torso.a = { x: torso.a.x + dx * k, y: torso.a.y + dy * k, z: torso.a.z + dz * k };
+    }
+  }
+  for (const [i, j, minDist = INTERSECTION_DISTANCE] of SEGMENT_PAIRS) {
     const s1 = segments[i];
     const s2 = segments[j];
     if (!s1 || !s2) continue;
     const d = segmentDistance(s1.a, s1.b, s2.a, s2.b);
-    if (d < INTERSECTION_DISTANCE) {
+    if (d < minDist) {
       problems.push(`the ${s1.label} passes through the ${s2.label} (their center lines are only ${cm(d)}cm apart).`);
     }
   }
