@@ -12,6 +12,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
 import { Vector3 } from 'three';
 import { applyPose, type BoneResolver } from '../pose/poseMapping';
+import { RIG_JOINT_NAMES, type PoseRig } from '../pose/poseIk';
 import type { PoseJson } from '../pose/poseTypes';
 import { LANDMARK_NAMES, type LandmarkSet, type PoseMeasurement } from '../pose/poseValidation';
 import { bundledVrmUrl, getBundledVrm, BUNDLED_VRMS } from '../pose/bundledVrms';
@@ -53,10 +54,40 @@ interface PoseViewerProps {
 const CAMERA_TARGET_Y = 0.9;
 const CAMERA_DISTANCE = 4.5;
 
+/**
+ * Rest (T-pose) joint positions per model, sampled once — applyPose needs
+ * them for the placement-target IK path (limb lengths, posed joint FK).
+ */
+const rigCache = new WeakMap<VRM, PoseRig>();
+
+function rigOf(vrm: VRM): PoseRig {
+  let rig = rigCache.get(vrm);
+  if (!rig) {
+    vrm.humanoid.resetNormalizedPose();
+    const root = vrm.humanoid.normalizedHumanBonesRoot;
+    root.updateWorldMatrix(true, true);
+    const out: PoseRig = {};
+    const v = new Vector3();
+    for (const name of RIG_JOINT_NAMES) {
+      const node = vrm.humanoid.getNormalizedBoneNode(name);
+      if (!node) continue;
+      node.getWorldPosition(v);
+      root.worldToLocal(v);
+      out[name] = { x: v.x, y: v.y, z: v.z };
+    }
+    rig = out;
+    rigCache.set(vrm, rig);
+    // Diagnostic: placement-target IK silently falls back to angle fields
+    // when rig joints are missing — make that visible on device.
+    console.debug('[pose] rig sampled:', Object.keys(out).length, 'joints');
+  }
+  return rig;
+}
+
 function applyToVrm(vrm: VRM, poseJson: PoseJson | null): void {
   const resolve: BoneResolver = name => vrm.humanoid.getNormalizedBoneNode(name);
   const reset = () => vrm.humanoid.resetNormalizedPose();
-  if (poseJson) applyPose(resolve, reset, poseJson);
+  if (poseJson) applyPose(resolve, reset, poseJson, rigOf(vrm));
   else reset();
 }
 

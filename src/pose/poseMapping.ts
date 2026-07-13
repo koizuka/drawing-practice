@@ -10,8 +10,12 @@
  * position.
  */
 
-import { Matrix4, Vector3, Quaternion, type Euler } from 'three';
-import type { ArmPose, ElbowDirection, LegPose, PoseJson, TouchTarget } from './poseTypes';
+import { Euler, Matrix4, Vector3, Quaternion } from 'three';
+import type { ArmPose, BodyPose, ElbowDirection, LegPose, PoseJson, TargetPoint, TouchTarget } from './poseTypes';
+import {
+  foldBasis, foldDirection, hingeQuat, solveTwoBone, targetScale, vec3,
+  type PoseRig, type TwoBoneSolution,
+} from './poseIk';
 
 const DEG = Math.PI / 180;
 
@@ -89,8 +93,242 @@ function naturalBendDir(limbDir: Vector3): Vector3 {
   return UP.clone().addScaledVector(limbDir, -UP.dot(limbDir)).normalize();
 }
 
+// ---------------------------------------------------------------------------
+// Placement-target IK (handAt / elbowAt / footAt / kneeAt): when a limb has a
+// target, its joint rotations are solved analytically from the target instead
+// of the angle fields. Needs the model's rest joint positions (PoseRig) to
+// know limb lengths and where the posed shoulder / hip joint sits.
+// ---------------------------------------------------------------------------
+
+const DOWN = new Vector3(0, -1, 0);
+/** Direction the shin moves under +kneeBend, in the thigh's rest frame. */
+const KNEE_REST_FOLD = new Vector3(0, 0, -1);
+/** Figure-frame y at/below this counts as planted on the floor (meters). */
+const GROUND_EPS = 0.03;
+/** Planted palm: fingers point figure-front with a slight outward splay. */
+const FINGER_SPLAY = 75 * DEG;
+
+interface IkContext {
+  rig: PoseRig;
+  scale: number;
+  /** Yaw-only body facing (targets and poles are figure-frame). */
+  qYaw: Quaternion;
+  /** World rotation of the hips bone (turn + bend). */
+  qHips: Quaternion;
+  /** Rotation applied to the spine AND the chest (each gets half the lean). */
+  qHalf: Quaternion;
+  /** World rotation of the chain above the upper arm (hips·spine·chest). */
+  qArmParent: Quaternion;
+  hipsRest: Vector3;
+  /** Posed hips position (crouch drop applied). */
+  hipsPos: Vector3;
+  /** Figure-frame origin: the floor point below the rest hips. */
+  origin: Vector3;
+}
+
+function buildIkContext(rig: PoseRig, body: BodyPose): IkContext | null {
+  const hips = rig.hips;
+  if (!hips) return null;
+  const qYaw = new Quaternion().setFromEuler(new Euler(0, -(body.turn ?? 0) * DEG, 0));
+  const qHips = new Quaternion().setFromEuler(
+    new Euler((body.bend ?? 0) * DEG, -(body.turn ?? 0) * DEG, 0, 'YXZ'),
+  );
+  const qHalf = new Quaternion().setFromEuler(new Euler(
+    ((body.leanForward ?? 0) / 2) * DEG,
+    ((body.twist ?? 0) / 2) * DEG,
+    (-(body.leanSide ?? 0) / 2) * DEG,
+  ));
+  const hipsRest = vec3(hips);
+  const scale = targetScale(rig);
+  // hipsHeight pins the hips at an absolute floor height — unlike crouch's
+  // fixed drop it can bring the body all the way down (floor sit, all-fours).
+  const hipsY = body.hipsHeight !== undefined
+    ? Math.max(0.03 * scale, body.hipsHeight * scale)
+    : hipsRest.y - (body.crouch ?? 0) * CROUCH_HIP_DROP;
+  return {
+    rig,
+    scale,
+    qYaw,
+    qHips,
+    qHalf,
+    qArmParent: qHips.clone().multiply(qHalf).multiply(qHalf),
+    hipsRest,
+    hipsPos: new Vector3(hipsRest.x, hipsY, hipsRest.z),
+    origin: new Vector3(hips.x, 0, hips.z),
+  };
+}
+
+/** Figure-frame target → rig space (scale to the model, yaw with the body). */
+function toWorldTarget(ctx: IkContext, t: TargetPoint): Vector3 {
+  return new Vector3(t.x, t.y, t.z).multiplyScalar(ctx.scale).applyQuaternion(ctx.qYaw).add(ctx.origin);
+}
+
+/** Posed shoulder-joint position: FK through hips → spine → chest. */
+function armRootWorld(ctx: IkContext, sideName: Side): Vector3 | null {
+  const sp = ctx.rig.spine;
+  const ch = ctx.rig.chest;
+  const ua = ctx.rig[`${sideName}UpperArm`];
+  if (!sp || !ch || !ua) return null;
+  const inChest = vec3(ua).sub(vec3(ch)).applyQuaternion(ctx.qHalf);
+  const inSpine = vec3(ch).sub(vec3(sp)).add(inChest).applyQuaternion(ctx.qHalf);
+  return vec3(sp).sub(ctx.hipsRest).add(inSpine).applyQuaternion(ctx.qHips).add(ctx.hipsPos);
+}
+
+function applyArmIk(resolve: BoneResolver, sideName: Side, arm: ArmPose, ctx: IkContext): boolean {
+  if (arm.touch || (!arm.handAt && !arm.elbowAt)) return false;
+  const side = SIDE_SIGN[sideName];
+  const upper = resolve(`${sideName}UpperArm`);
+  const lower = resolve(`${sideName}LowerArm`);
+  const rUA = ctx.rig[`${sideName}UpperArm`];
+  const rLA = ctx.rig[`${sideName}LowerArm`];
+  const rH = ctx.rig[`${sideName}Hand`];
+  if (!upper || !lower || !rUA || !rLA || !rH) return false;
+  const root = armRootWorld(ctx, sideName);
+  if (!root) return false;
+  const len1 = vec3(rLA).sub(vec3(rUA)).length();
+  const len2 = vec3(rH).sub(vec3(rLA)).length();
+  if (len1 < 1e-3 || len2 < 1e-3) return false;
+
+  const planted = !!arm.handAt && arm.handAt.y <= GROUND_EPS;
+  const elbowTarget = arm.elbowAt ? toWorldTarget(ctx, arm.elbowAt) : null;
+  if (elbowTarget) elbowTarget.y = Math.max(elbowTarget.y, 0.04 * ctx.scale);
+  const restAxis = new Vector3(side, 0, 0);
+  const unYaw = ctx.qYaw.clone().invert();
+  // 'back' is hyperextension in angle mode too — treat as the natural front.
+  const dirName: ElbowDirection = arm.elbowDirection === 'back' ? 'front' : (arm.elbowDirection ?? 'front');
+
+  let sol: TwoBoneSolution;
+  if (arm.handAt) {
+    const target = toWorldTarget(ctx, arm.handAt);
+    target.y = Math.max(target.y, 0.03 * ctx.scale);
+    // elbowDirection keeps its meaning "the forearm folds toward" — the
+    // elbow apex therefore bulges the OPPOSITE way (that's the pole).
+    const dHat = target.clone().sub(root);
+    if (dHat.lengthSq() < 1e-8) dHat.copy(restAxis);
+    dHat.normalize();
+    const foldFig = dirName === 'front'
+      ? naturalBendDir(dHat.clone().applyQuaternion(unYaw))
+      : elbowWorldDir(dirName, side).clone();
+    const pole = foldFig.applyQuaternion(ctx.qYaw).negate();
+    sol = solveTwoBone({ root, target, pole, mid: elbowTarget, len1, len2, restAxis, restFold: FRONT, maxBend: 150 * DEG });
+  }
+  else {
+    // elbowAt only: aim the upper arm at the elbow, hinge by elbowBend.
+    const boneDir = elbowTarget!.clone().sub(root);
+    if (boneDir.lengthSq() < 1e-8) boneDir.copy(restAxis);
+    boneDir.normalize();
+    const foldFig = dirName === 'front'
+      ? naturalBendDir(boneDir.clone().applyQuaternion(unYaw))
+      : elbowWorldDir(dirName, side).clone();
+    const fold = foldDirection(foldFig.applyQuaternion(ctx.qYaw), boneDir, FRONT.clone().applyQuaternion(ctx.qYaw));
+    const bend = (arm.elbowBend ?? 0) * DEG;
+    const upperWorld = foldBasis(restAxis, FRONT, boneDir, fold);
+    const midLocal = hingeQuat(restAxis, FRONT, bend);
+    const lowerDir = restAxis.clone().applyQuaternion(upperWorld.clone().multiply(midLocal));
+    sol = { upperWorld, midLocal, bend, mid: elbowTarget!, end: elbowTarget!.clone().addScaledVector(lowerDir, len2) };
+  }
+
+  upper.quaternion.copy(ctx.qArmParent.clone().invert().multiply(sol.upperWorld));
+  lower.quaternion.copy(sol.midLocal);
+
+  const hand = resolve(`${sideName}Hand`);
+  if (hand) {
+    const forearmWorld = sol.upperWorld.clone().multiply(sol.midLocal);
+    const forearmDir = sol.end.clone().sub(sol.mid).normalize();
+    if (planted && arm.wrist === undefined && arm.forearmTwist === undefined && forearmDir.y <= -0.2) {
+      // Planted palm: flat on the floor (world rest orientation is palm-down),
+      // fingers toward the figure's front with a slight outward splay.
+      const flat = ctx.qYaw.clone().multiply(new Quaternion().setFromAxisAngle(UP, -side * FINGER_SPLAY));
+      hand.quaternion.copy(forearmWorld.invert().multiply(flat));
+    }
+    else {
+      hand.rotation.set(-(arm.forearmTwist ?? 0) * DEG, 0, side * (arm.wrist ?? 0) * DEG, 'XYZ');
+    }
+  }
+  return true;
+}
+
+function applyLegIk(resolve: BoneResolver, sideName: Side, leg: LegPose, ctx: IkContext): boolean {
+  if (!leg.footAt && !leg.kneeAt) return false;
+  const side = SIDE_SIGN[sideName];
+  const upper = resolve(`${sideName}UpperLeg`);
+  const lower = resolve(`${sideName}LowerLeg`);
+  const rUL = ctx.rig[`${sideName}UpperLeg`];
+  const rLL = ctx.rig[`${sideName}LowerLeg`];
+  const rF = ctx.rig[`${sideName}Foot`];
+  if (!upper || !lower || !rUL || !rLL || !rF) return false;
+  const root = vec3(rUL).sub(ctx.hipsRest).applyQuaternion(ctx.qHips).add(ctx.hipsPos);
+  const len1 = vec3(rLL).sub(vec3(rUL)).length();
+  const len2 = vec3(rF).sub(vec3(rLL)).length();
+  if (len1 < 1e-3 || len2 < 1e-3) return false;
+
+  const soleHeight = Math.max(0.02, rF.y);
+  const planted = !!leg.footAt && leg.footAt.y <= GROUND_EPS;
+  const kneeTarget = leg.kneeAt ? toWorldTarget(ctx, leg.kneeAt) : null;
+  // The knee has its own radius — never solve it through the floor.
+  if (kneeTarget) kneeTarget.y = Math.max(kneeTarget.y, 0.05 * ctx.scale);
+
+  // kneeDirection = which way the knee APEX points (figure frame).
+  const poleFig = leg.kneeDirection === 'out'
+    ? new Vector3(side, 0, 0)
+    : leg.kneeDirection === 'in'
+      ? new Vector3(-side, 0, 0)
+      : new Vector3(0, 0, 1);
+  const pole = poleFig.applyQuaternion(ctx.qYaw);
+
+  let sol: TwoBoneSolution;
+  if (leg.footAt) {
+    const target = toWorldTarget(ctx, leg.footAt);
+    // A planted ankle sits at its rest (sole-offset) height.
+    target.y = Math.max(target.y, planted ? soleHeight : 0.03 * ctx.scale);
+    sol = solveTwoBone({ root, target, pole, mid: kneeTarget, len1, len2, restAxis: DOWN, restFold: KNEE_REST_FOLD, maxBend: 160 * DEG });
+  }
+  else {
+    // kneeAt only: aim the thigh at the knee, hinge by kneeBend. The shin
+    // folds toward the figure's back by default (kneeling, sitting).
+    const boneDir = kneeTarget!.clone().sub(root);
+    if (boneDir.lengthSq() < 1e-8) boneDir.copy(DOWN);
+    boneDir.normalize();
+    const fold = foldDirection(new Vector3(0, 0, -1).applyQuaternion(ctx.qYaw), boneDir, DOWN);
+    const bend = (leg.kneeBend ?? 0) * DEG;
+    const upperWorld = foldBasis(DOWN, KNEE_REST_FOLD, boneDir, fold);
+    const midLocal = hingeQuat(DOWN, KNEE_REST_FOLD, bend);
+    const lowerDir = DOWN.clone().applyQuaternion(upperWorld.clone().multiply(midLocal));
+    sol = { upperWorld, midLocal, bend, mid: kneeTarget!, end: kneeTarget!.clone().addScaledVector(lowerDir, len2) };
+  }
+
+  upper.quaternion.copy(ctx.qHips.clone().invert().multiply(sol.upperWorld));
+  lower.quaternion.copy(sol.midLocal);
+
+  const foot = resolve(`${sideName}Foot`);
+  if (foot) {
+    const shinWorld = sol.upperWorld.clone().multiply(sol.midLocal);
+    const shinDir = sol.end.clone().sub(sol.mid).normalize();
+    if (planted && leg.ankle === undefined && shinDir.y <= -0.5) {
+      // Planted sole: flat on the floor, toes figure-front (the foot's world
+      // rest orientation) — only reachable with a reasonably upright shin.
+      foot.quaternion.copy(shinWorld.invert().multiply(ctx.qYaw));
+    }
+    else {
+      foot.rotation.set(-(leg.ankle ?? 0) * DEG, 0, 0);
+    }
+  }
+  return true;
+}
+
 function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
-  const a = arm.touch ? TOUCH_PRESETS[arm.touch] : arm;
+  // A target-only arm lands here when the IK path is unavailable (no rig,
+  // model missing bones). Without this guard `raise ?? 90` would render it as
+  // a T-pose arm; hang it relaxed instead, but keep any explicit fields the
+  // pose did provide (elbowBend / wrist / forearmTwist are legal overrides
+  // alongside targets).
+  const targetOnly = !arm.touch && (arm.handAt || arm.elbowAt)
+    && arm.raise === undefined && arm.forward === undefined;
+  const a = arm.touch
+    ? TOUCH_PRESETS[arm.touch]
+    : targetOnly
+      ? { ...arm, raise: RELAXED_ARM.raise, forward: RELAXED_ARM.forward, elbowBend: arm.elbowBend ?? RELAXED_ARM.elbowBend }
+      : arm;
   const side = SIDE_SIGN[sideName];
   const upper = resolve(`${sideName}UpperArm`);
   if (upper) {
@@ -222,8 +460,11 @@ function withCrouchFloor(leg: LegPose, crouch: number): LegPose {
  * Applies the pose on top of the rest pose. `resetPose` must restore the
  * humanoid's normalized rest pose (rotations AND hips position) — pass
  * `() => vrm.humanoid.resetNormalizedPose()`.
+ *
+ * `rig` (rest joint positions of the actual model) enables the placement-
+ * target IK path; without it targets are ignored and the angle fields apply.
  */
-export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: PoseJson): void {
+export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: PoseJson, rig?: PoseRig | null): void {
   resetPose();
 
   const body = pose.body ?? {};
@@ -232,6 +473,8 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
   const halfZ = (-(body.leanSide ?? 0) / 2) * DEG;
   resolve('spine')?.rotation.set(halfX, halfY, halfZ);
   resolve('chest')?.rotation.set(halfX, halfY, halfZ);
+
+  const ctx = rig ? buildIkContext(rig, body) : null;
 
   const hips = resolve('hips');
   if (hips) {
@@ -242,7 +485,10 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
     // the figure's own left-right axis (intrinsically: yaw first, then
     // pitch), so bend stays a pure forward pitch for any facing.
     hips.rotation.set((body.bend ?? 0) * DEG, -(body.turn ?? 0) * DEG, 0, 'YXZ');
-    if (body.crouch) hips.position.y -= body.crouch * CROUCH_HIP_DROP;
+    // With a rig the context already resolved hipsHeight vs crouch; without
+    // one only the crouch drop is available (hipsHeight needs the rest rig).
+    if (ctx) hips.position.y -= ctx.hipsRest.y - ctx.hipsPos.y;
+    else if (body.crouch) hips.position.y -= body.crouch * CROUCH_HIP_DROP;
   }
 
   const head = pose.head ?? {};
@@ -252,13 +498,19 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
     -(head.tilt ?? 0) * DEG,
   );
 
-  applyArm(resolve, 'left', pose.leftArm ?? RELAXED_ARM);
-  applyArm(resolve, 'right', pose.rightArm ?? RELAXED_ARM);
+  const leftArm = pose.leftArm ?? RELAXED_ARM;
+  const rightArm = pose.rightArm ?? RELAXED_ARM;
+  if (!(ctx && applyArmIk(resolve, 'left', leftArm, ctx))) applyArm(resolve, 'left', leftArm);
+  if (!(ctx && applyArmIk(resolve, 'right', rightArm, ctx))) applyArm(resolve, 'right', rightArm);
 
   // A deep crouch bends the legs even when the LLM omitted them entirely.
   const crouch = body.crouch ?? 0;
   const leftLeg = pose.leftLeg ?? (crouch > 0.3 ? {} : null);
   const rightLeg = pose.rightLeg ?? (crouch > 0.3 ? {} : null);
-  if (leftLeg) applyLeg(resolve, 'left', withCrouchFloor(leftLeg, crouch));
-  if (rightLeg) applyLeg(resolve, 'right', withCrouchFloor(rightLeg, crouch));
+  if (leftLeg && !(ctx && applyLegIk(resolve, 'left', leftLeg, ctx))) {
+    applyLeg(resolve, 'left', withCrouchFloor(leftLeg, crouch));
+  }
+  if (rightLeg && !(ctx && applyLegIk(resolve, 'right', rightLeg, ctx))) {
+    applyLeg(resolve, 'right', withCrouchFloor(rightLeg, crouch));
+  }
 }

@@ -27,15 +27,26 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('INTERNAL rotation');
   });
 
-  it('includes the all-fours recipe and the torso-relative ground-support rule', () => {
+  it('includes the all-fours recipe and routes ground-support arms to handAt', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('yotsunbai');
     expect(prompt).toContain('relative to the TORSO');
-    expect(prompt).toContain('bear weight');
+    expect(prompt).toContain('bears weight');
     expect(prompt).toContain('"wrist"');
     expect(prompt).toContain('"bend"');
     expect(prompt).toContain('sakadachi');
     expect(prompt).toContain('"forearmTwist"');
+  });
+
+  it('documents the placement-target vocabulary and its coordinate frame', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('PLACEMENT TARGETS');
+    expect(prompt).toContain('"handAt"');
+    expect(prompt).toContain('"footAt"');
+    expect(prompt).toContain('"kneeAt"');
+    expect(prompt).toContain('"elbowAt"');
+    expect(prompt).toContain('"kneeDirection"');
+    expect(prompt).toContain('origin on the floor directly below the hips');
   });
 
   it('includes the deep-squat recipe with the corrected sole-flat formula', () => {
