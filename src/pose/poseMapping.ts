@@ -105,6 +105,8 @@ const DOWN = new Vector3(0, -1, 0);
 const KNEE_REST_FOLD = new Vector3(0, 0, -1);
 /** Figure-frame y at/below this counts as planted on the floor (meters). */
 const GROUND_EPS = 0.03;
+/** Rough torso surface radius: hand targets/ends are pushed outside it. */
+const TORSO_CLEARANCE = 0.13;
 /** Planted palm: fingers point figure-front with a slight outward splay. */
 const FINGER_SPLAY = 75 * DEG;
 
@@ -163,6 +165,32 @@ function toWorldTarget(ctx: IkContext, t: TargetPoint): Vector3 {
   return new Vector3(t.x, t.y, t.z).multiplyScalar(ctx.scale).applyQuaternion(ctx.qYaw).add(ctx.origin);
 }
 
+/** Closest point on segment [a, b] to p. */
+function closestOnSegment(p: Vector3, a: Vector3, b: Vector3): Vector3 {
+  const ab = b.clone().sub(a);
+  const denom = ab.lengthSq();
+  if (denom < 1e-12) return a.clone();
+  const t = Math.min(1, Math.max(0, p.clone().sub(a).dot(ab) / denom));
+  return a.clone().addScaledVector(ab, t);
+}
+
+/**
+ * Posed torso center line, extended past the hips to cover the pelvis —
+ * the reference surface for laying a palm against the body.
+ */
+function torsoAxis(ctx: IkContext): { low: Vector3; high: Vector3 } | null {
+  const sp = ctx.rig.spine;
+  const ch = ctx.rig.chest;
+  if (!sp || !ch) return null;
+  const inHips = vec3(sp).sub(ctx.hipsRest)
+    .add(vec3(ch).sub(vec3(sp)).applyQuaternion(ctx.qHalf));
+  const high = inHips.applyQuaternion(ctx.qHips).add(ctx.hipsPos);
+  const down = ctx.hipsPos.clone().sub(high);
+  if (down.lengthSq() < 1e-12) return null;
+  const low = ctx.hipsPos.clone().addScaledVector(down.normalize(), 0.18 * ctx.scale);
+  return { low, high };
+}
+
 /** Posed shoulder-joint position: FK through hips → spine → chest. */
 function armRootWorld(ctx: IkContext, sideName: Side): Vector3 | null {
   const sp = ctx.rig.spine;
@@ -174,9 +202,28 @@ function armRootWorld(ctx: IkContext, sideName: Side): Vector3 | null {
   return vec3(sp).sub(ctx.hipsRest).add(inSpine).applyQuaternion(ctx.qHips).add(ctx.hipsPos);
 }
 
-function applyArmIk(resolve: BoneResolver, sideName: Side, arm: ArmPose, ctx: IkContext): boolean {
-  if (arm.touch || (!arm.handAt && !arm.elbowAt)) return false;
+/**
+ * Figure-frame handAt equivalents of the touch presets (same-side x, mirrored
+ * per arm). Solved with IK when a rig is available, so they adapt to the
+ * model's proportions, get the palm laid against the body, and are covered
+ * by the geometric validation. The angle presets (TOUCH_PRESETS) remain the
+ * no-rig fallback — notably the 'chest' angle preset folds the hand past the
+ * midline INTO the chest volume, which is what prompted this conversion.
+ * Sim-verified against the bundled mannequin (elbow bows out, palm on body).
+ */
+const TOUCH_IK_TARGETS: Record<TouchTarget, TargetPoint> = {
+  hip: { x: 0.16, y: 0.92, z: 0.02 },
+  head: { x: 0.10, y: 1.46, z: 0.05 },
+  chest: { x: 0.03, y: 1.20, z: 0.17 },
+};
+
+function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx: IkContext): boolean {
   const side = SIDE_SIGN[sideName];
+  const touchTarget = rawArm.touch ? TOUCH_IK_TARGETS[rawArm.touch] : null;
+  const arm: ArmPose = touchTarget
+    ? { handAt: { x: side * touchTarget.x, y: touchTarget.y, z: touchTarget.z }, elbowDirection: 'in' }
+    : rawArm;
+  if (!arm.handAt && !arm.elbowAt) return false;
   const upper = resolve(`${sideName}UpperArm`);
   const lower = resolve(`${sideName}LowerArm`);
   const rUA = ctx.rig[`${sideName}UpperArm`];
@@ -199,7 +246,22 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, arm: ArmPose, ctx: Ik
 
   let sol: TwoBoneSolution;
   if (arm.handAt) {
-    const target = toWorldTarget(ctx, arm.handAt);
+    // The torso is an obstacle, exactly like the floor: neither the target
+    // nor the reach-clamped wrist may end up inside it. Push offending
+    // points radially out of the torso axis to the surface clearance — a
+    // below-reach target (short arms, hand covering the groin) otherwise
+    // clamps the wrist onto the straight shoulder→target line, which passes
+    // THROUGH the belly.
+    const axis = torsoAxis(ctx);
+    const clearance = TORSO_CLEARANCE * ctx.scale;
+    const pushOut = (p: Vector3): Vector3 => {
+      if (!axis) return p;
+      const near = closestOnSegment(p, axis.low, axis.high);
+      const d = p.distanceTo(near);
+      if (d >= clearance || d < 1e-4) return p;
+      return near.addScaledVector(p.clone().sub(near).divideScalar(d), clearance);
+    };
+    const target = pushOut(toWorldTarget(ctx, arm.handAt));
     target.y = Math.max(target.y, 0.03 * ctx.scale);
     // elbowDirection keeps its meaning "the forearm folds toward" — the
     // elbow apex therefore bulges the OPPOSITE way (that's the pole).
@@ -210,7 +272,14 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, arm: ArmPose, ctx: Ik
       ? naturalBendDir(dHat.clone().applyQuaternion(unYaw))
       : elbowWorldDir(dirName, side).clone();
     const pole = foldFig.applyQuaternion(ctx.qYaw).negate();
-    sol = solveTwoBone({ root, target, pole, mid: elbowTarget, len1, len2, restAxis, restFold: FRONT, maxBend: 150 * DEG });
+    const opts = { root, pole, mid: elbowTarget, len1, len2, restAxis, restFold: FRONT, maxBend: 150 * DEG };
+    sol = solveTwoBone({ ...opts, target });
+    const pushedEnd = pushOut(sol.end.clone());
+    if (pushedEnd.distanceTo(sol.end) > 1e-4) {
+      // One re-aim toward the pushed-out point gets the wrist (almost) onto
+      // the torso surface instead of inside it.
+      sol = solveTwoBone({ ...opts, target: pushedEnd });
+    }
   }
   else {
     // elbowAt only: aim the upper arm at the elbow, hinge by elbowBend.
@@ -235,11 +304,23 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, arm: ArmPose, ctx: Ik
   if (hand) {
     const forearmWorld = sol.upperWorld.clone().multiply(sol.midLocal);
     const forearmDir = sol.end.clone().sub(sol.mid).normalize();
-    if (planted && arm.wrist === undefined && arm.forearmTwist === undefined && forearmDir.y <= -0.2) {
+    const autoOrient = arm.wrist === undefined && arm.forearmTwist === undefined;
+    const torso = autoOrient && !planted ? torsoAxis(ctx) : null;
+    const onBody = torso ? closestOnSegment(sol.end, torso.low, torso.high) : null;
+    if (planted && autoOrient && forearmDir.y <= -0.2) {
       // Planted palm: flat on the floor (world rest orientation is palm-down),
       // fingers toward the figure's front with a slight outward splay.
       const flat = ctx.qYaw.clone().multiply(new Quaternion().setFromAxisAngle(UP, -side * FINGER_SPLAY));
       hand.quaternion.copy(forearmWorld.invert().multiply(flat));
+    }
+    else if (onBody && onBody.distanceTo(sol.end) < 0.18 * ctx.scale && onBody.distanceTo(sol.end) > 1e-3) {
+      // Hand touching the figure's own torso: lay the palm against the body
+      // (normal toward the torso axis — the same physical rule as a palm
+      // planted on the floor), fingers following the forearm's direction.
+      const normal = onBody.clone().sub(sol.end).normalize();
+      const fingers = foldDirection(forearmDir, normal, DOWN);
+      const handWorld = foldBasis(new Vector3(side, 0, 0), new Vector3(0, -1, 0), fingers, normal);
+      hand.quaternion.copy(forearmWorld.invert().multiply(handWorld));
     }
     else {
       hand.rotation.set(-(arm.forearmTwist ?? 0) * DEG, 0, side * (arm.wrist ?? 0) * DEG, 'XYZ');
