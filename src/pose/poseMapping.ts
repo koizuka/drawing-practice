@@ -124,7 +124,15 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
       // wording, e.g. 'down' = the forearm hangs down from a raised upper
       // arm). Convert it into the upper arm's local space and fold the
       // forearm toward it, so the meaning holds for any arm orientation.
-      const world = elbowWorldDir(a.elbowDirection ?? 'front', side);
+      // 'back' is rendered as the natural front fold: for every arm
+      // orientation its projection lands (near-)opposite the twist-pinned
+      // flexor direction, i.e. pure hyperextension — a backward-bent elbow
+      // (reported on running poses, where models used 'back' for the
+      // rear-swung arm). A hand goes behind the body by swinging the whole
+      // arm back (negative "forward"), never by reversing the elbow. Kept
+      // in the enum so stored poses stay parseable.
+      const requested = a.elbowDirection ?? 'front';
+      const world = elbowWorldDir(requested === 'back' ? 'front' : requested, side);
       const upperQuat = upper ? upper.quaternion : new Quaternion();
       const e1 = new Vector3(side, 0, 0); // forearm rest direction (local)
       const target = world.clone().applyQuaternion(upperQuat.clone().invert());

@@ -16,7 +16,7 @@ const SCHEMA_AND_CONVENTIONS = `{
     "crouch": number         // 0 = standing tall .. 1 = hips fully lowered. With the legs omitted, crouch alone falls back to a generic synthesized squat; for a proper deep squat give explicit legs per the deep-squat recipe in Leg conventions
   },
   "head": { "nod": number /* + looks down */, "turn": number /* + toward figure's left */, "tilt": number /* + = head tilts toward the figure's left shoulder */ },
-  "leftArm":  { "raise": number, "forward": number, "elbowBend": number, "elbowDirection": "front"|"down"|"up"|"back"|"in"|"out", "wrist": number, "forearmTwist": number }
+  "leftArm":  { "raise": number, "forward": number, "elbowBend": number, "elbowDirection": "front"|"down"|"up"|"in"|"out", "wrist": number, "forearmTwist": number }
               OR { "touch": "hip"|"head"|"chest" }  // use touch when the hand is placed on that body part (e.g. hand on hip); it replaces the angle fields
   "rightArm": ... same ...,
   "leftLeg":  { "forward": number, "spread": number, "rotation": number, "kneeBend": number, "shinTwist": number, "ankle": number },
@@ -29,7 +29,7 @@ Leg conventions: "forward" = hip flexion: 0 = straight down, 90 = thigh horizont
 
 NATURAL POSE BIAS — apply whenever the input leaves room for interpretation:
 - Prefer relaxed, anatomically plausible joint configurations. Choose the reading a real human body would naturally take, not a literal geometric one.
-- elbowDirection: 'front' folds the forearm toward the body's front — the natural default for most poses; use it when unsure. 'up' = upward curl (waving, flexing). 'down' = forearm hangs down from a raised upper arm. 'back' ONLY when the hand is clearly behind the body (e.g. arm swung back while running). 'in' = forearm folds toward the body's midline — use for hugging, wrapping around the knees/shins, crossing the arms. 'out' = away from the midline.
+- elbowDirection: 'front' folds the forearm toward the body's front — the natural default for most poses; use it when unsure. 'up' = upward curl (waving, flexing). 'down' = forearm hangs down from a raised upper arm. 'in' = forearm folds toward the body's midline — use for hugging, wrapping around the knees/shins, crossing the arms. 'out' = away from the midline. There is NO 'back': an elbow never bends backward. For an arm swung BEHIND the body (e.g. the rear arm while running), put the swing in the upper arm — negative "forward" (about -30 to -50) with a moderate elbowBend 40-70 and elbowDirection 'front' — so the forearm trails the upper arm backward with the hand behind the hip.
 - Straight arms: elbowBend 0-15, no elbowDirection needed.
 - Arms that aren't doing anything: OMIT them entirely — absent arms render as relaxed hanging at the sides (not a T-pose). Never output raise 90 unless the pose actually holds the arms out.
 - Elbows and knees never bend beyond their natural range; knees only bend backward.`;
