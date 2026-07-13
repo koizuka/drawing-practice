@@ -324,7 +324,8 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
   // alongside targets).
   const targetOnly = !arm.touch && (arm.handAt || arm.elbowAt)
     && arm.raise === undefined && arm.forward === undefined;
-  const a = arm.touch ? TOUCH_PRESETS[arm.touch]
+  const a = arm.touch
+    ? TOUCH_PRESETS[arm.touch]
     : targetOnly
       ? { ...arm, raise: RELAXED_ARM.raise, forward: RELAXED_ARM.forward, elbowBend: arm.elbowBend ?? RELAXED_ARM.elbowBend }
       : arm;
