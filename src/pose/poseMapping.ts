@@ -260,9 +260,15 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
       const d = p.distanceTo(near);
       if (d >= clearance) return p;
       // A point ON the axis (the worst embed) has no radial direction of its
-      // own — push it out sideways, toward this arm's side of the body.
+      // own — push it out sideways, toward this arm's side of the body,
+      // projected perpendicular to the (possibly tilted) axis so the full
+      // clearance is radial.
       const dir = d < 1e-4
-        ? new Vector3(side, 0, 0).applyQuaternion(ctx.qYaw)
+        ? foldDirection(
+            new Vector3(side, 0, 0).applyQuaternion(ctx.qYaw),
+            axis.high.clone().sub(axis.low).normalize(),
+            FRONT.clone().applyQuaternion(ctx.qYaw),
+          )
         : p.clone().sub(near).divideScalar(d);
       return near.addScaledVector(dir, clearance);
     };
