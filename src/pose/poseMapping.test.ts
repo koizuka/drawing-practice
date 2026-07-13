@@ -524,6 +524,17 @@ describe('applyPose placement targets', () => {
     expect(wrist.y).toBeCloseTo(1.20, 1);
   });
 
+  it('pushes a handAt target EXACTLY on the torso centerline out sideways', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { handAt: { x: 0, y: 0.90, z: 0 } }, // zero radial direction
+    }, REST);
+    const wrist = leftWristWorld(bones);
+    const radial = Math.sqrt(wrist.x * wrist.x + wrist.z * wrist.z);
+    expect(radial).toBeGreaterThan(0.12);
+    expect(wrist.x).toBeGreaterThan(0.1); // toward the LEFT arm's own side
+  });
+
   it('pushes a handAt target out of the torso volume (body is an obstacle)', () => {
     const { bones, resolve, resetPose } = makeRig();
     // Target ON the torso centerline — inside the flesh.

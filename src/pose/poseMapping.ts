@@ -258,8 +258,13 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
       if (!axis) return p;
       const near = closestOnSegment(p, axis.low, axis.high);
       const d = p.distanceTo(near);
-      if (d >= clearance || d < 1e-4) return p;
-      return near.addScaledVector(p.clone().sub(near).divideScalar(d), clearance);
+      if (d >= clearance) return p;
+      // A point ON the axis (the worst embed) has no radial direction of its
+      // own — push it out sideways, toward this arm's side of the body.
+      const dir = d < 1e-4
+        ? new Vector3(side, 0, 0).applyQuaternion(ctx.qYaw)
+        : p.clone().sub(near).divideScalar(d);
+      return near.addScaledVector(dir, clearance);
     };
     const target = pushOut(toWorldTarget(ctx, arm.handAt));
     target.y = Math.max(target.y, 0.03 * ctx.scale);
@@ -313,7 +318,10 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
       const flat = ctx.qYaw.clone().multiply(new Quaternion().setFromAxisAngle(UP, -side * FINGER_SPLAY));
       hand.quaternion.copy(forearmWorld.invert().multiply(flat));
     }
-    else if (onBody && onBody.distanceTo(sol.end) < 0.18 * ctx.scale && onBody.distanceTo(sol.end) > 1e-3) {
+    // "Touching" = within a small tolerance of the torso SURFACE (the bust
+    // extends past the nominal clearance radius, hence the 5cm allowance).
+    else if (onBody && onBody.distanceTo(sol.end) < (TORSO_CLEARANCE + 0.05) * ctx.scale
+      && onBody.distanceTo(sol.end) > 1e-3) {
       // Hand touching the figure's own torso: lay the palm against the body
       // (normal toward the torso axis — the same physical rule as a palm
       // planted on the floor), fingers following the forearm's direction.
