@@ -143,7 +143,7 @@ function buildIkContext(rig: PoseRig, body: BodyPose): IkContext | null {
   // hipsHeight pins the hips at an absolute floor height — unlike crouch's
   // fixed drop it can bring the body all the way down (floor sit, all-fours).
   const hipsY = body.hipsHeight !== undefined
-    ? Math.max(0.03, body.hipsHeight * scale)
+    ? Math.max(0.03 * scale, body.hipsHeight * scale)
     : hipsRest.y - (body.crouch ?? 0) * CROUCH_HIP_DROP;
   return {
     rig,
