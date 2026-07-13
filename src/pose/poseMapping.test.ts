@@ -76,7 +76,9 @@ describe('applyPose', () => {
   it.each([
     ['front', 'left', { y: -90 * DEG, z: 0 }],
     ['front', 'right', { y: 90 * DEG, z: 0 }],
-    ['back', 'left', { y: 90 * DEG, z: 0 }],
+    // 'back' is a hyperextension request — rendered as the front fold (an
+    // elbow never bends backward; see the guard in applyArm).
+    ['back', 'left', { y: -90 * DEG, z: 0 }],
     ['down', 'left', { y: 0, z: -90 * DEG }],
     ['up', 'left', { y: 0, z: 90 * DEG }],
   ] as const)('elbowDirection %s (%s arm) rotates the forearm on the expected axis', (direction, side, expected) => {
@@ -87,6 +89,25 @@ describe('applyPose', () => {
     const lower = bones.get(`${side}LowerArm`)!;
     expect(lower.rotation.y).toBeCloseTo(expected.y);
     expect(lower.rotation.z).toBeCloseTo(expected.z);
+  });
+
+  it('never reverses the elbow on a rear-swung arm, even when the pose asks for "back"', () => {
+    // Running rear arm: models used to emit elbowDirection 'back' here, whose
+    // world direction projects (near-)opposite the flexor side for every arm
+    // orientation — the forearm folded up-backward as a hyperextended elbow.
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { raise: 25, forward: -40, elbowBend: 90, elbowDirection: 'back' },
+    });
+    const upper = bones.get('leftUpperArm')!;
+    const worldQuat = upper.quaternion.clone().multiply(bones.get('leftLowerArm')!.quaternion);
+    const forearmDir = new Vector3(1, 0, 0).applyQuaternion(worldQuat);
+    const upperDir = limbDirection(upper, new Vector3(1, 0, 0));
+    // The fold component (forearm direction minus its along-humerus part)
+    // must point toward the world front — the anatomically possible flexion —
+    // not behind the body.
+    const fold = forearmDir.clone().addScaledVector(upperDir, -forearmDir.dot(upperDir));
+    expect(fold.z).toBeGreaterThan(0.5);
   });
 
   it('pins the upper-arm twist so the local front-fold plane faces the natural bend direction', () => {
