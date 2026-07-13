@@ -73,6 +73,15 @@ describe('diagnosePose', () => {
     expect(problems[0]).toMatch(/left (foot|toes)/);
   });
 
+  it('flags a slight hover just past contact clearance (no dead zone between contact and floating)', () => {
+    // 10cm hover: above the 8cm contact cutoff, so nothing supports the
+    // figure — must be diagnosed, not silently passed.
+    const posed = shift(standingRest(), 0.10);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toContain('no body part touches the floor');
+  });
+
   it('does not flag a floor-sitting pelvis as floating (hips radius covers the crouch-drop gap)', () => {
     // Girl-style sitting approximation: hips low but not literally at 0,
     // knees and feet on the floor.

@@ -65,12 +65,15 @@ const FIXED_RADIUS: Partial<Record<LandmarkName, number>> = {
   leftLowerLeg: 0.05, rightLowerLeg: 0.05,
 };
 
-/** Below this clearance a joint counts as supporting ground contact. */
+/**
+ * Below this clearance a joint counts as supporting ground contact. This is
+ * also the floating cutoff — a pose with NO joint at contact clearance is
+ * diagnosed as airborne (no dead zone in between, it would let hovering
+ * poses pass unvalidated).
+ */
 const CONTACT_CLEARANCE = 0.08;
 /** More than this much below the surface is a penetration problem. */
 const PENETRATION_TOLERANCE = 0.04;
-/** Lowest clearance above this = nothing touches the floor at all. */
-const FLOATING_CLEARANCE = 0.12;
 /** Horizontal margin added around the contact points (feet/hands extend past their joint). */
 const SUPPORT_MARGIN = 0.18;
 /** Limb capsule center lines closer than this really cross through each other. */
@@ -195,7 +198,7 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
       lowestName = name;
     }
   }
-  if (contacts.length === 0 && lowestName && lowest > FLOATING_CLEARANCE) {
+  if (contacts.length === 0 && lowestName) {
     problems.push(
       `no body part touches the floor — the lowest point is the ${PART_LABEL[lowestName]}, about ${cm(lowest)}cm above it. `
       + 'If the pose is meant to be airborne (e.g. jumping), this is fine; otherwise ground it.',
