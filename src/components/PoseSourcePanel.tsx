@@ -85,7 +85,13 @@ export default function PoseSourcePanel({
   const [prevPoseInfo, setPrevPoseInfo] = useState(poseInfo);
   if (prevPoseInfo !== poseInfo) {
     setPrevPoseInfo(poseInfo);
-    if (poseInfo && poseInfo !== selfCommitted) {
+    if (poseInfo && poseInfo === selfCommitted) {
+      // One-shot: only the immediate post-commit swap skips. Undo history
+      // restores the SAME object instance, so without clearing, redo back to
+      // this pose would also skip and keep a stale hint/model toggle.
+      setSelfCommitted(null);
+    }
+    else if (poseInfo) {
       setHint(poseInfo.hint ?? '');
       setVrmId(poseInfo.vrmId);
     }
@@ -177,7 +183,7 @@ export default function PoseSourcePanel({
         // abort lands) — never let a stale pose overwrite a newer one, and
         // never apply after unmount.
         if (controller.signal.aborted || abortRef.current !== controller) return;
-        const info = {
+        const info: NonNullable<PoseSourcePanelProps['poseInfo']> = {
           source: 'pose',
           // hint/title deliberately stay the REQUEST-time values — they
           // describe the pose that was generated, not the textbox draft.
@@ -186,7 +192,7 @@ export default function PoseSourcePanel({
           vrmId: vrmIdRef.current,
           pose: generated,
           hint: hint.trim() || undefined,
-        } as const;
+        };
         setSelfCommitted(info);
         onReferenceChange((s) => {
           s.setReferenceInfo(info);
