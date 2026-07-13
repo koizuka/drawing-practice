@@ -11,6 +11,21 @@ export type ElbowDirection = (typeof ELBOW_DIRECTIONS)[number];
 export const TOUCH_TARGETS = ['hip', 'head', 'chest'] as const;
 export type TouchTarget = (typeof TOUCH_TARGETS)[number];
 
+export const KNEE_DIRECTIONS = ['front', 'out', 'in'] as const;
+export type KneeDirection = (typeof KNEE_DIRECTIONS)[number];
+
+/**
+ * Placement target in the FIGURE frame: origin on the floor below the hips,
+ * +y up, +x the figure's left, +z its front; meters for a nominal 1.6 m
+ * figure (rescaled to the model by poseIk.targetScale). y = 0 means planted
+ * on the floor.
+ */
+export interface TargetPoint {
+  x: number;
+  y: number;
+  z: number;
+}
+
 export interface ArmPose {
   /** Upper-arm angle from hanging straight down, in the coronal plane. 0 = at side, 90 = T-pose, 180 = up. */
   raise?: number;
@@ -29,6 +44,14 @@ export interface ArmPose {
   forearmTwist?: number;
   /** When set, replaces the angle fields with a hand-on-body preset. */
   touch?: TouchTarget;
+  /** IK target for the elbow joint. Overrides the pole hint from elbowDirection. */
+  elbowAt?: TargetPoint;
+  /**
+   * IK target for the wrist joint; overrides raise/forward/elbowBend. y = 0
+   * plants the palm flat on the floor (wrist/forearmTwist then auto-derived
+   * unless given explicitly).
+   */
+  handAt?: TargetPoint;
 }
 
 export interface LegPose {
@@ -47,6 +70,16 @@ export interface LegPose {
   shinTwist?: number;
   /** Ankle flex relative to the shin. + = toes lift toward the shin (dorsiflexion), - = toes point away. */
   ankle?: number;
+  /** IK target for the knee joint. Overrides the pole hint from kneeDirection. */
+  kneeAt?: TargetPoint;
+  /**
+   * IK target for the ankle joint; overrides forward/spread/rotation/kneeBend.
+   * y = 0 plants the sole flat on the floor (ankle then auto-derived unless
+   * given explicitly).
+   */
+  footAt?: TargetPoint;
+  /** Which way the knee apex points when solving footAt. Default 'front'. */
+  kneeDirection?: KneeDirection;
 }
 
 export interface BodyPose {
@@ -65,6 +98,13 @@ export interface BodyPose {
   turn?: number;
   /** 0 = standing tall .. 1 = hips fully lowered. */
   crouch?: number;
+  /**
+   * Height of the hip joints above the floor, figure-frame meters (standing
+   * ~0.80). Overrides crouch; unlike crouch's fixed drop it can bring the
+   * body all the way down for floor sits, all-fours, etc. Only honored when
+   * a rig is available (same as the placement targets).
+   */
+  hipsHeight?: number;
 }
 
 export interface HeadPose {
@@ -101,6 +141,17 @@ function sanitizeEnum<T extends string>(value: unknown, allowed: readonly T[]): 
   return allowed.includes(value as T) ? (value as T) : undefined;
 }
 
+function sanitizeTarget(raw: unknown): TargetPoint | undefined {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const t = raw as Record<string, unknown>;
+  const x = sanitizeNumber(t.x, -1.5, 1.5);
+  const y = sanitizeNumber(t.y, -0.2, 2.2);
+  const z = sanitizeNumber(t.z, -1.5, 1.5);
+  // All-or-nothing: a partial point is meaningless as an IK target.
+  if (x === undefined || y === undefined || z === undefined) return undefined;
+  return { x, y, z };
+}
+
 function pruneUndefined<T extends object>(obj: T): T | undefined {
   const entries = Object.entries(obj).filter(([, v]) => v !== undefined);
   return entries.length > 0 ? (Object.fromEntries(entries) as T) : undefined;
@@ -117,6 +168,8 @@ function sanitizeArm(raw: unknown): ArmPose | undefined {
     wrist: sanitizeNumber(a.wrist, -80, 90),
     forearmTwist: sanitizeNumber(a.forearmTwist, -90, 180),
     touch: sanitizeEnum(a.touch, TOUCH_TARGETS),
+    elbowAt: sanitizeTarget(a.elbowAt),
+    handAt: sanitizeTarget(a.handAt),
   });
 }
 
@@ -133,6 +186,9 @@ function sanitizeLeg(raw: unknown): LegPose | undefined {
     kneeBend: sanitizeNumber(l.kneeBend, 0, 160),
     shinTwist: sanitizeNumber(l.shinTwist, -60, 60),
     ankle: sanitizeNumber(l.ankle, -60, 45),
+    kneeAt: sanitizeTarget(l.kneeAt),
+    footAt: sanitizeTarget(l.footAt),
+    kneeDirection: sanitizeEnum(l.kneeDirection, KNEE_DIRECTIONS),
   });
 }
 
@@ -146,6 +202,7 @@ function sanitizeBody(raw: unknown): BodyPose | undefined {
     twist: sanitizeNumber(b.twist, -90, 90),
     turn: sanitizeNumber(b.turn, -180, 180),
     crouch: sanitizeNumber(b.crouch, 0, 1),
+    hipsHeight: sanitizeNumber(b.hipsHeight, 0.03, 1.5),
   });
 }
 

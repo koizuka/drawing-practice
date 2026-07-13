@@ -65,6 +65,18 @@ describe('diagnosePose', () => {
     expect(problems.some(p => p.includes('left foot') && p.includes('BELOW the floor'))).toBe(true);
   });
 
+  it('does not flag a side-lying foot as sunken (girl-style sitting ankles)', () => {
+    // Foot on its side / instep down: the ankle joint sits well below its
+    // sole-down rest offset (0.08) without any real penetration. This used
+    // to be diagnosed as "5cm BELOW the floor" and the model's correction
+    // wrecked an otherwise good sitting pose.
+    const posed = standingRest();
+    posed.leftFoot = v(0.20, 0.05, -0.15);
+    posed.rightFoot = v(-0.20, 0.05, -0.15);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('BELOW the floor'))).toBe(false);
+  });
+
   it('reports a fully airborne figure with the lowest part', () => {
     const posed = shift(standingRest(), 0.30);
     const problems = diagnosePose(measurement(posed), {});

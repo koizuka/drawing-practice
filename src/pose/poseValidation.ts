@@ -135,6 +135,21 @@ function radiusOf(name: LandmarkName, rest: LandmarkSet): number {
   return Math.max(0, rest[name]?.y ?? 0);
 }
 
+/**
+ * Radius for the PENETRATION check only. The sole-offset radius above
+ * assumes the foot points sole-down; a foot lying on its side or instep
+ * (floor sitting, kneeling) legitimately brings the ankle joint much closer
+ * to the floor, and the full offset misdiagnosed those poses as sunken —
+ * the model's "fix" then wrecked a good pose. The joint center itself still
+ * can't go below a thin true radius, whatever the foot's orientation.
+ */
+const FOOT_MIN_RADIUS = 0.035;
+
+function penetrationRadiusOf(name: LandmarkName, rest: LandmarkSet): number {
+  const r = radiusOf(name, rest);
+  return name.endsWith('Foot') || name.endsWith('Toes') ? Math.min(r, FOOT_MIN_RADIUS) : r;
+}
+
 function cm(meters: number): number {
   return Math.round(Math.abs(meters) * 100);
 }
@@ -181,8 +196,10 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
   }
   if (clearances.size === 0) return problems;
 
-  // 1. Penetration: any joint clearly below the floor.
-  for (const [name, clearance] of clearances) {
+  // 1. Penetration: any joint clearly below the floor. Uses the tighter
+  // orientation-independent radius so side-lying feet don't false-positive.
+  for (const name of clearances.keys()) {
+    const clearance = posed[name]!.y - penetrationRadiusOf(name, rest);
     if (clearance < -PENETRATION_TOLERANCE) {
       problems.push(`the ${PART_LABEL[name]} is about ${cm(clearance)}cm BELOW the floor.`);
     }
@@ -277,6 +294,7 @@ export function buildValidationFeedback(measurement: PoseMeasurement, pose: Pose
   return `I applied your pose JSON to the 3D mannequin and measured the result against the floor plane.${height} Problems detected:\n`
     + problems.map((p, i) => `${i + 1}. ${p}`).join('\n')
     + '\nAdjust the pose JSON to fix these problems while PRESERVING the intended pose — correct the numeric values, do not redesign the pose. '
+    + 'For floor-contact problems, switching the limb to a placement target (handAt / footAt, see PLACEMENT TARGETS in the schema) is usually the most reliable fix. '
     + 'If a reported problem is actually intentional for this pose, keep the relevant values unchanged. '
     + 'Reply with the corrected COMPLETE pose JSON object (same schema, no markdown fences) as the LAST thing in your reply.';
 }
