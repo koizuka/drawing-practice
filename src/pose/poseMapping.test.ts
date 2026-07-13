@@ -534,6 +534,15 @@ describe('applyPose placement targets', () => {
     expect(dir.y).toBeLessThan(-0.9); // hanging down, not sideways
   });
 
+  it('the target-only fallback keeps explicit override fields (wrist etc.)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      leftArm: { handAt: { x: 0.15, y: 0, z: 0.4 }, elbowBend: 45, wrist: 80 },
+    });
+    expect(bones.get('leftLowerArm')!.quaternion.w).toBeCloseTo(Math.cos((45 / 2) * DEG), 5);
+    expect(bones.get('leftHand')!.rotation.z).toBeCloseTo(80 * DEG);
+  });
+
   it('ignores targets without a rig (angle fields still apply)', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, {

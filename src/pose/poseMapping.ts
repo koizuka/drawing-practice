@@ -319,10 +319,15 @@ function applyLegIk(resolve: BoneResolver, sideName: Side, leg: LegPose, ctx: Ik
 function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
   // A target-only arm lands here when the IK path is unavailable (no rig,
   // model missing bones). Without this guard `raise ?? 90` would render it as
-  // a T-pose arm; relaxed hanging is the honest fallback.
+  // a T-pose arm; hang it relaxed instead, but keep any explicit fields the
+  // pose did provide (elbowBend / wrist / forearmTwist are legal overrides
+  // alongside targets).
   const targetOnly = !arm.touch && (arm.handAt || arm.elbowAt)
     && arm.raise === undefined && arm.forward === undefined;
-  const a = arm.touch ? TOUCH_PRESETS[arm.touch] : targetOnly ? RELAXED_ARM : arm;
+  const a = arm.touch ? TOUCH_PRESETS[arm.touch]
+    : targetOnly
+      ? { ...arm, raise: RELAXED_ARM.raise, forward: RELAXED_ARM.forward, elbowBend: arm.elbowBend ?? RELAXED_ARM.elbowBend }
+      : arm;
   const side = SIDE_SIGN[sideName];
   const upper = resolve(`${sideName}UpperArm`);
   if (upper) {

@@ -136,18 +136,20 @@ function radiusOf(name: LandmarkName, rest: LandmarkSet): number {
 }
 
 /**
- * Radius for the PENETRATION check only. The sole-offset radius above
- * assumes the foot points sole-down; a foot lying on its side or instep
- * (floor sitting, kneeling) legitimately brings the ankle joint much closer
- * to the floor, and the full offset misdiagnosed those poses as sunken —
- * the model's "fix" then wrecked a good pose. The joint center itself still
- * can't go below a thin true radius, whatever the foot's orientation.
+ * Radius CAP for the PENETRATION check on feet/toes. The sole-offset radius
+ * above assumes the foot points sole-down; a foot lying on its side or
+ * instep (floor sitting, kneeling) legitimately brings the ankle joint much
+ * closer to the floor, and the full offset misdiagnosed those poses as
+ * sunken — the model's "fix" then wrecked a good pose. So penetration uses
+ * at most this orientation-independent bone-center radius (smaller rest
+ * offsets, e.g. toes, are kept as-is); contact/floating keep the full
+ * sole offset so a standing pose still reads as exactly grounded.
  */
-const FOOT_MIN_RADIUS = 0.035;
+const FOOT_PENETRATION_RADIUS_CAP = 0.035;
 
 function penetrationRadiusOf(name: LandmarkName, rest: LandmarkSet): number {
   const r = radiusOf(name, rest);
-  return name.endsWith('Foot') || name.endsWith('Toes') ? Math.min(r, FOOT_MIN_RADIUS) : r;
+  return name.endsWith('Foot') || name.endsWith('Toes') ? Math.min(r, FOOT_PENETRATION_RADIUS_CAP) : r;
 }
 
 function cm(meters: number): number {
