@@ -67,10 +67,11 @@ describe('generatePose', () => {
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe(POSE_MODEL);
     // Adaptive thinking on by omission (helps spatial reasoning); the budget
-    // must be generous because thinking tokens count against max_tokens —
-    // see the comment in anthropic.ts.
+    // must be generous because thinking tokens count against max_tokens and
+    // sonnet-5 has no separate thinking cap — 8192 was fully consumed by
+    // thinking alone on a hard pose. See the comment in anthropic.ts.
     expect(body.thinking).toBeUndefined();
-    expect(body.max_tokens).toBeGreaterThanOrEqual(8192);
+    expect(body.max_tokens).toBeGreaterThanOrEqual(16384);
     expect(body.messages[0].content[0]).toEqual({
       type: 'image',
       source: { type: 'base64', media_type: 'image/png', data: 'BASE64PNG' },

@@ -11,7 +11,7 @@
  */
 
 import { Euler, Matrix4, Vector3, Quaternion } from 'three';
-import type { ArmPose, BodyPose, ElbowDirection, LegPose, PoseJson, TargetPoint, TouchTarget } from './poseTypes';
+import type { ArmPose, BodyPose, ElbowDirection, HeadPose, LegPose, PoseJson, TargetPoint, TouchTarget } from './poseTypes';
 import {
   foldBasis, foldDirection, hingeQuat, solveTwoBone, targetScale, vec3,
   type PoseRig, type TwoBoneSolution,
@@ -126,9 +126,13 @@ interface IkContext {
   hipsPos: Vector3;
   /** Figure-frame origin: the floor point below the rest hips. */
   origin: Vector3;
+  /** Posed chest joint (position + world rotation), when the rig has spine+chest. */
+  chestJoint: { pos: Vector3; quat: Quaternion } | null;
+  /** Posed head joint (position + world rotation incl. nod/turn/tilt). */
+  headJoint: { pos: Vector3; quat: Quaternion } | null;
 }
 
-function buildIkContext(rig: PoseRig, body: BodyPose): IkContext | null {
+function buildIkContext(rig: PoseRig, body: BodyPose, head: HeadPose): IkContext | null {
   const hips = rig.hips;
   if (!hips) return null;
   const qYaw = new Quaternion().setFromEuler(new Euler(0, -(body.turn ?? 0) * DEG, 0));
@@ -147,16 +151,44 @@ function buildIkContext(rig: PoseRig, body: BodyPose): IkContext | null {
   const hipsY = body.hipsHeight !== undefined
     ? Math.max(0.03 * scale, body.hipsHeight * scale)
     : hipsRest.y - (body.crouch ?? 0) * CROUCH_HIP_DROP;
+  const hipsPos = new Vector3(hipsRest.x, hipsY, hipsRest.z);
+  const qChest = qHips.clone().multiply(qHalf).multiply(qHalf);
+  // Posed chest/head joints (FK through hips → spine → chest → head, same
+  // chain as armRootWorld): anchors for the touch presets, so a hand touching
+  // the head lands on the LEANED/NODDED head, not where it stood upright.
+  const sp = rig.spine;
+  const ch = rig.chest;
+  const hd = rig.head;
+  const chestJoint = sp && ch
+    ? {
+        pos: vec3(sp).sub(hipsRest)
+          .add(vec3(ch).sub(vec3(sp)).applyQuaternion(qHalf))
+          .applyQuaternion(qHips).add(hipsPos),
+        quat: qChest,
+      }
+    : null;
+  const headJoint = chestJoint && ch && hd
+    ? {
+        pos: chestJoint.pos.clone().add(vec3(hd).sub(vec3(ch)).applyQuaternion(qChest)),
+        quat: qChest.clone().multiply(new Quaternion().setFromEuler(new Euler(
+          (head.nod ?? 0) * DEG,
+          (head.turn ?? 0) * DEG,
+          -(head.tilt ?? 0) * DEG,
+        ))),
+      }
+    : null;
   return {
     rig,
     scale,
     qYaw,
     qHips,
     qHalf,
-    qArmParent: qHips.clone().multiply(qHalf).multiply(qHalf),
+    qArmParent: qChest,
     hipsRest,
-    hipsPos: new Vector3(hipsRest.x, hipsY, hipsRest.z),
+    hipsPos,
     origin: new Vector3(hips.x, 0, hips.z),
+    chestJoint,
+    headJoint,
   };
 }
 
@@ -213,13 +245,39 @@ function armRootWorld(ctx: IkContext, sideName: Side): Vector3 | null {
  */
 const TOUCH_IK_TARGETS: Record<TouchTarget, TargetPoint> = {
   hip: { x: 0.16, y: 0.92, z: 0.02 },
-  head: { x: 0.10, y: 1.46, z: 0.05 },
+  // Upper SIDE of the skull (nominal head joint 1.48 + 0.05) — an ear-height
+  // point rides a nodding head down to the jaw and reads as "hands in front
+  // of the face" on a bowed head-clutch pose.
+  head: { x: 0.10, y: 1.53, z: 0.02 },
   chest: { x: 0.03, y: 1.20, z: 0.17 },
 };
+
+/**
+ * World position of a touch preset. The target is ON a body part, so it is
+ * anchored to that part's posed joint — lean / bend / crouch / head nod all
+ * move it along (a hand touching the head must land on the LEANED, NODDED
+ * head, not where the head stood upright). For the unposed body this equals
+ * the plain figure-frame placement; without the anchor joints in the rig it
+ * falls back to it.
+ */
+function touchTargetWorld(ctx: IkContext, touch: TouchTarget, side: 1 | -1): Vector3 {
+  const t = TOUCH_IK_TARGETS[touch];
+  const fig: TargetPoint = { x: side * t.x, y: t.y, z: t.z };
+  const anchor = touch === 'hip'
+    ? { pos: ctx.hipsPos, quat: ctx.qHips, rest: ctx.hipsRest }
+    : touch === 'chest'
+      ? (ctx.chestJoint && ctx.rig.chest ? { ...ctx.chestJoint, rest: vec3(ctx.rig.chest) } : null)
+      : (ctx.headJoint && ctx.rig.head ? { ...ctx.headJoint, rest: vec3(ctx.rig.head) } : null);
+  if (!anchor) return toWorldTarget(ctx, fig);
+  // Rest-space point WITHOUT the yaw — the anchor quat already carries it.
+  const p0 = new Vector3(fig.x, fig.y, fig.z).multiplyScalar(ctx.scale).add(ctx.origin);
+  return p0.sub(anchor.rest).applyQuaternion(anchor.quat).add(anchor.pos);
+}
 
 function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx: IkContext): boolean {
   const side = SIDE_SIGN[sideName];
   const touchTarget = rawArm.touch ? TOUCH_IK_TARGETS[rawArm.touch] : null;
+  const touchWorld = rawArm.touch ? touchTargetWorld(ctx, rawArm.touch, side) : null;
   const arm: ArmPose = touchTarget
     ? { handAt: { x: side * touchTarget.x, y: touchTarget.y, z: touchTarget.z }, elbowDirection: 'in' }
     : rawArm;
@@ -272,16 +330,24 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
         : p.clone().sub(near).divideScalar(d);
       return near.addScaledVector(dir, clearance);
     };
-    const target = pushOut(toWorldTarget(ctx, arm.handAt));
+    const target = pushOut(touchWorld ?? toWorldTarget(ctx, arm.handAt));
     target.y = Math.max(target.y, 0.03 * ctx.scale);
     // elbowDirection keeps its meaning "the forearm folds toward" — the
     // elbow apex therefore bulges the OPPOSITE way (that's the pole).
     const dHat = target.clone().sub(root);
     if (dHat.lengthSq() < 1e-8) dHat.copy(restAxis);
     dHat.normalize();
-    const foldFig = dirName === 'front'
-      ? naturalBendDir(dHat.clone().applyQuaternion(unYaw))
-      : elbowWorldDir(dirName, side).clone();
+    // Head clutch: the palm lies on the skull's side, so the elbow apex must
+    // point down-front and slightly OUT. The 'in' fold used by torso touches
+    // flares it sideways (over-bent wrist), and the axis-aligned 'up'/'down'
+    // poles degenerate on the near-vertical shoulder→wrist axis — their
+    // perpendicular residual tips inward and throws the elbow across the
+    // midline (both elbows meeting in front of the face).
+    const foldFig = rawArm.touch === 'head'
+      ? new Vector3(-side * 0.3, 0.7, -0.65).normalize()
+      : dirName === 'front'
+        ? naturalBendDir(dHat.clone().applyQuaternion(unYaw))
+        : elbowWorldDir(dirName, side).clone();
     const pole = foldFig.applyQuaternion(ctx.qYaw).negate();
     const opts = { root, pole, mid: elbowTarget, len1, len2, restAxis, restFold: FRONT, maxBend: 150 * DEG };
     sol = solveTwoBone({ ...opts, target });
@@ -425,15 +491,15 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
       ? { ...arm, raise: RELAXED_ARM.raise, forward: RELAXED_ARM.forward, elbowBend: arm.elbowBend ?? RELAXED_ARM.elbowBend }
       : arm;
   const side = SIDE_SIGN[sideName];
+  const raise = (a.raise ?? 90) * DEG;
+  const fwd = (a.forward ?? 0) * DEG;
+  const dir = new Vector3(
+    side * Math.sin(raise) * Math.cos(fwd),
+    -Math.cos(raise),
+    Math.sin(raise) * Math.sin(fwd),
+  ).normalize();
   const upper = resolve(`${sideName}UpperArm`);
   if (upper) {
-    const raise = (a.raise ?? 90) * DEG;
-    const fwd = (a.forward ?? 0) * DEG;
-    const dir = new Vector3(
-      side * Math.sin(raise) * Math.cos(fwd),
-      -Math.cos(raise),
-      Math.sin(raise) * Math.sin(fwd),
-    ).normalize();
     // Full-basis rotation (not shortest-arc): pin the upper arm's twist so
     // that the bone-local 'front' fold plane always faces the anatomically
     // natural direction. Shortest-arc left the twist arbitrary, which made
@@ -491,8 +557,17 @@ function applyArm(resolve: BoneResolver, sideName: Side, arm: ArmPose): void {
   // fingers along ±X): -X rotation rolls the palm toward the front
   // (forearmTwist +), and the hinge lifts the fingertips upward for wrist +
   // (a +Z rotation on the left side, -Z on the right).
+  //
+  // With no explicit forearmTwist, the coronal-frame default above leaves a
+  // fully RAISED arm palm-OUT (the basis math follows a sideways raise). An
+  // arm raised the ordinary way — through the front — ends with the palm
+  // facing INWARD, so auto-roll the palm in proportion to the arm's
+  // elevation: hanging / T-pose / straight-forward arms stay unchanged
+  // (already natural), straight up gets the full 180 (palm toward the head).
+  // Explicit forearmTwist and the visually tuned touch presets override it.
+  const autoTwist = arm.touch ? 0 : Math.max(0, dir.y) * 180;
   resolve(`${sideName}Hand`)?.rotation.set(
-    -(a.forearmTwist ?? 0) * DEG,
+    -(a.forearmTwist ?? autoTwist) * DEG,
     0,
     side * (a.wrist ?? 0) * DEG,
     'XYZ',
@@ -569,7 +644,7 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
   resolve('spine')?.rotation.set(halfX, halfY, halfZ);
   resolve('chest')?.rotation.set(halfX, halfY, halfZ);
 
-  const ctx = rig ? buildIkContext(rig, body) : null;
+  const ctx = rig ? buildIkContext(rig, body, pose.head ?? {}) : null;
 
   const hips = resolve('hips');
   if (hips) {
