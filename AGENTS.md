@@ -91,7 +91,7 @@ Read the relevant rule document before changing those areas. Keep `AGENTS.md` as
 - Pexels API keys are user-supplied and stored in `localStorage['pexelsApiKey']`; never bundle a key.
 - Local images and Sketchfab screenshots are stored in URL history so references can be restored later.
 - Trace template replacement / undo semantics are path-specific; read `trace-template.md` before changing template state, scoring, or bundled template behavior.
-- The `pose` source accepts a rough figure sketch and/or a text hint, calls the Anthropic Claude API directly from the browser using the user's `localStorage['anthropicApiKey']`, and applies semantic pose JSON to a three.js / three-vrm mannequin. Never bundle an API key.
+- The `pose` source accepts a rough figure sketch and/or a text hint, calls the Anthropic Claude API directly from the browser using the user's `localStorage.getItem('anthropicApiKey')` value, and applies semantic pose JSON to a three.js / three-vrm mannequin. Never bundle an API key.
 - Pose limbs may use angles or placement targets (`handAt`, `footAt`, `kneeAt`, `elbowAt`, and `body.hipsHeight`) solved by analytic two-bone IK. Generated poses are geometrically validated and may be refined in the same model conversation for at most two rounds.
 - Pose "Fix This Angle" uses the standard fixed-image path. User-loaded VRMs are stored in `poseAssets`; successful generations are stored in the capped, LRU-managed `poseHistory` and can be reapplied. Inverted-pose hair behavior is a VRM spring-bone model trait; see `docs/vrm-springbone-gravity.md`.
 
