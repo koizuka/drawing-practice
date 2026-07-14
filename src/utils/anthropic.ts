@@ -212,11 +212,15 @@ async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): 
         // claude-sonnet-5 runs adaptive thinking by default when `thinking`
         // is omitted. Thinking helps exactly here (spatial/anatomical
         // reasoning), so leave it on — but its tokens count against
-        // max_tokens, and at 2048 we saw thinking consume the whole budget
-        // (2047/2048) with no text block at all. Budget generously instead
-        // of disabling; stop_reason 'max_tokens' below catches the residual
-        // case with a user-visible error rather than a cryptic parse error.
-        max_tokens: 8192,
+        // max_tokens, and there is NO separate thinking cap on this model
+        // (budget_tokens is removed, 400). At 2048 thinking consumed the
+        // whole budget (2047/2048) with no text block; at 8192 the same
+        // happened on a hard pose (8191/8192, 腹筋クランチ). Budget
+        // generously instead of disabling — 16384 is the practical ceiling
+        // for a non-streaming request (beyond that HTTP timeouts become a
+        // risk); stop_reason 'max_tokens' below catches the residual case
+        // with a user-visible error rather than a cryptic parse error.
+        max_tokens: 16384,
         messages,
       }),
       signal,
