@@ -12,7 +12,7 @@ import { getBundledTemplate } from '../templates/bundled';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
-import { computeFitLeader, resolveDrawingFitSize } from './splitLayoutHelpers';
+import { computeFitLeader, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
 import { loadDraft } from '../storage/sessionStore';
@@ -90,26 +90,25 @@ function SplitLayoutInner() {
   const fitLeader = computeFitLeader(source, referenceMode);
 
   // In portrait the split is top/bottom and the reference panel only gets
-  // half the height. While searching Sketchfab/Pexels (browse mode), give the
-  // reference panel the whole viewport so the result grid is browsable. The
-  // drawing panel is hidden via display:none rather than unmounted so its
-  // canvas/ViewTransform state survives the toggle.
+  // half the height. Give browse-heavy reference screens (search results,
+  // pose editing, and the trace picker) the whole viewport so they remain
+  // usable on phones. The drawing panel is hidden via display:none rather
+  // than unmounted so its canvas/ViewTransform state survives the toggle.
   // Sketchfab's browse mode covers two screens (search results and the 3D
   // viewer iframe); only the search-results screen should go fullscreen — the
   // 3D viewer must stay half-height so the captured screenshot matches the
   // visible camera framing.
-  const isSearchFullscreen
-    = !isLandscape
-      && referenceMode === 'browse'
-      && (
-        (source === 'sketchfab' && !sketchfabViewerActive)
-        || source === 'pexels'
-      );
+  const isBrowseFullscreen = shouldFullscreenReferenceBrowse(
+    isLandscape,
+    source,
+    referenceMode,
+    sketchfabViewerActive,
+  );
 
   // Free-drawing layout: hide the reference panel so the drawing canvas spans
-  // the full viewport. Independent of isSearchFullscreen (which is the inverse:
+  // the full viewport. Independent of isBrowseFullscreen (which is the inverse:
   // hides drawing while browsing on portrait). When both are true (would only
-  // happen on a portrait collapse during search, but isSearchFullscreen wins on
+  // happen on a portrait collapse during browse, but isBrowseFullscreen wins on
   // entering browse) we prefer showing reference for the active browse flow.
   const [referenceCollapsed, setReferenceCollapsed] = useState(false);
 
@@ -1007,7 +1006,7 @@ function SplitLayoutInner() {
           {/* `collapseLocked` keeps the reference panel visible even when the user
           asked to collapse it; the toggle button is also disabled in that
           state so the user gets a tooltip instead of a no-op click. */}
-          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isSearchFullscreen && !collapseLocked) ? 'none' : 'block' }}>
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isBrowseFullscreen && !collapseLocked) ? 'none' : 'block' }}>
             <ReferencePanel
               overlayStrokes={overlayStrokes}
               overlayCurrentStrokeRef={currentStrokeRef}
@@ -1035,7 +1034,7 @@ function SplitLayoutInner() {
               traceFeedback={traceScoring.latestFeedback}
             />
           </Box>
-          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isSearchFullscreen ? 'none' : 'block' }}>
+          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isBrowseFullscreen ? 'none' : 'block' }}>
             <DrawingPanel
               referenceSize={drawingFitSize}
               referenceInfo={referenceInfo}
