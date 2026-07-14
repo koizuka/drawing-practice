@@ -5,7 +5,7 @@ paths:
 
 # Storage layer rules
 
-Dexie.js wraps IndexedDB (schema v9). DB name is scoped by `BASE_URL` so PR previews don't collide with main: main uses `DrawingPracticeDB`, previews use `DrawingPracticeDB_{basePath}`. On main-deployment startup, stale preview DBs are cleaned up via `indexedDB.databases()`. Designed for 1000+ records.
+Dexie.js wraps IndexedDB (schema v16). DB name is scoped by `BASE_URL` so PR previews don't collide with main: main uses `DrawingPracticeDB`, previews use `DrawingPracticeDB_{basePath}`. On main-deployment startup, stale preview DBs are cleaned up via `indexedDB.databases()`. Designed for 1000+ records.
 
 ## Tables
 
@@ -13,6 +13,8 @@ Dexie.js wraps IndexedDB (schema v9). DB name is scoped by `BASE_URL` so PR prev
 - **`session`** — singleton draft for autosave (strokes, redo stack, reference, guides, timer elapsed). Reference undo history is intentionally NOT persisted to keep IndexedDB usage bounded.
 - **`urlHistory`** — URL-input dropdown history. Entries: `{url, type, title?, lastUsedAt, fileName?, imageBlob?, thumbnailUrl?, pexelsSearchContext?, sketchfabSearchContext?}` keyed by `url`. Types: `youtube | pexels | url | image | sketchfab`.
 - **`pexelsSearchHistory` / `sketchfabSearchHistory`** — per-source search-history dropdown. Pexels deduped by `query.toLowerCase()`. Sketchfab deduped by `query|category` (so a category-only browse with empty query gets its own row). Each capped at 50 via `historyEviction.selectKeysToEvict` (FIFO).
+- **`poseAssets`** — single 'userVrm' record: the user-loaded VRM Blob (50MB cap, see `poseAssetStore.ts`).
+- **`poseHistory`** — every successful pose generation: `{pose (sanitized PoseJson), hint?, thumbnail? (small JPEG Blob of the posed mannequin at commit time), createdAt, lastUsedAt}`, auto-increment id. Append-only, no dedup; capped at 50 via `historyEviction` (LRU by `lastUsedAt` — initialized to createdAt, bumped by `touchPoseHistory` when an entry is re-applied, so reused poses sort to the top and survive eviction). Read by the PoseSourcePanel history popover so a good pose can be re-applied to the current VRM later.
 
 ## urlHistory key + cap design (non-obvious)
 

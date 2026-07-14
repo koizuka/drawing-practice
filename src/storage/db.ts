@@ -4,6 +4,7 @@ import type { GuideLine, GridSettings } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
 import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab';
+import type { PoseJson } from '../pose/poseTypes';
 
 /**
  * Stroke / guide-line coordinate system version.
@@ -131,6 +132,27 @@ export interface PoseAssetRecord {
   updatedAt: Date;
 }
 
+export interface PoseHistoryRecord {
+  id?: number;
+  /** Sanitized semantic pose as committed to referenceInfo at generation time. */
+  pose: PoseJson;
+  /** Request-time hint (doubles as the display title). */
+  hint?: string;
+  /**
+   * Small JPEG screenshot of the posed mannequin captured at commit time.
+   * Best-effort — absent when the 3D viewer wasn't ready (e.g. hint-only
+   * generation racing the VRM load).
+   */
+  thumbnail?: Blob;
+  createdAt: Date;
+  /**
+   * LRU ordering key: initialized to createdAt, bumped when the entry is
+   * re-applied from the history popover. Listing and eviction both use this,
+   * so re-using a pose protects it from eviction.
+   */
+  lastUsedAt: Date;
+}
+
 const db = new Dexie(dbName) as Dexie & {
   drawings: EntityTable<DrawingRecord, 'id'>;
   session: EntityTable<SessionDraft, 'id'>;
@@ -138,6 +160,7 @@ const db = new Dexie(dbName) as Dexie & {
   pexelsSearchHistory: EntityTable<PexelsSearchHistoryEntry, 'key'>;
   sketchfabSearchHistory: EntityTable<SketchfabSearchHistoryEntry, 'key'>;
   poseAssets: EntityTable<PoseAssetRecord, 'id'>;
+  poseHistory: EntityTable<PoseHistoryRecord, 'id'>;
 };
 
 db.version(1).stores({
@@ -268,6 +291,20 @@ db.version(15).stores({
   pexelsSearchHistory: 'key, lastUsedAt',
   sketchfabSearchHistory: 'key, lastUsedAt',
   poseAssets: 'id',
+});
+
+// v16: adds the poseHistory table — every successful pose generation is
+// recorded (pose JSON + hint + small screenshot) so good poses can be
+// re-applied to the mannequin later, capped at POSE_HISTORY_LIMIT via
+// historyEviction (LRU by lastUsedAt — re-applying an entry bumps it).
+db.version(16).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+  poseAssets: 'id',
+  poseHistory: '++id, lastUsedAt',
 });
 
 export { db };
