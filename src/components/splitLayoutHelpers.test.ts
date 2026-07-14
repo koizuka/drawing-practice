@@ -1,4 +1,26 @@
-import { computeFitLeader, resolveDrawingFitSize } from './splitLayoutHelpers';
+import { computeFitLeader, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
+
+describe('shouldFullscreenReferenceBrowse', () => {
+  it('uses the full portrait viewport for search, pose, and trace browse screens', () => {
+    expect(shouldFullscreenReferenceBrowse(false, 'pexels', 'browse', false)).toBe(true);
+    expect(shouldFullscreenReferenceBrowse(false, 'sketchfab', 'browse', false)).toBe(true);
+    expect(shouldFullscreenReferenceBrowse(false, 'pose', 'browse', false)).toBe(true);
+    expect(shouldFullscreenReferenceBrowse(false, 'trace-template', 'browse', false)).toBe(true);
+  });
+
+  it('keeps content viewers and landscape layouts split', () => {
+    expect(shouldFullscreenReferenceBrowse(false, 'sketchfab', 'browse', true)).toBe(false);
+    expect(shouldFullscreenReferenceBrowse(false, 'pose', 'fixed', false)).toBe(false);
+    expect(shouldFullscreenReferenceBrowse(false, 'trace-template', 'fixed', false)).toBe(false);
+    expect(shouldFullscreenReferenceBrowse(true, 'pose', 'browse', false)).toBe(false);
+    expect(shouldFullscreenReferenceBrowse(true, 'trace-template', 'browse', false)).toBe(false);
+  });
+
+  it('does not fullscreen the source picker or ordinary references', () => {
+    expect(shouldFullscreenReferenceBrowse(false, 'none', 'browse', false)).toBe(false);
+    expect(shouldFullscreenReferenceBrowse(false, 'image', 'browse', false)).toBe(false);
+  });
+});
 
 describe('computeFitLeader', () => {
   it('returns "drawing" for source picker (free drawing)', () => {

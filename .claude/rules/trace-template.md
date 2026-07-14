@@ -86,6 +86,8 @@ The reference panel's `overlayStrokes` rendering (only active when overlay-compa
 
 Renders the 5 bundled templates as 140px thumbnail cards on a `repeat(auto-fill, minmax(160px, 1fr))` grid. Each thumbnail draws the template strokes into a small canvas (no React state for animation; one-shot effect on mount). Selecting a card calls `onSelect(template)` which routes through `SplitLayout.handleSelectTraceTemplate` → `changeReference` (so it's undoable via the standard reference-undo path).
 
+In portrait, the picker occupies the full viewport and hides the still-mounted drawing panel, matching Pexels search and pose browse. Selecting a template enters fixed mode and restores the normal split layout.
+
 ## Gallery / autosave wiring
 
 - `SplitLayout.loadDraft` has a `'trace-template'` else-if branch that sets `referenceMode='fixed'` (no fixedImageUrl to restore — `templateId` on `referenceInfo` is enough).

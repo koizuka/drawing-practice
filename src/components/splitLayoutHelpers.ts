@@ -3,6 +3,26 @@ import type { ReferenceSource, ReferenceMode } from '../types';
 export type FitLeader = 'reference' | 'drawing';
 
 /**
+ * Whether a reference browse screen should temporarily occupy the full
+ * viewport in portrait layouts. Content viewers stay split so their visible
+ * framing continues to match the drawing panel; browse/picker/editor screens
+ * need the extra vertical space to remain usable on phones.
+ */
+export function shouldFullscreenReferenceBrowse(
+  isLandscape: boolean,
+  source: ReferenceSource,
+  referenceMode: ReferenceMode,
+  sketchfabViewerActive: boolean,
+): boolean {
+  if (isLandscape || referenceMode !== 'browse') return false;
+
+  return (source === 'sketchfab' && !sketchfabViewerActive)
+    || source === 'pexels'
+    || source === 'pose'
+    || source === 'trace-template';
+}
+
+/**
  * Which panel owns the fit-to-container projection. The fit leader's
  * `baseScale` is computed from the reference's natural size; the other panel
  * mirrors it through the shared `ViewTransform`. The reference panel leads
