@@ -78,6 +78,14 @@ const PENETRATION_TOLERANCE = 0.04;
 const SUPPORT_MARGIN = 0.18;
 /** Limb capsule center lines closer than this really cross through each other. */
 const INTERSECTION_DISTANCE = 0.05;
+/** A hand/foot farther than this on the WRONG side of the midline gets flagged. */
+const CONTRALATERAL_TOLERANCE = 0.08;
+/**
+ * Forearm center line closer than this to the head JOINT (base of the skull)
+ * is inside the head volume. A hand resting ON the scalp/face sits ~0.10-0.13
+ * from the joint, so genuine head-touch poses stay clear of this cutoff.
+ */
+const HEAD_INTERSECTION_DISTANCE = 0.07;
 
 /** Human-readable joint names for the feedback text. */
 const PART_LABEL: Record<LandmarkName, string> = {
@@ -107,6 +115,12 @@ const MASS_WEIGHT: Partial<Record<LandmarkName, number>> = {
   leftLowerArm: 0.04, rightLowerArm: 0.04,
   leftHand: 0.01, rightHand: 0.01,
 };
+
+/** End effectors checked for a left/right mix-up, with their side sign (+x = left). */
+const CONTRALATERAL_LIMBS: ReadonlyArray<readonly [LandmarkName, 1 | -1]> = [
+  ['leftHand', 1], ['rightHand', -1],
+  ['leftFoot', 1], ['rightFoot', -1],
+] as const;
 
 /** Limb segments checked for mutual intersection, as (label, from, to). */
 const LIMB_SEGMENTS: ReadonlyArray<readonly [string, LandmarkName, LandmarkName]> = [
@@ -298,7 +312,62 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
     if (!s1 || !s2) continue;
     const d = segmentDistance(s1.a, s1.b, s2.a, s2.b);
     if (d < minDist) {
-      problems.push(`the ${s1.label} passes through the ${s2.label} (their center lines are only ${cm(d)}cm apart).`);
+      // Deliberate forearm contact (crossed arms, a cross-shaped guard) is a
+      // real pose — steer the fix toward depth layering, or the model opens
+      // the cross to separate them and destroys the intended shape.
+      const bothForearms = s1.label.endsWith('forearm') && s2.label.endsWith('forearm');
+      problems.push(
+        `the ${s1.label} passes through the ${s2.label} (their center lines are only ${cm(d)}cm apart).`
+        + (bothForearms
+          ? ' If the forearms are meant to cross or touch (crossed arms, a cross-shaped guard), KEEP the crossing and instead layer them in depth — offset the crossing forearm about 6-8cm further out in z than the other so they touch without merging; do not swing the arms apart.'
+          : ''),
+      );
+    }
+  }
+
+  // 4b. Forearm through the head volume (the head has no limb segment, so
+  // the segment-pair check above never sees it). Surface contact — a hand
+  // on the scalp, covering the face — stays outside the cutoff.
+  const headP = posed.head;
+  if (headP) {
+    for (const [label, from, to] of [
+      ['left forearm', 'leftLowerArm', 'leftHand'],
+      ['right forearm', 'rightLowerArm', 'rightHand'],
+    ] as const) {
+      const a = posed[from];
+      const b = posed[to];
+      if (!a || !b) continue;
+      const d = segmentDistance(a, b, headP, headP);
+      if (d < HEAD_INTERSECTION_DISTANCE) {
+        problems.push(`the ${label} passes through the head (its center line is only ${cm(d)}cm from the head joint).`);
+      }
+    }
+  }
+
+  // 5. Left/right mix-up: a hand or foot that ends up well on the OTHER side
+  // of the body's midline. Genuine cross-body poses exist (crossed arms, a
+  // cross-step), so the feedback explicitly permits keeping it — but a
+  // swapped left/right assignment (the model's most common generation error)
+  // is otherwise invisible to it, and this check lets the refine loop fix it.
+  const hipsPos = posed.hips;
+  if (hipsPos) {
+    const t = (pose.body?.turn ?? 0) * DEG;
+    for (const [name, side] of CONTRALATERAL_LIMBS) {
+      const p = posed[name];
+      if (!p) continue;
+      const dx = p.x - hipsPos.x;
+      const dz = p.z - hipsPos.z;
+      // Figure-frame leftward component (same un-yaw as the balance check).
+      const left = dx * Math.cos(t) + dz * Math.sin(t);
+      if (side * left < -CONTRALATERAL_TOLERANCE) {
+        const ownSide = side === 1 ? 'LEFT' : 'RIGHT';
+        const wrongSide = side === 1 ? 'RIGHT' : 'LEFT';
+        problems.push(
+          `the ${PART_LABEL[name]} ends up about ${cm(left)}cm on the figure's ${wrongSide} side of the body's midline. `
+          + `If the pose intentionally crosses this limb over the body (e.g. crossed arms), keep it as is; `
+          + `otherwise this is a left/right mix-up — move it to the figure's own ${ownSide} side (flip the sign of the target's x, or swap the swapped left/right values).`,
+        );
+      }
     }
   }
 

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Vector3 } from 'three';
 import { foldDirection, solveTwoBone, targetScale, type PoseRig } from './poseIk';
+import { segmentDistance } from './poseValidation';
 
 const LEG_AXIS = new Vector3(0, -1, 0);
 const KNEE_FOLD = new Vector3(0, 0, -1);
@@ -97,6 +98,49 @@ describe('solveTwoBone', () => {
     });
     expect(sol.end.distanceTo(target)).toBeLessThan(1e-6);
     expectConsistent(sol, root, ARM_AXIS, 0.28, 0.25);
+  });
+});
+
+describe('beam-cross recipe (posePrompt crossed-forearms coordinates)', () => {
+  // The prompt's Specium-style recipe must actually solve on a nominal
+  // 1.6m figure: both targets reachable, and the two forearm center lines
+  // crossing with >= 5cm clearance (poseValidation's INTERSECTION_DISTANCE)
+  // so the generated pose doesn't immediately fail validation.
+  it('solves with reachable targets and non-interpenetrating crossed forearms', () => {
+    const LEN1 = 0.28, LEN2 = 0.25;
+    const right = solveTwoBone({
+      root: new Vector3(-0.13, 1.3, 0),
+      mid: new Vector3(-0.10, 1.10, 0.14),
+      target: new Vector3(-0.08, 1.34, 0.15),
+      pole: new Vector3(-1, 0, 0),
+      len1: LEN1, len2: LEN2, restAxis: new Vector3(-1, 0, 0), restFold: ELBOW_FOLD,
+    });
+    const left = solveTwoBone({
+      root: new Vector3(0.13, 1.3, 0),
+      mid: new Vector3(0.15, 1.30, 0.22),
+      target: new Vector3(-0.09, 1.30, 0.22),
+      pole: new Vector3(1, 0, 0),
+      len1: LEN1, len2: LEN2, restAxis: ARM_AXIS, restFold: ELBOW_FOLD,
+    });
+    // Wrists land at (or very near) the recipe targets.
+    expect(right.end.distanceTo(new Vector3(-0.08, 1.34, 0.15))).toBeLessThan(0.05);
+    expect(left.end.distanceTo(new Vector3(-0.09, 1.30, 0.22))).toBeLessThan(0.05);
+    // The right forearm stands near-vertical; the left crosses past it AT
+    // WRIST HEIGHT (the classic wrists-crossed form, not hand-on-elbow),
+    // and the crossing bar is LEVEL — the solver normalizes the elbow onto
+    // the len1 sphere, so this guards against a tilted-forearm regression.
+    expect(right.end.y - right.mid.y).toBeGreaterThan(0.2);
+    expect(left.end.x).toBeLessThan(right.end.x + 0.05);
+    expect(Math.abs(left.end.y - right.end.y)).toBeLessThan(0.08);
+    expect(Math.abs(left.end.y - left.mid.y)).toBeLessThan(0.02);
+    // Forearm center lines cross without interpenetrating (>= 5cm apart).
+    const d = segmentDistance(
+      { x: left.mid.x, y: left.mid.y, z: left.mid.z },
+      { x: left.end.x, y: left.end.y, z: left.end.z },
+      { x: right.mid.x, y: right.mid.y, z: right.mid.z },
+      { x: right.end.x, y: right.end.y, z: right.end.z },
+    );
+    expect(d).toBeGreaterThanOrEqual(0.05);
   });
 });
 

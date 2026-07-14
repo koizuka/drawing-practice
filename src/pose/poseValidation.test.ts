@@ -166,8 +166,89 @@ describe('diagnosePose', () => {
     expect(problems.some(p => p.includes('passes through'))).toBe(true);
   });
 
+  it('steers crossed-forearm interpenetration toward depth layering, not separation', () => {
+    const posed = standingRest();
+    // Forearms crossing through each other in front of the chest (X guard
+    // with zero depth separation) — the fix hint must preserve the cross.
+    posed.leftLowerArm = v(0.15, 1.10, 0.20);
+    posed.leftHand = v(-0.15, 1.15, 0.20);
+    posed.rightLowerArm = v(-0.15, 1.10, 0.20);
+    posed.rightHand = v(0.15, 1.15, 0.20);
+    const problems = diagnosePose(measurement(posed), {});
+    const crossing = problems.find(p => p.includes('forearm') && p.includes('passes through'));
+    expect(crossing).toContain('layer them in depth');
+    // Non-forearm crossings keep the plain message.
+    const shins = standingRest();
+    shins.rightLowerLeg = v(0.30, 0.45, 0.01);
+    shins.rightFoot = v(-0.30, 0.08, 0.01);
+    const shinProblem = diagnosePose(measurement(shins), {}).find(p => p.includes('passes through'));
+    expect(shinProblem).not.toContain('layer them in depth');
+  });
+
   it('reports nothing when no landmarks were sampled', () => {
     expect(diagnosePose({ rest: {}, posed: {} }, {})).toEqual([]);
+  });
+
+  it('reports a forearm passing through the head volume', () => {
+    const posed = standingRest();
+    // Forearm skewers the skull: center line 5cm from the head joint.
+    posed.leftLowerArm = v(0.25, 1.40, 0.05);
+    posed.leftHand = v(0.02, 1.42, 0.05);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('left forearm') && p.includes('through the head'))).toBe(true);
+  });
+
+  it('allows a hand resting ON the scalp (head-touch poses)', () => {
+    const posed = standingRest();
+    posed.leftLowerArm = v(0.30, 1.32, 0.10);
+    posed.leftHand = v(0.10, 1.48, 0.05);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('through the head'))).toBe(false);
+  });
+
+  it('reports a hand placed on the wrong side of the midline as a possible left/right mix-up', () => {
+    // Left hand way over on the figure's right side, arm otherwise clear of
+    // the torso — the classic swapped-target error.
+    const posed = standingRest();
+    posed.leftLowerArm = v(0.05, 1.25, 0.30);
+    posed.leftHand = v(-0.25, 1.25, 0.30);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p =>
+      p.includes('left hand') && p.includes('RIGHT side') && p.includes('mix-up'),
+    )).toBe(true);
+    // The feedback must permit keeping an intentional cross.
+    expect(problems.find(p => p.includes('mix-up'))).toContain('keep it as is');
+  });
+
+  it('reports a foot planted on the wrong side of the midline', () => {
+    const posed = standingRest();
+    posed.rightLowerLeg = v(0.10, 0.45, 0.10);
+    posed.rightFoot = v(0.20, 0.08, 0.20);
+    const problems = diagnosePose(measurement(posed), {});
+    expect(problems.some(p => p.includes('right foot') && p.includes('LEFT side'))).toBe(true);
+  });
+
+  it('evaluates the midline in the FIGURE frame when the body is turned', () => {
+    // turn +90: the figure faces the viewer's left (-X), so its own left is
+    // +Z. A left hand at +Z is on its own side; at -Z it is contralateral.
+    const posed = standingRest();
+    posed.leftHand = v(0, 1.25, 0.58);
+    posed.rightHand = v(0, 1.25, -0.58);
+    expect(diagnosePose(measurement(posed), { body: { turn: 90 } }).some(p => p.includes('mix-up'))).toBe(false);
+    posed.leftHand = v(0, 1.25, -0.58);
+    posed.rightHand = v(0, 1.25, 0.58);
+    const problems = diagnosePose(measurement(posed), { body: { turn: 90 } });
+    expect(problems.some(p => p.includes('left hand') && p.includes('mix-up'))).toBe(true);
+    expect(problems.some(p => p.includes('right hand') && p.includes('mix-up'))).toBe(true);
+  });
+
+  it('tolerates hands near the midline (clasped hands, hands on lap)', () => {
+    const posed = standingRest();
+    posed.leftHand = v(-0.03, 0.90, 0.15);
+    posed.rightHand = v(0.03, 0.90, 0.15);
+    posed.leftLowerArm = v(0.20, 1.00, 0.12);
+    posed.rightLowerArm = v(-0.20, 1.00, 0.12);
+    expect(diagnosePose(measurement(posed), {}).some(p => p.includes('mix-up'))).toBe(false);
   });
 });
 

@@ -167,6 +167,35 @@ describe('applyPose', () => {
     }
   });
 
+  it('a raised arm with no forearmTwist auto-rolls the palm INWARD (raised through the front)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { leftArm: { raise: 180 }, rightArm: { raise: 180 } });
+    // World palm normal = upper ∘ lower ∘ hand applied to the -Y rest normal
+    // (lower is identity here — the elbow is straight).
+    for (const [side, medialX] of [['left', -1], ['right', 1]] as const) {
+      const palm = new Vector3(0, -1, 0)
+        .applyQuaternion(bones.get(`${side}Hand`)!.quaternion)
+        .applyQuaternion(bones.get(`${side}UpperArm`)!.quaternion);
+      expect(palm.x * medialX).toBeGreaterThan(0.9);
+    }
+  });
+
+  it('the palm auto-roll leaves hanging and T-pose arms untouched', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { leftArm: { raise: 90 }, rightArm: { raise: 0 } });
+    expect(bones.get('leftHand')!.rotation.x).toBeCloseTo(0);
+    expect(bones.get('rightHand')!.rotation.x).toBeCloseTo(0);
+  });
+
+  it('explicit forearmTwist overrides the raised-arm auto-roll (overhead wave, palm forward)', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, { leftArm: { raise: 180, forearmTwist: 90 } });
+    const palm = new Vector3(0, -1, 0)
+      .applyQuaternion(bones.get('leftHand')!.quaternion)
+      .applyQuaternion(bones.get('leftUpperArm')!.quaternion);
+    expect(palm.z).toBeCloseTo(1);
+  });
+
   it('the wrist hinge rides on the pronated frame (extension folds toward the back of the hand)', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, {
@@ -179,6 +208,74 @@ describe('applyPose', () => {
     const hand = bones.get('leftHand')!;
     expect(limbDirection(hand, new Vector3(1, 0, 0)).z).toBeCloseTo(-1);
     expect(limbDirection(hand, new Vector3(0, -1, 0)).x).toBeCloseTo(1);
+  });
+
+  describe('touch presets ride the posed body part (IK path)', () => {
+    // Synthetic rest rig of a nominal 1.6m figure (targetScale = 1).
+    const REST_RIG: PoseRig = {
+      hips: { x: 0, y: 0.80, z: 0 },
+      spine: { x: 0, y: 0.95, z: 0 },
+      chest: { x: 0, y: 1.10, z: 0 },
+      head: { x: 0, y: 1.48, z: 0 },
+      leftUpperArm: { x: 0.13, y: 1.30, z: 0 },
+      leftLowerArm: { x: 0.38, y: 1.30, z: 0 },
+      leftHand: { x: 0.62, y: 1.30, z: 0 },
+      rightUpperArm: { x: -0.13, y: 1.30, z: 0 },
+      rightLowerArm: { x: -0.38, y: 1.30, z: 0 },
+      rightHand: { x: -0.62, y: 1.30, z: 0 },
+    };
+
+    /** FK the elbow + wrist world positions through hips→spine→chest→arm chain. */
+    function fkArm(bones: Map<PoseBoneName, Object3D>, side: 'left' | 'right'): { elbow: Vector3; wrist: Vector3 } {
+      const q = (name: PoseBoneName) => bones.get(name)!.quaternion;
+      const p = (name: PoseBoneName) => {
+        const r = REST_RIG[name]!;
+        return new Vector3(r.x, r.y, r.z);
+      };
+      const hipsQ = q('hips').clone();
+      const spineQ = hipsQ.clone().multiply(q('spine'));
+      const chestQ = spineQ.clone().multiply(q('chest'));
+      const uaQ = chestQ.clone().multiply(q(`${side}UpperArm`));
+      const laQ = uaQ.clone().multiply(q(`${side}LowerArm`));
+      const hipsPos = p('hips').add(bones.get('hips')!.position);
+      const spinePos = hipsPos.clone().add(p('spine').sub(p('hips')).applyQuaternion(hipsQ));
+      const chestPos = spinePos.clone().add(p('chest').sub(p('spine')).applyQuaternion(spineQ));
+      const uaPos = chestPos.clone().add(p(`${side}UpperArm`).sub(p('chest')).applyQuaternion(chestQ));
+      const laPos = uaPos.clone().add(p(`${side}LowerArm`).sub(p(`${side}UpperArm`)).applyQuaternion(uaQ));
+      const wrist = laPos.clone().add(p(`${side}Hand`).sub(p(`${side}LowerArm`)).applyQuaternion(laQ));
+      return { elbow: laPos, wrist };
+    }
+
+    it('upright touch:head lands the wrist on the upper side of the skull, elbow forward-down', () => {
+      const { bones, resolve, resetPose } = makeRig();
+      applyPose(resolve, resetPose, { leftArm: { touch: 'head' } }, REST_RIG);
+      const { elbow, wrist } = fkArm(bones, 'left');
+      expect(wrist.distanceTo(new Vector3(0.10, 1.53, 0.02))).toBeLessThan(0.02);
+      // Head-clutch pole: the elbow points down-front and slightly out —
+      // forward of the body, on its OWN side (not flared sideways, which
+      // over-bends the wrist; not across the midline, which reads as hands
+      // clasped in front of the face).
+      expect(elbow.z).toBeGreaterThan(0.10);
+      expect(elbow.x).toBeGreaterThan(0.03);
+      expect(elbow.x).toBeLessThan(0.30);
+    });
+
+    it('touch:head follows a leaning, nodding head (not the upright head position)', () => {
+      // leanForward 22 + nod 30 move the head ~17cm forward and down — the
+      // hand must land on the MOVED head, not clasp behind the neck where
+      // the head used to be (the reported "頭を抱える" failure).
+      const { bones, resolve, resetPose } = makeRig();
+      applyPose(resolve, resetPose, {
+        body: { leanForward: 22 },
+        head: { nod: 30 },
+        leftArm: { touch: 'head' },
+      }, REST_RIG);
+      const { wrist } = fkArm(bones, 'left');
+      expect(wrist.z).toBeGreaterThan(0.15);
+      expect(wrist.y).toBeLessThan(1.50);
+      expect(wrist.y).toBeGreaterThan(1.40);
+      expect(Math.abs(wrist.x - 0.10)).toBeLessThan(0.05);
+    });
   });
 
   it('touch replaces the angle fields with the preset', () => {
