@@ -4,7 +4,7 @@ Guidance for Codex when working in this repository.
 
 ## Project
 
-Drawing Practice is an iPad + Apple Pencil focused line-drawing practice app. The screen is split between a reference viewer and a drawing canvas, with shared grid / guide alignment. References include Sketchfab models, images, YouTube videos, Pexels photos, and bundled trace templates; trace templates score strokes against target shapes and show red deviation feedback.
+Drawing Practice is an iPad + Apple Pencil focused line-drawing practice app. The screen is split between a reference viewer and a drawing canvas, with shared grid / guide alignment. References include Sketchfab models, images, YouTube videos, Pexels photos, bundled trace templates, and an AI-posed 3D mannequin; trace templates score strokes against target shapes and show red deviation feedback.
 
 Live app: https://koizuka.github.io/drawing-practice/
 
@@ -26,7 +26,7 @@ Prefer `npm run test` over watch mode in agent / CI-style runs.
 - Vite + React + TypeScript strict mode
 - Material UI
 - Vitest + React Testing Library
-- Dexie / IndexedDB schema v14 for persistence
+- Dexie / IndexedDB schema v16 for persistence
 - GitHub Pages via GitHub Actions
 
 ## Code Map
@@ -40,11 +40,13 @@ Prefer `npm run test` over watch mode in agent / CI-style runs.
 - `src/components/YouTubeViewer.tsx`: YouTube iframe viewer with overlay-based interaction model
 - `src/components/PexelsSearcher.tsx`: Pexels search UI and selection flow
 - `src/components/TraceTemplateViewer.tsx`, `src/components/BundledTemplatePicker.tsx`: trace template viewing, browsing, and scoring flows
+- `src/components/PoseSourcePanel.tsx`: sketch / text-to-pose flow, VRM mannequin viewer, generated-pose history, and fix-angle capture
 - `src/components/Gallery.tsx`: saved drawing gallery, export, reload reference, storage summary
 - `src/drawing/StrokeManager.ts`: shared undo/redo history for strokes and reference changes
 - `src/guides/`: grid / guide shared state and rendering
 - `src/trace/TraceScoringContext.tsx`: shared trace-template scoring state
 - `src/trace/`, `src/templates/`: trace template definitions, scoring, and bundled assets
+- `src/pose/`: pose prompts and JSON sanitizing, joint mapping / IK, geometric validation, and bounded refinement loop
 - `src/storage/`: IndexedDB schema, draft persistence, URL history, export, storage accounting
 - `src/hooks/useTimer.ts`: drawing timer lifecycle
 - `src/hooks/useAutosave.ts`: debounced session draft persistence
@@ -65,7 +67,7 @@ Prefer `npm run test` over watch mode in agent / CI-style runs.
 - Timer behavior is user-visible product logic. Reference changes, save, gallery open, backgrounding, and fully undoing strokes all affect timer state.
 - IndexedDB usage matters. Prefer bounded history, quantized persisted stroke data, and reuse of existing storage helpers.
 - Canvas work must account for `window.devicePixelRatio`, and viewport sizing should use `100dvh` rather than `100vh` for iPad Safari.
-- The touch diagnostics harness behind `?diag=touch` is opt-in and dormant otherwise. Keep diagnostic code behind `DIAG_ENABLED` guards; if removing it, delete the recorder / overlay and all guarded call sites together.
+- The touch diagnostics harness behind `?diag=touch` is opt-in and dormant otherwise. The input-freeze investigation is resolved: WebKit / iPadOS can suspend page-wide input delivery while rAF and the main thread remain alive; see `docs/apple-pencil-input-freeze.md` and `DrawingFreezeHint`. Keep diagnostic code behind `DIAG_ENABLED` guards; if removing it, delete the recorder / overlay and all guarded call sites together.
 
 ## Detailed Rule Documents
 
@@ -89,13 +91,17 @@ Read the relevant rule document before changing those areas. Keep `AGENTS.md` as
 - Pexels API keys are user-supplied and stored in `localStorage['pexelsApiKey']`; never bundle a key.
 - Local images and Sketchfab screenshots are stored in URL history so references can be restored later.
 - Trace template replacement / undo semantics are path-specific; read `trace-template.md` before changing template state, scoring, or bundled template behavior.
+- The `pose` source accepts a rough figure sketch and/or a text hint, calls the Anthropic Claude API directly from the browser using the user's `localStorage['anthropicApiKey']`, and applies semantic pose JSON to a three.js / three-vrm mannequin. Never bundle an API key.
+- Pose limbs may use angles or placement targets (`handAt`, `footAt`, `kneeAt`, `elbowAt`, and `body.hipsHeight`) solved by analytic two-bone IK. Generated poses are geometrically validated and may be refined in the same model conversation for at most two rounds.
+- Pose "Fix This Angle" uses the standard fixed-image path. User-loaded VRMs are stored in `poseAssets`; successful generations are stored in the capped, LRU-managed `poseHistory` and can be reapplied. Inverted-pose hair behavior is a VRM spring-bone model trait; see `docs/vrm-springbone-gravity.md`.
 
 ## Storage Notes
 
-- Main persisted entities are `drawings`, `session`, `urlHistory`, `pexelsSearchHistory`, and `sketchfabSearchHistory`.
+- Main persisted entities are `drawings`, `session`, `urlHistory`, `pexelsSearchHistory`, `sketchfabSearchHistory`, `poseAssets`, and `poseHistory`.
 - `drawings` stores quantized strokes for size control. Do not accidentally apply that quantization to in-memory editing behavior.
 - `session` is the autosave draft.
 - `urlHistory` is split-capped so image-heavy usage does not evict all non-image history.
+- `poseHistory` stores pose JSON, hint, and thumbnail, and is capped at 50 entries using LRU eviction.
 - Database name is scoped by `BASE_URL` so preview deployments do not share data with production. Main uses `DrawingPracticeDB`; previews use `DrawingPracticeDB_{basePath}` and have cleanup behavior for stale preview DBs.
 
 ## Working Style For Codex
