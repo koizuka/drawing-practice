@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from 'react';
-import { Alert, Box, Button, CircularProgress, TextField, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent, type Ref } from 'react';
+import { Alert, Box, Button, ButtonBase, CircularProgress, IconButton, Popover, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { History, PersonStanding, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
 import type { ReferenceSetters } from './ReferencePanel';
@@ -10,9 +11,11 @@ import { refinePoseUntilValid } from '../pose/poseRefineLoop';
 import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey, refinePose } from '../utils/anthropic';
 import { isAbortError } from '../utils/pexels';
 import { isSubmitEnter } from '../utils/imeSafeEnter';
-import { getUserVrm, saveUserVrm, VrmTooLargeError } from '../storage';
+import { addPoseHistory, deletePoseHistory, getPoseHistory, getUserVrm, saveUserVrm, touchPoseHistory, VrmTooLargeError, type PoseHistoryRecord } from '../storage';
+import { dataUrlToJpegBlob } from '../utils/imageResize';
 import PoseViewer, { type PoseViewerActions, type PoseVrmSource } from './PoseViewer';
 import { PoseSketchPad, type PoseSketchPadHandle } from './PoseSketchPad';
+import { ToolbarTooltip } from './ToolbarTooltip';
 
 export interface PoseSourceActions {
   /** Capture the current 3D view and fix it as the drawing reference. */
@@ -35,6 +38,8 @@ interface PoseSourcePanelProps {
 }
 
 const SKETCH_DISPLAY_SIZE = 160;
+/** Longest edge of the pose-history thumbnail JPEG (Blob in IndexedDB). */
+const POSE_HISTORY_THUMB_EDGE = 192;
 
 /**
  * Browse-mode UI for the 'pose' reference source: stick-figure sketch pad +
@@ -63,6 +68,9 @@ export default function PoseSourcePanel({
   const [notice, setNotice] = useState<string | null>(null);
   const [vrmLoadFailed, setVrmLoadFailed] = useState(false);
   const [vrmRetryToken, setVrmRetryToken] = useState(0);
+  const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
+  // null = load in flight (popover shows a spinner until the read resolves).
+  const [historyEntries, setHistoryEntries] = useState<PoseHistoryRecord[] | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   // Set when Generate was clicked without a key: the key dialog is open and a
   // successful save should finish the original generate intent.
@@ -198,6 +206,25 @@ export default function PoseSourcePanel({
           s.setReferenceInfo(info);
         });
         committed = true;
+        // Record the generation in pose history (best-effort, fire-and-
+        // forget). The screenshot must be captured synchronously here: the
+        // refine loop's measurePose left the final candidate — which IS the
+        // committed pose — applied to the viewer, so the shot matches the
+        // recorded JSON. Null when the viewer isn't ready (hint-only
+        // generation racing the VRM load) — the entry is saved without a
+        // thumbnail.
+        const shot = viewerActionsRef.current?.captureScreenshot() ?? null;
+        void (async () => {
+          const thumbnail = shot
+            ? await dataUrlToJpegBlob(shot, POSE_HISTORY_THUMB_EDGE, 0.8) ?? undefined
+            : undefined;
+          await addPoseHistory({
+            pose: generated,
+            hint: info.hint,
+            thumbnail,
+            createdAt: new Date(),
+          });
+        })().catch(() => { /* history is best-effort — never surface */ });
       })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
@@ -281,6 +308,61 @@ export default function PoseSourcePanel({
     setVrmLoadFailed(false);
     setVrmId(value);
   }, []);
+
+  const handleOpenHistory = useCallback((e: MouseEvent<HTMLElement>) => {
+    setHistoryAnchor(e.currentTarget);
+    setHistoryEntries(null);
+    getPoseHistory().then(setHistoryEntries).catch(() => setHistoryEntries([]));
+  }, []);
+
+  const handleCloseHistory = useCallback(() => setHistoryAnchor(null), []);
+
+  const handleSelectHistory = useCallback((entry: PoseHistoryRecord) => {
+    setHistoryAnchor(null);
+    setError(null);
+    setNotice(null);
+    // LRU bump — re-applied poses sort to the top and survive eviction.
+    if (entry.id !== undefined) {
+      touchPoseHistory(entry.id).catch(() => { /* best-effort */ });
+    }
+    // Committed exactly like a fresh generation result (one undo entry),
+    // onto the CURRENTLY selected model — the stored pose is model-
+    // independent. Deliberately NOT marked selfCommitted: the poseInfo
+    // re-seed should update the hint field to the restored pose's hint, and
+    // the swap's abort of any in-flight generation is intended.
+    onReferenceChange((s) => {
+      s.setReferenceInfo({
+        source: 'pose',
+        title: entry.hint?.trim() || t('pose'),
+        author: '',
+        vrmId: vrmIdRef.current,
+        pose: entry.pose,
+        hint: entry.hint,
+      });
+    });
+  }, [onReferenceChange]);
+
+  const handleDeleteHistory = useCallback((id: number | undefined) => {
+    if (id === undefined) return;
+    // Optimistic removal — the popover stays open for further picks/deletes.
+    setHistoryEntries(entries => entries?.filter(e => e.id !== id) ?? entries);
+    deletePoseHistory(id).catch(() => { /* best-effort */ });
+  }, []);
+
+  // ObjectURLs for the stored thumbnail Blobs; revoked when the list changes
+  // or the panel unmounts.
+  const historyThumbUrls = useMemo(() => {
+    const map = new Map<number, string>();
+    for (const entry of historyEntries ?? []) {
+      if (entry.id !== undefined && entry.thumbnail) {
+        map.set(entry.id, URL.createObjectURL(entry.thumbnail));
+      }
+    }
+    return map;
+  }, [historyEntries]);
+  useEffect(() => () => {
+    for (const url of historyThumbUrls.values()) URL.revokeObjectURL(url);
+  }, [historyThumbUrls]);
 
   const handleViewerReady = useCallback(() => {
     setVrmLoadFailed(false);
@@ -386,7 +468,91 @@ export default function PoseSourcePanel({
             <Button size="small" variant="outlined" onClick={handleLoadVrmFile}>
               {t('poseLoadVrm')}
             </Button>
+            <Button size="small" variant="outlined" startIcon={<History size={16} />} onClick={handleOpenHistory}>
+              {t('poseHistory')}
+            </Button>
           </Box>
+          <Popover
+            open={historyAnchor !== null}
+            anchorEl={historyAnchor}
+            onClose={handleCloseHistory}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          >
+            <Box sx={{ p: 1, width: 320, maxHeight: 360, overflowY: 'auto' }}>
+              {historyEntries === null
+                ? (
+                    <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  )
+                : historyEntries.length === 0
+                  ? (
+                      <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                        {t('poseHistoryEmpty')}
+                      </Typography>
+                    )
+                  : (
+                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 1 }}>
+                        {historyEntries.map((entry) => {
+                          const thumbUrl = entry.id !== undefined ? historyThumbUrls.get(entry.id) : undefined;
+                          return (
+                            // ButtonBase (same rationale as BundledTemplatePicker)
+                            // so the card is Tab-reachable and Enter/Space-
+                            // activatable — but as component="div": the card
+                            // CONTAINS the delete IconButton, and a native
+                            // <button> may not nest another <button>. MUI still
+                            // supplies role="button"/tabIndex/keyboard handling.
+                            <ButtonBase
+                              key={entry.id}
+                              component="div"
+                              focusRipple
+                              aria-label={entry.hint || t('pose')}
+                              onClick={() => handleSelectHistory(entry)}
+                              sx={{
+                                'display': 'block',
+                                'textAlign': 'left',
+                                'border': '1px solid #ddd',
+                                'borderRadius': 1,
+                                'overflow': 'hidden',
+                                'cursor': 'pointer',
+                                'position': 'relative',
+                                '&:hover': { borderColor: 'primary.main' },
+                                '&:focus-visible': { borderColor: 'primary.main', outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
+                              }}
+                            >
+                              {thumbUrl
+                                ? <Box component="img" src={thumbUrl} alt={entry.hint || t('pose')} sx={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
+                                : (
+                                    <Box sx={{ width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f0f0f0', color: 'text.secondary' }}>
+                                      <PersonStanding size={32} />
+                                    </Box>
+                                  )}
+                              <ToolbarTooltip title={t('poseHistoryDelete')}>
+                                <IconButton
+                                  size="small"
+                                  aria-label={t('poseHistoryDelete')}
+                                  // Touch devices commit selection on pointerdown
+                                  // (before click), so stop propagation there too.
+                                  onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteHistory(entry.id); }}
+                                  sx={{ 'position': 'absolute', 'top': 2, 'right': 2, 'bgcolor': 'rgba(255,255,255,0.7)', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
+                                >
+                                  <Trash2 size={14} />
+                                </IconButton>
+                              </ToolbarTooltip>
+                              <Typography variant="caption" noWrap sx={{ display: 'block', px: 0.5 }}>
+                                {entry.hint || t('pose')}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 0.5, pb: 0.5 }}>
+                                {entry.createdAt.toLocaleDateString()}
+                              </Typography>
+                            </ButtonBase>
+                          );
+                        })}
+                      </Box>
+                    )}
+            </Box>
+          </Popover>
           {error && (
             <Alert
               severity="error"
