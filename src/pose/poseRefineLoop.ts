@@ -24,6 +24,12 @@ export interface PoseRefineOptions<G extends { pose: PoseJson }> {
   refine: (prior: G, feedback: string) => Promise<G>;
   /** UI hook, fired before each correction request (round is 1-based). */
   onRefineStart?: (round: number, feedback: string) => void;
+  /**
+   * UI hook for a failed correction request. The loop still returns the best
+   * pose obtained before the failure, but callers should surface the error so
+   * the user knows validation did not complete.
+   */
+  onRefineError?: (error: unknown, round: number) => void;
   maxRounds?: number;
 }
 
@@ -59,6 +65,7 @@ export async function refinePoseUntilValid<G extends { pose: PoseJson }>(
     catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e;
       console.warn('[pose] refinement request failed, keeping the unrefined pose:', e);
+      options.onRefineError?.(e, round);
       break;
     }
     const unchanged = samePose(refined.pose, current.pose);
