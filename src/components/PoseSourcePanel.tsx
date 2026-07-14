@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent, type Ref } from 'react';
-import { Alert, Box, Button, CircularProgress, IconButton, Popover, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, ButtonBase, CircularProgress, IconButton, Popover, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { History, PersonStanding, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
@@ -496,16 +496,28 @@ export default function PoseSourcePanel({
                         {historyEntries.map((entry) => {
                           const thumbUrl = entry.id !== undefined ? historyThumbUrls.get(entry.id) : undefined;
                           return (
-                            <Box
+                            // ButtonBase (same rationale as BundledTemplatePicker)
+                            // so the card is Tab-reachable and Enter/Space-
+                            // activatable — but as component="div": the card
+                            // CONTAINS the delete IconButton, and a native
+                            // <button> may not nest another <button>. MUI still
+                            // supplies role="button"/tabIndex/keyboard handling.
+                            <ButtonBase
                               key={entry.id}
+                              component="div"
+                              focusRipple
+                              aria-label={entry.hint || t('pose')}
                               onClick={() => handleSelectHistory(entry)}
                               sx={{
+                                'display': 'block',
+                                'textAlign': 'left',
                                 'border': '1px solid #ddd',
                                 'borderRadius': 1,
                                 'overflow': 'hidden',
                                 'cursor': 'pointer',
                                 'position': 'relative',
                                 '&:hover': { borderColor: 'primary.main' },
+                                '&:focus-visible': { borderColor: 'primary.main', outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
                               }}
                             >
                               {thumbUrl
@@ -534,7 +546,7 @@ export default function PoseSourcePanel({
                               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 0.5, pb: 0.5 }}>
                                 {entry.createdAt.toLocaleDateString()}
                               </Typography>
-                            </Box>
+                            </ButtonBase>
                           );
                         })}
                       </Box>
