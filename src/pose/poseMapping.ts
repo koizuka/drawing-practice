@@ -107,6 +107,8 @@ const KNEE_REST_FOLD = new Vector3(0, 0, -1);
 const GROUND_EPS = 0.03;
 /** Rough torso surface radius: hand targets/ends are pushed outside it. */
 const TORSO_CLEARANCE = 0.13;
+/** Hand/knee target separation that counts as an intended knee touch. */
+const KNEE_TOUCH_DISTANCE = 0.12;
 /** Planted palm: fingers point figure-front with a slight outward splay. */
 const FINGER_SPLAY = 75 * DEG;
 
@@ -274,7 +276,13 @@ function touchTargetWorld(ctx: IkContext, touch: TouchTarget, side: 1 | -1): Vec
   return p0.sub(anchor.rest).applyQuaternion(anchor.quat).add(anchor.pos);
 }
 
-function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx: IkContext): boolean {
+function applyArmIk(
+  resolve: BoneResolver,
+  sideName: Side,
+  rawArm: ArmPose,
+  ctx: IkContext,
+  legs: readonly (LegPose | null | undefined)[],
+): boolean {
   const side = SIDE_SIGN[sideName];
   const touchTarget = rawArm.touch ? TOUCH_IK_TARGETS[rawArm.touch] : null;
   const touchWorld = rawArm.touch ? touchTargetWorld(ctx, rawArm.touch, side) : null;
@@ -299,6 +307,8 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
   if (elbowTarget) elbowTarget.y = Math.max(elbowTarget.y, 0.04 * ctx.scale);
   const restAxis = new Vector3(side, 0, 0);
   const unYaw = ctx.qYaw.clone().invert();
+  let requestedHandTarget: Vector3 | null = null;
+  let kneeContactTarget: Vector3 | null = null;
   // 'back' is hyperextension in angle mode too — treat as the natural front.
   const dirName: ElbowDirection = arm.elbowDirection === 'back' ? 'front' : (arm.elbowDirection ?? 'front');
 
@@ -330,7 +340,25 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
         : p.clone().sub(near).divideScalar(d);
       return near.addScaledVector(dir, clearance);
     };
-    const target = pushOut(touchWorld ?? toWorldTarget(ctx, arm.handAt));
+    requestedHandTarget = touchWorld ?? toWorldTarget(ctx, arm.handAt);
+    kneeContactTarget = !planted && arm.wrist === undefined && arm.forearmTwist === undefined
+      ? legs
+        .flatMap(leg => leg?.kneeAt ? [toWorldTarget(ctx, leg.kneeAt)] : [])
+        .map(knee => ({ knee, distance: knee.distanceTo(requestedHandTarget!) }))
+        .filter(({ distance }) => distance <= KNEE_TOUCH_DISTANCE * ctx.scale)
+        .sort((a, b) => a.distance - b.distance)[0]?.knee ?? null
+      : null;
+    // handAt names the wrist joint, but models commonly put it at the knee
+    // center when they mean "hand resting on knee". Put the wrist just above
+    // and behind the knee so the palm and fingers, rather than the wrist or
+    // knife-hand edge, cover its upper surface.
+    let target = kneeContactTarget
+      ? kneeContactTarget.clone()
+          .addScaledVector(UP, 0.05 * ctx.scale)
+          .addScaledVector(FRONT.clone().applyQuaternion(ctx.qYaw), -0.04 * ctx.scale)
+      : requestedHandTarget.clone();
+    requestedHandTarget = target.clone();
+    target = pushOut(target);
     target.y = Math.max(target.y, 0.03 * ctx.scale);
     // elbowDirection keeps its meaning "the forearm folds toward" — the
     // elbow apex therefore bulges the OPPOSITE way (that's the pole).
@@ -390,6 +418,17 @@ function applyArmIk(resolve: BoneResolver, sideName: Side, rawArm: ArmPose, ctx:
       const flat = ctx.qYaw.clone().multiply(new Quaternion().setFromAxisAngle(UP, -side * FINGER_SPLAY));
       hand.quaternion.copy(forearmWorld.invert().multiply(flat));
     }
+    else if (kneeContactTarget) {
+      // A hand target just above a knee means the palm rests ON the knee.
+      // Aim the palm normal toward it instead of leaving the hand's T-pose
+      // edge facing the knee (the characteristic "knife-hand" artifact).
+      const normal = kneeContactTarget.clone().sub(requestedHandTarget!);
+      if (normal.lengthSq() < 1e-4) normal.copy(DOWN);
+      else normal.normalize();
+      const fingers = foldDirection(FRONT.clone().applyQuaternion(ctx.qYaw), normal, forearmDir);
+      const handWorld = foldBasis(new Vector3(side, 0, 0), new Vector3(0, -1, 0), fingers, normal);
+      hand.quaternion.copy(forearmWorld.invert().multiply(handWorld));
+    }
     // "Touching" = within a small tolerance of the torso SURFACE (the bust
     // extends past the nominal clearance radius, hence the 5cm allowance).
     else if (onBody && onBody.distanceTo(sol.end) < (TORSO_CLEARANCE + 0.05) * ctx.scale
@@ -442,7 +481,24 @@ function applyLegIk(resolve: BoneResolver, sideName: Side, leg: LegPose, ctx: Ik
     const target = toWorldTarget(ctx, leg.footAt);
     // A planted ankle sits at its rest (sole-offset) height.
     target.y = Math.max(target.y, planted ? soleHeight : 0.03 * ctx.scale);
-    sol = solveTwoBone({ root, target, pole, mid: kneeTarget, len1, len2, restAxis: DOWN, restFold: KNEE_REST_FOLD, maxBend: 160 * DEG });
+    // For a planted sole the ankle contact is authoritative. Approximate
+    // kneeAt coordinates rarely match a particular VRM's two bone lengths;
+    // treating that knee as a hard intermediate target makes the fixed-length
+    // shin stop short of or overshoot through the floor. Use it as the bend
+    // pole instead. Non-planted kneeling/sitting legs keep the hard knee so a
+    // vertical supporting thigh remains pinned where requested.
+    const solvePole = planted && kneeTarget ? kneeTarget.clone().sub(root) : pole;
+    sol = solveTwoBone({
+      root,
+      target,
+      pole: solvePole,
+      mid: planted ? null : kneeTarget,
+      len1,
+      len2,
+      restAxis: DOWN,
+      restFold: KNEE_REST_FOLD,
+      maxBend: 160 * DEG,
+    });
   }
   else {
     // kneeAt only: aim the thigh at the knee, hinge by kneeBend. The shin
@@ -670,8 +726,9 @@ export function applyPose(resolve: BoneResolver, resetPose: () => void, pose: Po
 
   const leftArm = pose.leftArm ?? RELAXED_ARM;
   const rightArm = pose.rightArm ?? RELAXED_ARM;
-  if (!(ctx && applyArmIk(resolve, 'left', leftArm, ctx))) applyArm(resolve, 'left', leftArm);
-  if (!(ctx && applyArmIk(resolve, 'right', rightArm, ctx))) applyArm(resolve, 'right', rightArm);
+  const legs = [pose.leftLeg, pose.rightLeg] as const;
+  if (!(ctx && applyArmIk(resolve, 'left', leftArm, ctx, legs))) applyArm(resolve, 'left', leftArm);
+  if (!(ctx && applyArmIk(resolve, 'right', rightArm, ctx, legs))) applyArm(resolve, 'right', rightArm);
 
   // A deep crouch bends the legs even when the LLM omitted them entirely.
   const crouch = body.crouch ?? 0;

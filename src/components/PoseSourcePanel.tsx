@@ -185,6 +185,11 @@ export default function PoseSourcePanel({
           : viewerActionsRef.current?.measurePose(candidate) ?? null,
         refine: (prior, feedback) => refinePose(prior, feedback, controller.signal),
         onRefineStart: () => setRefining(true),
+        onRefineError: (e) => {
+          if (controller.signal.aborted || abortRef.current !== controller) return;
+          const key = mapAnthropicErrorKey(e);
+          setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
+        },
       }))
       .then(({ pose: generated }) => {
         // A superseded run can still resolve (fetch may complete before

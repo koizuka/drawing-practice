@@ -505,9 +505,9 @@ const CROUCH_DROP = 0.35;
 type Bones = Map<PoseBoneName, Object3D>;
 
 /** FK matching the production chain assumptions (hips → limbs, torso identity unless leaned). */
-function leftAnkleWorld(bones: Bones, crouch = 0): Vector3 {
+function leftAnkleWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 {
   const qHips = bones.get('hips')!.quaternion;
-  const hipsPos = new Vector3(0, 0.80 - crouch * CROUCH_DROP, 0);
+  const hipsPos = new Vector3(0, hipsHeight ?? 0.80 - crouch * CROUCH_DROP, 0);
   const hipJoint = hipsPos.clone().add(new Vector3(0.09, -0.05, 0).applyQuaternion(qHips));
   const qThigh = qHips.clone().multiply(bones.get('leftUpperLeg')!.quaternion);
   const knee = hipJoint.clone().add(new Vector3(0, -0.37, 0).applyQuaternion(qThigh));
@@ -515,9 +515,9 @@ function leftAnkleWorld(bones: Bones, crouch = 0): Vector3 {
   return knee.add(new Vector3(0, -0.31, 0).applyQuaternion(qShin));
 }
 
-function leftWristWorld(bones: Bones, crouch = 0): Vector3 {
+function leftWristWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 {
   const qHips = bones.get('hips')!.quaternion;
-  const hipsPos = new Vector3(0, 0.80 - crouch * CROUCH_DROP, 0);
+  const hipsPos = new Vector3(0, hipsHeight ?? 0.80 - crouch * CROUCH_DROP, 0);
   const shoulder = hipsPos.clone().add(new Vector3(0.13, 0.50, 0).applyQuaternion(qHips));
   const qUpper = qHips.clone().multiply(bones.get('leftUpperArm')!.quaternion);
   const elbow = shoulder.clone().add(new Vector3(0.28, 0, 0).applyQuaternion(qUpper));
@@ -550,6 +550,21 @@ describe('applyPose placement targets', () => {
       .multiply(bones.get('leftFoot')!.quaternion);
     expect(new Vector3(0, 1, 0).applyQuaternion(footWorld).y).toBeCloseTo(1, 5);
     expect(new Vector3(0, 0, 1).applyQuaternion(footWorld).z).toBeCloseTo(1, 5);
+  });
+
+  it('keeps a planted ankle on target when kneeAt distances do not match the rig', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    applyPose(resolve, resetPose, {
+      body: { hipsHeight: 0.45 },
+      leftLeg: {
+        kneeAt: { x: 0.15, y: 0.43, z: 0.32 },
+        footAt: { x: 0.15, y: 0, z: 0.32 },
+      },
+    }, REST);
+    const ankle = leftAnkleWorld(bones, 0, 0.45);
+    expect(ankle.x).toBeCloseTo(0.15, 3);
+    expect(ankle.y).toBeCloseTo(0.07, 3);
+    expect(ankle.z).toBeCloseTo(0.32, 3);
   });
 
   it('the knee bulges toward the figure front by default', () => {
@@ -655,6 +670,31 @@ describe('applyPose placement targets', () => {
     // Palm normal points at the torso axis (inward/backward), not forward.
     const palm = new Vector3(0, -1, 0).applyQuaternion(handWorld);
     expect(palm.z).toBeLessThan(-0.5);
+  });
+
+  it('lays the palm onto a raised knee instead of leaving a knife-hand edge', () => {
+    const { bones, resolve, resetPose } = makeRig();
+    const handAt = new Vector3(0.17, 0.58, 0.33);
+    const kneeAt = new Vector3(0.15, 0.55, 0.32);
+    applyPose(resolve, resetPose, {
+      body: { hipsHeight: 0.45 },
+      leftArm: { handAt: { x: handAt.x, y: handAt.y, z: handAt.z }, elbowDirection: 'front' },
+      leftLeg: {
+        kneeAt: { x: kneeAt.x, y: kneeAt.y, z: kneeAt.z },
+        footAt: { x: 0.15, y: 0, z: 0.32 },
+      },
+    }, REST);
+    const handWorld = bones.get('hips')!.quaternion.clone()
+      .multiply(bones.get('leftUpperArm')!.quaternion)
+      .multiply(bones.get('leftLowerArm')!.quaternion)
+      .multiply(bones.get('leftHand')!.quaternion);
+    const palm = new Vector3(0, -1, 0).applyQuaternion(handWorld);
+    expect(palm.y).toBeLessThan(-0.7);
+    const fingers = new Vector3(1, 0, 0).applyQuaternion(handWorld);
+    expect(fingers.z).toBeGreaterThan(0.7);
+    const wrist = leftWristWorld(bones, 0, 0.45);
+    expect(wrist.y).toBeCloseTo(kneeAt.y + 0.05, 2);
+    expect(wrist.z).toBeCloseTo(kneeAt.z - 0.04, 2);
   });
 
   it('an explicit wrist/forearmTwist overrides the palm-on-body auto-orientation', () => {

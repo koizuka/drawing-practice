@@ -85,19 +85,24 @@ describe('refinePoseUntilValid', () => {
   });
 
   it('keeps the best result when a refinement request fails', async () => {
+    const failure = new Error('network down');
+    const onRefineError = vi.fn();
     const result = await refinePoseUntilValid<Gen>(
       { pose: {}, tag: 'initial' },
       {
         measure: () => BAD,
         refine: async () => {
-          throw new Error('network down');
+          throw failure;
         },
+        onRefineError,
       },
     );
     expect(result.tag).toBe('initial');
+    expect(onRefineError).toHaveBeenCalledWith(failure, 1);
   });
 
   it('propagates aborts', async () => {
+    const onRefineError = vi.fn();
     await expect(refinePoseUntilValid<Gen>(
       { pose: {}, tag: 'initial' },
       {
@@ -105,7 +110,9 @@ describe('refinePoseUntilValid', () => {
         refine: async () => {
           throw new DOMException('aborted', 'AbortError');
         },
+        onRefineError,
       },
     )).rejects.toSatisfy((e: unknown) => e instanceof DOMException && e.name === 'AbortError');
+    expect(onRefineError).not.toHaveBeenCalled();
   });
 });

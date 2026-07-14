@@ -56,6 +56,15 @@ describe('buildPosePrompt', () => {
     expect(prompt).not.toContain('ankle = forward - kneeBend');
   });
 
+  it('defines one-knee-up as raised-hip half-kneeling with a vertical rear thigh', () => {
+    const prompt = buildTextPosePrompt('片膝を立てる');
+    expect(prompt).toContain('片膝を立てる');
+    expect(prompt).toContain('THIGH MUST BE VERTICAL');
+    expect(prompt).toContain('hipsHeight 0.42-0.48');
+    expect(prompt).toContain('NOT sitting on the buttocks');
+    expect(prompt).toContain('kneeAt {"x": ±0.10, "y": 0.05, "z": 0}');
+  });
+
   it('documents shinTwist in the schema and leg conventions', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('"shinTwist"');
