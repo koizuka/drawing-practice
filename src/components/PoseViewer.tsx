@@ -271,6 +271,13 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
       const scene = sceneRef.current;
       const camera = cameraRef.current;
       if (!renderer || !scene || !camera || !vrmRef.current) return null;
+      // applyToVrm writes to the NORMALIZED humanoid bones; the mesh follows
+      // only after vrm.update() syncs them to the raw skeleton (normally done
+      // by the rAF loop). A pose applied synchronously in the same task as
+      // this capture (commit path: measure → screenshot) has not had a rAF
+      // tick yet — without this update the shot shows the PREVIOUS pose.
+      // Delta 0 keeps spring bones where they are.
+      vrmRef.current.update(0);
       // Render synchronously right before reading pixels so the buffer is
       // valid without preserveDrawingBuffer.
       renderer.render(scene, camera);

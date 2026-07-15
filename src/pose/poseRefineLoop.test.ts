@@ -84,6 +84,39 @@ describe('refinePoseUntilValid', () => {
     expect(result.tag).toBe('refined2');
   });
 
+  it('re-applies the final pose when rounds run out right after a changed refine', async () => {
+    // measure() is the only way a pose reaches the mannequin; the commit path
+    // screenshots whatever measure last applied. The last call must therefore
+    // be with the returned pose.
+    const applied: PoseJson[] = [];
+    let n = 0;
+    const result = await refinePoseUntilValid<Gen>(
+      { pose: { body: { turn: 0 } }, tag: 'initial' },
+      {
+        measure: (pose) => {
+          applied.push(pose);
+          return BAD;
+        },
+        refine: async () => {
+          n++;
+          return { pose: { body: { turn: n } }, tag: `refined${n}` };
+        },
+        maxRounds: 2,
+      },
+    );
+    expect(result.tag).toBe('refined2');
+    expect(applied[applied.length - 1]).toEqual(result.pose);
+  });
+
+  it('does not re-measure when the loop never measured (viewer not ready)', async () => {
+    const measure = vi.fn(() => null);
+    await refinePoseUntilValid<Gen>(
+      { pose: {}, tag: 'initial' },
+      { measure, refine: vi.fn() },
+    );
+    expect(measure).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps the best result when a refinement request fails', async () => {
     const failure = new Error('network down');
     const onRefineError = vi.fn();

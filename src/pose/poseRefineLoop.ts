@@ -51,9 +51,11 @@ export async function refinePoseUntilValid<G extends { pose: PoseJson }>(
 ): Promise<G> {
   const maxRounds = options.maxRounds ?? MAX_POSE_REFINE_ROUNDS;
   let current = initial;
+  let lastMeasured: PoseJson | null = null;
   for (let round = 1; round <= maxRounds; round++) {
     const measurement = options.measure(current.pose);
     if (!measurement) break;
+    lastMeasured = current.pose;
     const feedback = buildValidationFeedback(measurement, current.pose);
     if (!feedback) break;
     console.debug(`[pose] validation round ${round}:`, feedback);
@@ -71,6 +73,14 @@ export async function refinePoseUntilValid<G extends { pose: PoseJson }>(
     const unchanged = samePose(refined.pose, current.pose);
     current = refined;
     if (unchanged) break;
+  }
+  // Callers rely on the returned pose being the one applied to the mannequin
+  // (the commit path screenshots it synchronously). When the loop ends right
+  // after a changed refine — rounds exhausted — the final pose was never
+  // measured, so re-apply it here. Skipped when nothing was ever measured
+  // (viewer not ready / run superseded): those runs get no thumbnail anyway.
+  if (lastMeasured && !samePose(lastMeasured, current.pose)) {
+    options.measure(current.pose);
   }
   return current;
 }
