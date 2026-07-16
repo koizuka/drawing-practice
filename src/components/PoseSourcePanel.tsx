@@ -40,6 +40,17 @@ interface PoseSourcePanelProps {
 const SKETCH_DISPLAY_SIZE = 160;
 /** Longest edge of the pose-history thumbnail JPEG (Blob in IndexedDB). */
 const POSE_HISTORY_THUMB_EDGE = 192;
+/**
+ * Cap for the model-reply excerpt shown in the error Alert. A refusal
+ * explanation fits well under this; a long analysis that merely failed to
+ * parse would otherwise flood the panel (the full text is in the console).
+ */
+const REPLY_DETAIL_MAX_CHARS = 400;
+
+function clipReplyText(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  return text.length > REPLY_DETAIL_MAX_CHARS ? `${text.slice(0, REPLY_DETAIL_MAX_CHARS)}…` : text;
+}
 
 /**
  * Browse-mode UI for the 'pose' reference source: stick-figure sketch pad +
@@ -187,6 +198,10 @@ export default function PoseSourcePanel({
         onRefineStart: () => setRefining(true),
         onRefineError: (e) => {
           if (controller.signal.aborted || abortRef.current !== controller) return;
+          if (e instanceof PoseParseError) {
+            setError({ message: t('posePoseParseError'), detail: clipReplyText(e.replyText), keyAction: false });
+            return;
+          }
           const key = mapAnthropicErrorKey(e);
           setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
         },
@@ -235,7 +250,7 @@ export default function PoseSourcePanel({
         if (isAbortError(e)) return;
         if (controller.signal.aborted || abortRef.current !== controller) return;
         if (e instanceof PoseParseError) {
-          setError({ message: t('posePoseParseError'), keyAction: false });
+          setError({ message: t('posePoseParseError'), detail: clipReplyText(e.replyText), keyAction: false });
           return;
         }
         const key = mapAnthropicErrorKey(e);

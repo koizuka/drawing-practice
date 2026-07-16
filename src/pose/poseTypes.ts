@@ -126,6 +126,13 @@ export interface PoseJson {
 }
 
 export class PoseParseError extends Error {
+  /**
+   * The model's raw reply text, attached by the API caller so the UI can show
+   * WHY no pose came back (e.g. a refusal explanation) — parsePoseJson itself
+   * only knows the text it was given, the caller owns the display decision.
+   */
+  replyText?: string;
+
   constructor(message: string) {
     super(message);
     this.name = 'PoseParseError';

@@ -265,6 +265,10 @@ async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): 
       // (no text block at all — e.g. an empty/refused completion), so log
       // the whole response body too.
       console.error('[pose] unparsable model reply:', text || '(no text block)', data);
+      // A JSON-less reply is usually the model explaining itself (e.g. a
+      // refusal) — carry the text to the UI so the user sees the reason
+      // without opening the console.
+      if (text) e.replyText = text;
     }
     throw e;
   }
