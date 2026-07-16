@@ -55,7 +55,7 @@ describe('buildPosePrompt', () => {
     // Machine-verified coordinates (poseTestHarness.test.ts) — angles drove
     // the heels through the floor on the real mannequin's long shins.
     expect(prompt).toContain('hipsHeight 0.23');
-    expect(prompt).toContain('"z": 0.22');
+    expect(prompt).toContain('footAt {"x": ±0.12, "y": 0, "z": 0.22}');
     expect(prompt).toContain('flanking the chest from the outside');
     expect(prompt).toContain('handAt ONLY');
     expect(prompt).toContain('keep the arm values unchanged');
