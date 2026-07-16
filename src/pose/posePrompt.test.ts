@@ -61,6 +61,14 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('keep the arm values unchanged');
   });
 
+  it('distinguishes the tight knee-hug stretch from plain taiiku-zuwari sitting', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('hiza-kakae stretch');
+    expect(prompt).toContain('actively PULLED IN');
+    // The stretch pulls the heels to the mannequin's geometric limit.
+    expect(prompt).toContain('footAt {"x": ±0.11, "y": 0, "z": 0.30}');
+  });
+
   it('includes the deep-squat recipe with the corrected sole-flat formula', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('sonkyo');

@@ -42,6 +42,16 @@ const KNEE_HUG_RECIPE: PoseJson = {
   rightArm: { handAt: { x: -0.06, y: 0.35, z: 0.23 }, elbowDirection: 'in' },
 };
 
+/** Must mirror the tight knee-hug STRETCH variant in posePrompt.ts. */
+const KNEE_HUG_STRETCH_RECIPE: PoseJson = {
+  body: { crouch: 1, hipsHeight: 0.19, leanForward: 12 },
+  head: { nod: -12 },
+  leftLeg: { kneeAt: { x: 0.12, y: 0.48, z: 0.12 }, footAt: { x: 0.11, y: 0, z: 0.30 } },
+  rightLeg: { kneeAt: { x: -0.12, y: 0.48, z: 0.12 }, footAt: { x: -0.11, y: 0, z: 0.30 } },
+  leftArm: { handAt: { x: 0.06, y: 0.36, z: 0.20 }, elbowDirection: 'in' },
+  rightArm: { handAt: { x: -0.06, y: 0.36, z: 0.17 }, elbowDirection: 'in' },
+};
+
 describe('posePrompt recipes pass validation on the real mannequin', () => {
   const RECIPES: Array<[string, PoseJson]> = [
     ['deep squat', {
@@ -64,6 +74,7 @@ describe('posePrompt recipes pass validation on the real mannequin', () => {
       rightLeg: { kneeAt: { x: -0.10, y: 0.05, z: 0 }, footAt: { x: -0.10, y: 0.04, z: -0.40 }, ankle: -50 },
     }],
     ['knee-hug sitting (taiiku-zuwari)', KNEE_HUG_RECIPE],
+    ['tight knee-hug stretch', KNEE_HUG_STRETCH_RECIPE],
     ['handstand', {
       body: { bend: 175, hipsHeight: 0.88 },
       head: { nod: -40 },
@@ -115,17 +126,27 @@ describe('knee-hug recipe silhouette', () => {
     const TORSO_HALF_DEPTH = 0.13;
     const THIGH_RADIUS = 0.065;
     const h = makeMannequinHarness();
-    const { posed } = h.applyAndMeasure(KNEE_HUG_RECIPE);
-    const shoulderMid = {
-      x: (posed.leftUpperArm!.x + posed.rightUpperArm!.x) / 2,
-      y: (posed.leftUpperArm!.y + posed.rightUpperArm!.y) / 2,
-      z: (posed.leftUpperArm!.z + posed.rightUpperArm!.z) / 2,
+    const kneeClearances = (pose: PoseJson): number[] => {
+      const { posed } = h.applyAndMeasure(pose);
+      const shoulderMid = {
+        x: (posed.leftUpperArm!.x + posed.rightUpperArm!.x) / 2,
+        y: (posed.leftUpperArm!.y + posed.rightUpperArm!.y) / 2,
+        z: (posed.leftUpperArm!.z + posed.rightUpperArm!.z) / 2,
+      };
+      return (['left', 'right'] as const).map((side) => {
+        const knee = posed[`${side}LowerLeg`]!;
+        return segmentDistance(knee, knee, posed.hips!, shoulderMid)
+          - TORSO_HALF_DEPTH - THIGH_RADIUS;
+      });
     };
-    for (const side of ['left', 'right'] as const) {
-      const knee = posed[`${side}LowerLeg`]!;
-      const clearance = segmentDistance(knee, knee, posed.hips!, shoulderMid)
-        - TORSO_HALF_DEPTH - THIGH_RADIUS;
+    for (const clearance of kneeClearances(KNEE_HUG_RECIPE)) {
       expect(clearance).toBeGreaterThanOrEqual(-0.035);
+    }
+    // The STRETCH variant deliberately presses the thighs to the chest —
+    // light contact is the point, but it must stay well above the -0.098
+    // that read as embedded on device.
+    for (const clearance of kneeClearances(KNEE_HUG_STRETCH_RECIPE)) {
+      expect(clearance).toBeGreaterThanOrEqual(-0.06);
     }
   });
 });
