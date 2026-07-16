@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Memoized LLM responses of the headless pose loop (poseLlmLoop.manual.test.ts)
+.cache/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

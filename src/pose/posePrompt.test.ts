@@ -49,6 +49,26 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('origin on the floor directly below the hips');
   });
 
+  it('gives the knee-hug recipe as placement targets, not hip-flexion angles', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('taiiku-zuwari');
+    // Machine-verified coordinates (poseTestHarness.test.ts) — angles drove
+    // the heels through the floor on the real mannequin's long shins.
+    expect(prompt).toContain('hipsHeight 0.19');
+    expect(prompt).toContain('footAt {"x": ±0.10, "y": 0, "z": 0.36}');
+    expect(prompt).toContain('knees stay TOGETHER');
+    expect(prompt).toContain('handAt ONLY');
+    expect(prompt).toContain('keep the arm values unchanged');
+  });
+
+  it('distinguishes the tight knee-hug stretch from plain taiiku-zuwari sitting', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('hiza-kakae stretch');
+    expect(prompt).toContain('actively PULLED IN');
+    // The stretch pulls the heels to the mannequin's geometric limit.
+    expect(prompt).toContain('footAt {"x": ±0.11, "y": 0, "z": 0.30}');
+  });
+
   it('includes the deep-squat recipe with the corrected sole-flat formula', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('sonkyo');
