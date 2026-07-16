@@ -1,0 +1,438 @@
+{
+  "source": "public/mannequin.vrm",
+  "vrmVersion": "1.0",
+  "bones": {
+    "chest": {
+      "parent": "spine",
+      "position": [
+        0,
+        1.07316,
+        0.01914
+      ]
+    },
+    "head": {
+      "parent": "neck",
+      "position": [
+        0,
+        1.38627,
+        -0.02471
+      ]
+    },
+    "hips": {
+      "parent": null,
+      "position": [
+        0,
+        0.90808,
+        0.00358
+      ]
+    },
+    "leftEye": {
+      "parent": "head",
+      "position": [
+        0.01732,
+        1.44891,
+        -0.00327
+      ]
+    },
+    "leftFoot": {
+      "parent": "leftLowerLeg",
+      "position": [
+        0.07716,
+        0.10065,
+        -0.0324
+      ]
+    },
+    "leftHand": {
+      "parent": "leftLowerArm",
+      "position": [
+        0.54309,
+        1.27423,
+        -0.02585
+      ]
+    },
+    "leftIndexDistal": {
+      "parent": "leftIndexIntermediate",
+      "position": [
+        0.66236,
+        1.28058,
+        -0.00788
+      ]
+    },
+    "leftIndexIntermediate": {
+      "parent": "leftIndexProximal",
+      "position": [
+        0.6419,
+        1.28115,
+        -0.00701
+      ]
+    },
+    "leftIndexProximal": {
+      "parent": "leftHand",
+      "position": [
+        0.60865,
+        1.28114,
+        -0.00624
+      ]
+    },
+    "leftLittleDistal": {
+      "parent": "leftLittleIntermediate",
+      "position": [
+        0.65366,
+        1.28232,
+        -0.05513
+      ]
+    },
+    "leftLittleIntermediate": {
+      "parent": "leftLittleProximal",
+      "position": [
+        0.63554,
+        1.28232,
+        -0.0551
+      ]
+    },
+    "leftLittleProximal": {
+      "parent": "leftHand",
+      "position": [
+        0.60409,
+        1.28232,
+        -0.05505
+      ]
+    },
+    "leftLowerArm": {
+      "parent": "leftUpperArm",
+      "position": [
+        0.32841,
+        1.27423,
+        -0.02547
+      ]
+    },
+    "leftLowerLeg": {
+      "parent": "leftUpperLeg",
+      "position": [
+        0.07716,
+        0.5154,
+        -0.00747
+      ]
+    },
+    "leftMiddleDistal": {
+      "parent": "leftMiddleIntermediate",
+      "position": [
+        0.66939,
+        1.28156,
+        -0.02396
+      ]
+    },
+    "leftMiddleIntermediate": {
+      "parent": "leftMiddleProximal",
+      "position": [
+        0.64653,
+        1.28156,
+        -0.02392
+      ]
+    },
+    "leftMiddleProximal": {
+      "parent": "leftHand",
+      "position": [
+        0.60948,
+        1.28156,
+        -0.02385
+      ]
+    },
+    "leftRingDistal": {
+      "parent": "leftRingIntermediate",
+      "position": [
+        0.66288,
+        1.28194,
+        -0.03957
+      ]
+    },
+    "leftRingIntermediate": {
+      "parent": "leftRingProximal",
+      "position": [
+        0.64304,
+        1.28194,
+        -0.03954
+      ]
+    },
+    "leftRingProximal": {
+      "parent": "leftHand",
+      "position": [
+        0.60867,
+        1.28195,
+        -0.03948
+      ]
+    },
+    "leftShoulder": {
+      "parent": "upperChest",
+      "position": [
+        0.0224,
+        1.28649,
+        -0.02547
+      ]
+    },
+    "leftThumbDistal": {
+      "parent": "leftThumbProximal",
+      "position": [
+        0.60478,
+        1.25964,
+        0.03748
+      ]
+    },
+    "leftThumbMetacarpal": {
+      "parent": "leftHand",
+      "position": [
+        0.54667,
+        1.26384,
+        -0.01014
+      ]
+    },
+    "leftThumbProximal": {
+      "parent": "leftThumbMetacarpal",
+      "position": [
+        0.58215,
+        1.26104,
+        0.01994
+      ]
+    },
+    "leftToes": {
+      "parent": "leftFoot",
+      "position": [
+        0.07716,
+        0.0376,
+        0.07829
+      ]
+    },
+    "leftUpperArm": {
+      "parent": "leftShoulder",
+      "position": [
+        0.10856,
+        1.27423,
+        -0.02547
+      ]
+    },
+    "leftUpperLeg": {
+      "parent": "hips",
+      "position": [
+        0.07716,
+        0.8683,
+        -0.00008
+      ]
+    },
+    "neck": {
+      "parent": "upperChest",
+      "position": [
+        0,
+        1.31309,
+        -0.03386
+      ]
+    },
+    "rightEye": {
+      "parent": "head",
+      "position": [
+        -0.01732,
+        1.44891,
+        -0.00327
+      ]
+    },
+    "rightFoot": {
+      "parent": "rightLowerLeg",
+      "position": [
+        -0.07716,
+        0.10065,
+        -0.0324
+      ]
+    },
+    "rightHand": {
+      "parent": "rightLowerArm",
+      "position": [
+        -0.54309,
+        1.27423,
+        -0.0251
+      ]
+    },
+    "rightIndexDistal": {
+      "parent": "rightIndexIntermediate",
+      "position": [
+        -0.6623,
+        1.28058,
+        -0.00672
+      ]
+    },
+    "rightIndexIntermediate": {
+      "parent": "rightIndexProximal",
+      "position": [
+        -0.64184,
+        1.28115,
+        -0.00591
+      ]
+    },
+    "rightIndexProximal": {
+      "parent": "rightHand",
+      "position": [
+        -0.60858,
+        1.28113,
+        -0.00527
+      ]
+    },
+    "rightLittleDistal": {
+      "parent": "rightLittleIntermediate",
+      "position": [
+        -0.65376,
+        1.28232,
+        -0.054
+      ]
+    },
+    "rightLittleIntermediate": {
+      "parent": "rightLittleProximal",
+      "position": [
+        -0.63564,
+        1.28232,
+        -0.05403
+      ]
+    },
+    "rightLittleProximal": {
+      "parent": "rightHand",
+      "position": [
+        -0.60419,
+        1.28232,
+        -0.05409
+      ]
+    },
+    "rightLowerArm": {
+      "parent": "rightUpperArm",
+      "position": [
+        -0.32841,
+        1.27423,
+        -0.02547
+      ]
+    },
+    "rightLowerLeg": {
+      "parent": "rightUpperLeg",
+      "position": [
+        -0.07716,
+        0.5154,
+        -0.00747
+      ]
+    },
+    "rightMiddleDistal": {
+      "parent": "rightMiddleIntermediate",
+      "position": [
+        -0.66939,
+        1.28156,
+        -0.02277
+      ]
+    },
+    "rightMiddleIntermediate": {
+      "parent": "rightMiddleProximal",
+      "position": [
+        -0.64653,
+        1.28156,
+        -0.02281
+      ]
+    },
+    "rightMiddleProximal": {
+      "parent": "rightHand",
+      "position": [
+        -0.60947,
+        1.28156,
+        -0.02287
+      ]
+    },
+    "rightRingDistal": {
+      "parent": "rightRingIntermediate",
+      "position": [
+        -0.66292,
+        1.28194,
+        -0.03841
+      ]
+    },
+    "rightRingIntermediate": {
+      "parent": "rightRingProximal",
+      "position": [
+        -0.64309,
+        1.28194,
+        -0.03844
+      ]
+    },
+    "rightRingProximal": {
+      "parent": "rightHand",
+      "position": [
+        -0.60871,
+        1.28194,
+        -0.0385
+      ]
+    },
+    "rightShoulder": {
+      "parent": "upperChest",
+      "position": [
+        -0.0224,
+        1.28649,
+        -0.02547
+      ]
+    },
+    "rightThumbDistal": {
+      "parent": "rightThumbProximal",
+      "position": [
+        -0.60456,
+        1.25964,
+        0.03844
+      ]
+    },
+    "rightThumbMetacarpal": {
+      "parent": "rightHand",
+      "position": [
+        -0.54662,
+        1.26384,
+        -0.00938
+      ]
+    },
+    "rightThumbProximal": {
+      "parent": "rightThumbMetacarpal",
+      "position": [
+        -0.58199,
+        1.26104,
+        0.02082
+      ]
+    },
+    "rightToes": {
+      "parent": "rightFoot",
+      "position": [
+        -0.07716,
+        0.0376,
+        0.07829
+      ]
+    },
+    "rightUpperArm": {
+      "parent": "rightShoulder",
+      "position": [
+        -0.10856,
+        1.27423,
+        -0.02547
+      ]
+    },
+    "rightUpperLeg": {
+      "parent": "hips",
+      "position": [
+        -0.07716,
+        0.8683,
+        -0.00008
+      ]
+    },
+    "spine": {
+      "parent": "hips",
+      "position": [
+        0,
+        0.96015,
+        0.01609
+      ]
+    },
+    "upperChest": {
+      "parent": "chest",
+      "position": [
+        0,
+        1.1808,
+        0.0045
+      ]
+    }
+  }
+}

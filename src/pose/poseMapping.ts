@@ -111,6 +111,8 @@ const TORSO_CLEARANCE = 0.13;
 const KNEE_TOUCH_DISTANCE = 0.12;
 /** Planted palm: fingers point figure-front with a slight outward splay. */
 const FINGER_SPLAY = 75 * DEG;
+/** Anatomical knee flex limit — also bounds how close a planted heel can pull in. */
+const MAX_KNEE_BEND = 160 * DEG;
 
 interface IkContext {
   rig: PoseRig;
@@ -481,6 +483,26 @@ function applyLegIk(resolve: BoneResolver, sideName: Side, leg: LegPose, ctx: Ik
     const target = toWorldTarget(ctx, leg.footAt);
     // A planted ankle sits at its rest (sole-offset) height.
     target.y = Math.max(target.y, planted ? soleHeight : 0.03 * ctx.scale);
+    if (planted) {
+      // Even fully folded to maxBend the hip–ankle distance never drops below
+      // dMin — a planted heel simply cannot get closer to the hip (knee-hug
+      // sitting with the heels pulled all the way in asks for this). Solving
+      // anyway would clamp the bend and swing the ankle AWAY from its target,
+      // typically through the floor. Push the target out horizontally to the
+      // nearest reachable floor point instead: the sole stays planted, the
+      // heel as close to the body as the knee allows.
+      const dMin = Math.sqrt(
+        len1 * len1 + len2 * len2 - 2 * len1 * len2 * Math.cos(Math.PI - MAX_KNEE_BEND),
+      ) * 1.001;
+      if (target.distanceTo(root) < dMin) {
+        const dy = target.y - root.y;
+        const horizontal = Math.sqrt(Math.max(0, dMin * dMin - dy * dy));
+        const dir = new Vector3(target.x - root.x, 0, target.z - root.z);
+        if (dir.lengthSq() < 1e-8) dir.copy(new Vector3(0, 0, 1).applyQuaternion(ctx.qYaw));
+        dir.normalize();
+        target.set(root.x + dir.x * horizontal, target.y, root.z + dir.z * horizontal);
+      }
+    }
     // For a planted sole the ankle contact is authoritative. Approximate
     // kneeAt coordinates rarely match a particular VRM's two bone lengths;
     // treating that knee as a hard intermediate target makes the fixed-length
@@ -497,7 +519,7 @@ function applyLegIk(resolve: BoneResolver, sideName: Side, leg: LegPose, ctx: Ik
       len2,
       restAxis: DOWN,
       restFold: KNEE_REST_FOLD,
-      maxBend: 160 * DEG,
+      maxBend: MAX_KNEE_BEND,
     });
   }
   else {

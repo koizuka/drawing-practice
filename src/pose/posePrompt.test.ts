@@ -49,6 +49,18 @@ describe('buildPosePrompt', () => {
     expect(prompt).toContain('origin on the floor directly below the hips');
   });
 
+  it('gives the knee-hug recipe as placement targets, not hip-flexion angles', () => {
+    const prompt = buildPosePrompt('');
+    expect(prompt).toContain('taiiku-zuwari');
+    // Machine-verified coordinates (poseTestHarness.test.ts) — angles drove
+    // the heels through the floor on the real mannequin's long shins.
+    expect(prompt).toContain('hipsHeight 0.23');
+    expect(prompt).toContain('"z": 0.22');
+    expect(prompt).toContain('flanking the chest from the outside');
+    expect(prompt).toContain('handAt ONLY');
+    expect(prompt).toContain('keep the arm values unchanged');
+  });
+
   it('includes the deep-squat recipe with the corrected sole-flat formula', () => {
     const prompt = buildPosePrompt('');
     expect(prompt).toContain('sonkyo');
