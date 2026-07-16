@@ -134,10 +134,12 @@ describe('generatePose', () => {
     );
   });
 
-  it('throws PoseParseError when the reply has no JSON', async () => {
+  it('throws PoseParseError carrying the reply text when the reply has no JSON', async () => {
     setAnthropicApiKey('sk-test');
     fetchMock.mockResolvedValueOnce(textResponse('I cannot see a figure.'));
-    await expect(generatePose('AAAA', '')).rejects.toBeInstanceOf(PoseParseError);
+    const err = await generatePose('AAAA', '').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PoseParseError);
+    expect((err as PoseParseError).replyText).toBe('I cannot see a figure.');
   });
 
   it('surfaces the API error message as detail on HTTP errors', async () => {
