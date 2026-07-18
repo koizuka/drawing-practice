@@ -67,7 +67,7 @@ Prefer `npm run test` over watch mode in agent / CI-style runs.
 - Timer behavior is user-visible product logic. Reference changes, save, gallery open, backgrounding, and fully undoing strokes all affect timer state.
 - IndexedDB usage matters. Prefer bounded history, quantized persisted stroke data, and reuse of existing storage helpers.
 - Canvas work must account for `window.devicePixelRatio`, and viewport sizing should use `100dvh` rather than `100vh` for iPad Safari.
-- The touch diagnostics harness behind `?diag=touch` is opt-in and dormant otherwise. The input-freeze investigation is resolved: WebKit / iPadOS can suspend page-wide input delivery while rAF and the main thread remain alive; see `docs/apple-pencil-input-freeze.md` and `DrawingFreezeHint`. Keep diagnostic code behind `DIAG_ENABLED` guards; if removing it, delete the recorder / overlay and all guarded call sites together.
+- The Apple Pencil input-freeze investigation is resolved: WebKit / iPadOS can suspend page-wide input delivery while rAF and the main thread remain alive; see `docs/apple-pencil-input-freeze.md` and `DrawingFreezeHint`. The `?diag=touch` diagnostics harness used for that investigation has been removed (recoverable from git history).
 
 ## Detailed Rule Documents
 
