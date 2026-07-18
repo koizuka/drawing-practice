@@ -53,6 +53,6 @@ OS バグ自体は web から修正できない。だが**ページは 60fps で
 
 OS/WebKit 側。during-freeze ログを証拠に Apple Feedback / WebKit Bugzilla へ報告するのが筋（別タスク）。
 
-## 診断方法
+## 診断ハーネス（撤去済み）
 
-URL に `?diag=touch` を付けて開くと診断オーバーレイが出る（`?diag=off` で解除、localStorage に永続）。連続描画してフリーズを誘発し、`freezeOnset` / `freeze` / `frozen:1` の tick を含むログを Copy で取得して解析する。詳細は `CLAUDE.md` の「Touch diagnostics harness」節。
+調査完了に伴い、`?diag=touch` の診断ハーネス（`touchDiagnostics.ts` + `TouchDiagnosticsOverlay.tsx`、キャンバス上の赤ドット heartbeat を含む）は撤去した。再調査が必要になったら git 履歴から復元できる。
