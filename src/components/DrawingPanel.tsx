@@ -247,6 +247,10 @@ export function DrawingPanel({
     // restore the elapsed time. A reset happens later iff the user commits
     // by drawing a new stroke (see handleStrokeCountChange).
     timer.pause();
+    // Clearing the canvas also returns the camera home: a blank canvas panned
+    // off to some corner at 3x zoom is disorienting, and the user's next stroke
+    // should start from the same view a fresh session would.
+    setViewResetVersion(v => v + 1);
     triggerRedraw({ flush: true });
     onOverlayClear?.();
   }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
