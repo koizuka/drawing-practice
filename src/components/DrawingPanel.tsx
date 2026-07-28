@@ -846,6 +846,7 @@ export function DrawingPanel({
         open={pendingLoadDrawing !== null}
         onClose={() => setPendingLoadDrawing(null)}
         maxWidth="xs"
+        aria-label={t('continueConfirmMessage')}
       >
         <DialogContent>
           <Typography variant="body2">
