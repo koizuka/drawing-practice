@@ -149,7 +149,12 @@ export function rasterScale(boxWidth: number, boxHeight: number): number {
   return Math.min(RASTER_MAX_SCALE, targetScale, pixelCapScale);
 }
 
-function renderToCanvas(drawing: DrawingRecord): HTMLCanvasElement {
+/**
+ * Re-render the stored vector strokes at export resolution (up to 2048px long
+ * edge / 8Mpx). Also used by the gallery's enlarged preview, where the 200px
+ * stored thumbnail would be too blurry to blow up.
+ */
+export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement {
   const box = paddedBox(computeStrokesBoundingBox(drawing.strokes));
   const scale = rasterScale(box.width, box.height);
   const canvas = document.createElement('canvas');
@@ -186,11 +191,11 @@ function renderToCanvas(drawing: DrawingRecord): HTMLCanvasElement {
 }
 
 async function exportDrawingAsPng(drawing: DrawingRecord): Promise<Blob> {
-  return canvasToBlob(renderToCanvas(drawing), 'image/png');
+  return canvasToBlob(renderDrawingToCanvas(drawing), 'image/png');
 }
 
 async function exportDrawingAsJpeg(drawing: DrawingRecord): Promise<Blob> {
-  return canvasToBlob(renderToCanvas(drawing), 'image/jpeg', JPEG_QUALITY);
+  return canvasToBlob(renderDrawingToCanvas(drawing), 'image/jpeg', JPEG_QUALITY);
 }
 
 const EXPORTERS: Record<ExportFormat, (d: DrawingRecord) => Blob | Promise<Blob>> = {

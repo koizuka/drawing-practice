@@ -1,4 +1,6 @@
-import { computeFitLeader, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
+import { computeFitLeader, isSameReferenceContent, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
+import type { ReferenceSnapshot } from '../drawing/types';
+import type { ReferenceInfo } from '../types';
 
 describe('shouldFullscreenReferenceBrowse', () => {
   it('uses the full portrait viewport for search, pose, and trace browse screens', () => {
@@ -92,5 +94,64 @@ describe('resolveDrawingFitSize', () => {
       resolveDrawingFitSize(computeFitLeader(source, mode), refSizeFromPriorImage),
     );
     expect(fitSizes.every(s => s === null)).toBe(true);
+  });
+});
+
+describe('isSameReferenceContent', () => {
+  function snap(overrides: Partial<ReferenceSnapshot> = {}): ReferenceSnapshot {
+    return {
+      source: 'none',
+      referenceMode: 'browse',
+      fixedImageUrl: null,
+      localImageUrl: null,
+      referenceInfo: null,
+      ...overrides,
+    };
+  }
+
+  it('matches url refs by identical fixed image URL', () => {
+    const ref: ReferenceInfo = { source: 'url', imageUrl: 'https://x/a.png', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'url', fixedImageUrl: 'https://x/a.png' }), ref)).toBe(true);
+    expect(isSameReferenceContent(snap({ source: 'url', fixedImageUrl: 'https://x/b.png' }), ref)).toBe(false);
+  });
+
+  it('rejects when the sources differ, even with the same URL', () => {
+    const ref: ReferenceInfo = { source: 'url', imageUrl: 'https://x/a.png', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'pexels', fixedImageUrl: 'https://x/a.png' }), ref)).toBe(false);
+  });
+
+  it('matches pexels refs by pexelsImageUrl', () => {
+    const ref: ReferenceInfo = { source: 'pexels', pexelsPhotoId: 1, pexelsImageUrl: 'https://p/1.jpg', pexelsPageUrl: 'https://p/page', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'pexels', fixedImageUrl: 'https://p/1.jpg' }), ref)).toBe(true);
+    expect(isSameReferenceContent(snap({ source: 'pexels', fixedImageUrl: 'https://p/2.jpg' }), ref)).toBe(false);
+  });
+
+  it('matches sketchfab/pose refs by screenshot imageUrl; missing imageUrl never matches', () => {
+    const sf: ReferenceInfo = { source: 'sketchfab', sketchfabUid: 'u1', imageUrl: 'data:capture', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'sketchfab', fixedImageUrl: 'data:capture' }), sf)).toBe(true);
+    const sfNoShot: ReferenceInfo = { source: 'sketchfab', sketchfabUid: 'u1', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'sketchfab', fixedImageUrl: null }), sfNoShot)).toBe(false);
+  });
+
+  it('matches image refs by the content-hash history key, not the data URL', () => {
+    const ref: ReferenceInfo = { source: 'image', url: 'local:abc', fileName: 'a.png', title: '', author: '' };
+    const prevInfo: ReferenceInfo = { source: 'image', url: 'local:abc', fileName: 'a.png', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'image', localImageUrl: 'data:whatever', referenceInfo: prevInfo }), ref)).toBe(true);
+    const otherInfo: ReferenceInfo = { source: 'image', url: 'local:zzz', fileName: 'b.png', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'image', localImageUrl: 'data:whatever', referenceInfo: otherInfo }), ref)).toBe(false);
+  });
+
+  it('matches youtube refs by video id and trace templates by templateId', () => {
+    const yt: ReferenceInfo = { source: 'youtube', youtubeVideoId: 'v1', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'youtube', referenceInfo: yt }), yt)).toBe(true);
+    expect(isSameReferenceContent(snap({ source: 'youtube', referenceInfo: { ...yt, youtubeVideoId: 'v2' } }), yt)).toBe(false);
+    const tmpl: ReferenceInfo = { source: 'trace-template', templateId: 't1', title: '', author: '' };
+    expect(isSameReferenceContent(snap({ source: 'trace-template', referenceInfo: tmpl }), tmpl)).toBe(true);
+    expect(isSameReferenceContent(snap({ source: 'trace-template', referenceInfo: { ...tmpl, templateId: 't2' } }), tmpl)).toBe(false);
+  });
+
+  it('never matches when nothing was displayed', () => {
+    const ref: ReferenceInfo = { source: 'url', imageUrl: 'https://x/a.png', title: '', author: '' };
+    expect(isSameReferenceContent(snap(), ref)).toBe(false);
   });
 });

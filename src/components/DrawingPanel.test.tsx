@@ -1,4 +1,4 @@
-import { render, fireEvent, act } from '@testing-library/react';
+import { render, fireEvent, act, waitFor } from '@testing-library/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { DrawingPanel } from './DrawingPanel';
@@ -13,10 +13,21 @@ vi.mock('../storage', () => ({
 vi.mock('../storage/generateThumbnail', () => ({
   generateThumbnail: vi.fn().mockReturnValue('data:image/png;base64,zz'),
 }));
+const stubDrawingRecord = {
+  id: 1,
+  strokes: [{ points: [{ x: 0, y: 0 }, { x: 5, y: 5 }], timestamp: 1 }],
+  thumbnail: '',
+  referenceInfo: '',
+  createdAt: new Date('2026-04-15T10:00:00Z'),
+  elapsedMs: 1000,
+};
 vi.mock('./Gallery', () => ({
-  Gallery: ({ onClose }: { onClose: () => void }) => (
+  Gallery: ({ onClose, onLoadDrawing }: { onClose: () => void; onLoadDrawing?: (d: unknown) => void }) => (
     <div data-testid="gallery-stub">
       <button onClick={onClose}>close gallery</button>
+      {onLoadDrawing && (
+        <button onClick={() => onLoadDrawing(stubDrawingRecord)}>load drawing stub</button>
+      )}
     </div>
   ),
 }));
@@ -63,6 +74,7 @@ function setup(opts: {
   templateStrokes?: readonly import('../trace/types').TraceStroke[] | null;
   onTraceResetScores?: () => void;
   onStrokesChanged?: (opts?: { flush?: boolean }) => void;
+  onLoadDrawing?: (d: unknown) => void;
   traceTotalCovered?: number;
   traceTotalStrokes?: number;
   traceOverallBestPct?: number | null;
@@ -109,6 +121,7 @@ function setup(opts: {
             historySyncVersion={historySyncVersion}
             captureReferenceSnapshot={opts.captureRef}
             onStrokesChanged={opts.onStrokesChanged}
+            onLoadDrawing={opts.onLoadDrawing as ((d: import('../storage').DrawingRecord) => void) | undefined}
             onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
             collapseLocked={opts.collapseLocked}
             referenceCollapsed={referenceCollapsed}
@@ -567,6 +580,101 @@ describe('DrawingPanel keyboard shortcuts × Gallery', () => {
       fireKey({ code: 'KeyZ', key: 'z', ctrlKey: true });
     });
     expect(harness.sm!.getStrokes()).toHaveLength(0);
+  });
+});
+
+describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
+  beforeEach(() => {
+    canvasPropsRef.current = null;
+  });
+
+  async function openGallery(container: HTMLElement, findByTestId: (id: string) => Promise<HTMLElement>) {
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-images'));
+    });
+    return await findByTestId('gallery-stub');
+  }
+
+  it('loads immediately and closes the gallery when the canvas is clean', async () => {
+    const onLoadDrawing = vi.fn();
+    const { container, findByTestId, queryByTestId, queryByText } = setup({ onLoadDrawing });
+
+    const stub = await openGallery(container, findByTestId);
+    act(() => {
+      fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
+    });
+
+    expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull();
+    expect(onLoadDrawing).toHaveBeenCalledWith(stubDrawingRecord);
+    expect(queryByTestId('gallery-stub')).not.toBeInTheDocument();
+  });
+
+  it('asks for confirmation when unsaved strokes exist; cancel keeps the gallery open', async () => {
+    const onLoadDrawing = vi.fn();
+    const { container, harness, findByTestId, queryByTestId, getByText, queryByText } = setup({ onLoadDrawing });
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+
+    const stub = await openGallery(container, findByTestId);
+    act(() => {
+      fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
+    });
+
+    expect(getByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeInTheDocument();
+    expect(onLoadDrawing).not.toHaveBeenCalled();
+
+    act(() => {
+      fireEvent.click(getByText('Cancel'));
+    });
+    // MUI Dialog unmounts its content after a close transition.
+    await waitFor(() =>
+      expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull(),
+    );
+    expect(queryByTestId('gallery-stub')).toBeInTheDocument();
+    expect(onLoadDrawing).not.toHaveBeenCalled();
+  });
+
+  it('confirming the overwrite loads the drawing and closes the gallery', async () => {
+    const onLoadDrawing = vi.fn();
+    const { container, harness, findByTestId, queryByTestId, getByText } = setup({ onLoadDrawing });
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+    });
+
+    const stub = await openGallery(container, findByTestId);
+    act(() => {
+      fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
+    });
+    act(() => {
+      fireEvent.click(getByText('Replace'));
+    });
+
+    expect(onLoadDrawing).toHaveBeenCalledWith(stubDrawingRecord);
+    expect(queryByTestId('gallery-stub')).not.toBeInTheDocument();
+  });
+
+  it('skips confirmation when strokes exist but are already saved to the gallery', async () => {
+    const onLoadDrawing = vi.fn();
+    const { container, harness, findByTestId, queryByText } = setup({ onLoadDrawing });
+
+    act(() => {
+      addStroke(harness.sm!, 0, 0);
+      canvasPropsRef.current!.onStrokeCountChange();
+      harness.sm!.markSavedToGallery();
+    });
+
+    const stub = await openGallery(container, findByTestId);
+    act(() => {
+      fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
+    });
+
+    expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull();
+    expect(onLoadDrawing).toHaveBeenCalledWith(stubDrawingRecord);
   });
 });
 

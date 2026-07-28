@@ -12,14 +12,15 @@ import { getBundledTemplate } from '../templates/bundled';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
-import { computeFitLeader, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
+import { computeFitLeader, isSameReferenceContent, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
 import { loadDraft } from '../storage/sessionStore';
 import { cleanupStalePrDatabases, COORD_VERSION_CURRENT } from '../storage/db';
 import { shiftStrokes, shiftGuideState } from '../storage/coordMigration';
 import { addUrlHistory, getUrlHistoryEntry } from '../storage/urlHistoryStore';
-import { saveDrawing } from '../storage';
+import { saveDrawing, type DrawingRecord } from '../storage';
+import { computeStrokesBoundingBox } from '../storage/exportDrawing';
 import { generateThumbnail } from '../storage/generateThumbnail';
 import { buildYouTubeCanonicalUrl } from '../utils/youtube';
 import { canonicalSketchfabUrl } from '../utils/sketchfab';
@@ -48,6 +49,13 @@ function SplitLayoutInner() {
   const overlayRedrawFnRef = useRef<(() => void) | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
+  // Mirror for callbacks that need the current size without re-memoizing on
+  // every size change (gallery drawing-load's same-content migration).
+  // Updated synchronously in handleReferenceImageSize — NOT via a post-render
+  // effect — so a load fired right after a size report can't read a stale
+  // value, take the deferred-migration branch, and hang waiting for a size
+  // event that identical content will never fire.
+  const referenceSizeRef = useRef(referenceSize);
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // StrokeManager owned by SplitLayout (not DrawingPanel) so it exists from
@@ -213,9 +221,21 @@ function SplitLayoutInner() {
     // it's a no-op for callback identity.
   }, [incrementFlushVersion, setReferenceCollapsed]);
 
+  /**
+   * Bumped on every reference navigation — all three paths (changeReference,
+   * resetReferenceOnError, undo/redo snapshot restore) funnel through
+   * pauseAndIncrementVersion below, which owns the bump. The async
+   * local-image load path bumps it at entry too and re-checks after each
+   * await: a load that has been superseded (by navigation OR by a newer
+   * load) must NOT apply its reference/strokes — it aborts silently.
+   */
+  const referenceGenerationRef = useRef(0);
+
   // Pause timer whenever the reference changes — the timer should only advance
   // during active drawing. The next stroke will resume it via handleStrokeCountChange.
+  // Also the single owner of the reference-generation bump (see above).
   const pauseAndIncrementVersion = useCallback(() => {
+    referenceGenerationRef.current = referenceGenerationRef.current + 1;
     timer.pause();
     setChangeVersion(v => v + 1);
   }, [timer]);
@@ -280,16 +300,51 @@ function SplitLayoutInner() {
     };
   });
 
-  // Defers the legacy-draft strokes/guides until the reference's natural size
-  // is known (handleReferenceImageSize), so the (-W/2, -H/2) shift to the new
+  // Defers legacy-coord strokes/guides until the reference's natural size is
+  // known (handleReferenceImageSize), so the (-W/2, -H/2) shift to the new
   // center-origin convention can be applied in a single step — avoiding a
-  // brief flash of mis-positioned strokes.
+  // brief flash of mis-positioned strokes. Used by the autosave-draft restore
+  // (guides present, user-start guard on) and by the gallery "continue this
+  // drawing" load of a legacy record (no guides — the current guide setup is
+  // left alone — and guard off, since the user explicitly chose to replace
+  // the canvas).
   const pendingMigrationRef = useRef<{
     strokes: Stroke[];
     redoStack: Stroke[];
-    guides: GuideState;
+    guides?: GuideState;
     gallerySaveDirty: boolean;
+    skipUserStartGuard?: boolean;
+    /**
+     * Gallery drawing-load only: after the migrated strokes land, queue the
+     * camera onto their bounding-box center (via pendingCameraRef) instead of
+     * leaving the viewer's loadContent home. The drawing may not sit anywhere
+     * near the world origin (off-center drawings, or legacy strokes whose
+     * shift couldn't be determined), and "continue this drawing" must end
+     * with the drawing on screen.
+     */
+    centerCameraOnStrokes?: boolean;
   } | null>(null);
+
+  /**
+   * Gallery drawing-load with a FRESH (not-currently-displayed) reference and
+   * current-coord strokes: the strokes load immediately, but the viewer's
+   * loadContent(0,0,1) fires later and would stomp any camera set now. The
+   * strokes' bbox center is stashed here and promoted to pendingCameraRef in
+   * handleReferenceImageSize (same post-loadContent apply path the draft
+   * restore uses). Cleared alongside pendingMigrationRef on navigation.
+   */
+  const pendingGalleryCameraRef = useRef<{ x: number; y: number } | null>(null);
+
+  /**
+   * True while a gallery "continue this drawing" load is in flight — from the
+   * button press until the strokes actually land (immediately for most loads;
+   * at the migration in handleReferenceImageSize for legacy records with a
+   * fresh reference). Freezes DrawingCanvas input so a stroke can't be drawn
+   * in the window and then silently wiped by the arriving loadState. Cleared
+   * defensively on every reference navigation/error (which also cancels the
+   * pending load), so it can't stick on.
+   */
+  const [drawingLoadInFlight, setDrawingLoadInFlight] = useState(false);
 
   // Camera state captured from the autosave draft, applied AFTER the active
   // viewer fires its `loadContent(0,0,1)` on first reference load (which
@@ -314,8 +369,11 @@ function SplitLayoutInner() {
     // Cancel any pending coord migration: the legacy strokes were sized to
     // the OUTGOING reference. The next onReferenceImageSize will report the
     // new reference's dimensions, which would shift the legacy strokes by
-    // the wrong amount.
+    // the wrong amount. Same for a queued gallery-load camera; navigating
+    // away also aborts any in-flight gallery load, so lift its input freeze.
     pendingMigrationRef.current = null;
+    pendingGalleryCameraRef.current = null;
+    setDrawingLoadInFlight(false);
     const recordUndo = opts?.recordUndo !== false;
     if (recordUndo) {
       // User-initiated reference change → end any active gesture session so
@@ -344,7 +402,7 @@ function SplitLayoutInner() {
     incrementFlushVersion();
     // setState identities are stable; listed only to satisfy React Compiler's
     // preserve-manual-memoization check.
-  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion, setHistorySyncVersion]);
+  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion, setHistorySyncVersion, setDrawingLoadInFlight]);
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -355,8 +413,11 @@ function SplitLayoutInner() {
   const resetReferenceOnError = useCallback(() => {
     // Cancel any pending coord migration: with no reference, the size
     // callback that would have applied it never fires, and we don't want the
-    // legacy-coord arrays held forever.
+    // legacy-coord arrays held forever. Same for a queued gallery-load camera
+    // and the in-flight gallery-load input freeze.
     pendingMigrationRef.current = null;
+    pendingGalleryCameraRef.current = null;
+    setDrawingLoadInFlight(false);
     setSource('none');
     setReferenceMode('browse');
     setFixedImageUrl(null);
@@ -364,13 +425,28 @@ function SplitLayoutInner() {
     setReferenceInfo(null);
     pauseAndIncrementVersion();
     incrementFlushVersion();
-  }, [pauseAndIncrementVersion, incrementFlushVersion]);
+  }, [pauseAndIncrementVersion, incrementFlushVersion, setDrawingLoadInFlight]);
 
   const handleReferenceImageSize = useCallback((width: number, height: number) => {
     // Bail when the size hasn't actually changed. YouTubeViewer fires
     // onFitSize with the constant 1920x1080 on every mount, so without this
     // guard a remount triggers a wasted setState + re-render.
     setReferenceSize(prev => (prev && prev.width === width && prev.height === height) ? prev : { width, height });
+    if (width > 0 && height > 0) {
+      referenceSizeRef.current = { width, height };
+    }
+
+    // Promote a queued gallery-load camera now that the fresh reference has
+    // loaded: the pendingCameraRef effect runs after the viewer's
+    // loadContent(0,0,1), so the strokes-centered camera wins. The
+    // restoreVersion bump guarantees the effect re-runs even when the new
+    // content happens to have the same dimensions as the old.
+    const pendingCam = pendingGalleryCameraRef.current;
+    if (pendingCam && width > 0 && height > 0) {
+      pendingGalleryCameraRef.current = null;
+      pendingCameraRef.current = { viewCenterX: pendingCam.x, viewCenterY: pendingCam.y, zoom: 1 };
+      setRestoreVersion(v => v + 1);
+    }
 
     const pending = pendingMigrationRef.current;
     if (pending && width > 0 && height > 0) {
@@ -384,27 +460,52 @@ function SplitLayoutInner() {
       const userHasStarted
         = strokeManager.canUndo()
           || (guideManagerRef.current?.getLines().length ?? 0) > 0;
-      if (userHasStarted) return;
+      // Gallery loads skip the guard: changeReference has already pushed
+      // reference/tentative-clear undo entries (so canUndo() is always true
+      // here), and the user explicitly confirmed replacing the canvas.
+      if (userHasStarted && !pending.skipUserStartGuard) return;
       const dx = -width / 2;
       const dy = -height / 2;
       const migratedStrokes = shiftStrokes(pending.strokes, dx, dy);
       const migratedRedo = shiftStrokes(pending.redoStack, dx, dy);
-      const migratedGuides = shiftGuideState(pending.guides, dx, dy);
       if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
         strokeManager.loadState(migratedStrokes, migratedRedo);
         if (!pending.gallerySaveDirty) {
           strokeManager.markSavedToGallery();
         }
       }
-      restoreGuides(migratedGuides);
-      // Debounced autosave is fine — the next user interaction will persist
-      // the migrated coords; no need to bypass it via flushVersion.
+      if (pending.guides) {
+        restoreGuides(shiftGuideState(pending.guides, dx, dy));
+      }
+      if (pending.centerCameraOnStrokes && migratedStrokes.length > 0) {
+        // Gallery load: end with the drawing on screen, not the content home.
+        // Queued via pendingCameraRef so it applies after the viewer's
+        // loadContent (the restoreVersion bump below triggers the effect).
+        const box = computeStrokesBoundingBox(migratedStrokes);
+        pendingCameraRef.current = {
+          viewCenterX: box.minX + box.width / 2,
+          viewCenterY: box.minY + box.height / 2,
+          zoom: 1,
+        };
+      }
       setRestoreVersion(v => v + 1);
-      incrementChangeVersion();
+      if (pending.skipUserStartGuard) {
+        // Gallery load: the strokes just landed, and the reference was
+        // already flushed with an EMPTY stroke set when changeReference ran —
+        // flush now so a quick reload keeps the loaded drawing. Also lift the
+        // load-in-flight input freeze held since handleLoadDrawing.
+        setDrawingLoadInFlight(false);
+        incrementFlushVersion();
+      }
+      else {
+        // Draft restore: debounced autosave is fine — the next user
+        // interaction will persist the migrated coords.
+        incrementChangeVersion();
+      }
     }
     // setRestoreVersion listed only for React Compiler's
     // preserve-manual-memoization check (stable identity, harmless).
-  }, [strokeManager, restoreGuides, incrementChangeVersion, guideManagerRef, setRestoreVersion]);
+  }, [strokeManager, restoreGuides, incrementChangeVersion, incrementFlushVersion, guideManagerRef, setRestoreVersion, setDrawingLoadInFlight]);
 
   // DrawingCanvas fits only when a viewer is actively the fit leader; raw
   // referenceSize would otherwise leak the previous reference's dimensions
@@ -583,7 +684,13 @@ function SplitLayoutInner() {
   // entries. Sketchfab is UID-based so it's added directly. Local-file images
   // resolve their Blob from URL history (keyed by content hash) and apply it
   // as a data URL so autosave/restore continues to work.
-  const handleLoadReference = useCallback((info: ReferenceInfo) => {
+  //
+  // `onApplied` (gallery "continue this drawing" path) fires exactly once,
+  // synchronously after the changeReference that applies the reference —
+  // `true` — or once it's known the reference can't be applied (evicted image
+  // Blob) — `false`. Ordering matters: callers that set pendingMigrationRef
+  // must do so AFTER changeReference, which resets it.
+  const handleLoadReference = useCallback((info: ReferenceInfo, onApplied?: (applied: boolean) => void) => {
     if (info.source === 'image' && info.url) {
       // Async lookup — the button was only enabled because info.url exists at
       // gallery render time, but the URL-history entry may have been evicted
@@ -591,9 +698,18 @@ function SplitLayoutInner() {
       void (async () => {
         const historyKey = info.url;
         if (!historyKey) return;
+        // Abort if this load was superseded while an await was in flight —
+        // applying a stale result (reference AND, on the gallery path,
+        // strokes via onApplied) would overwrite the newer state. The bump
+        // at capture time makes STARTING a load a generation change too, so
+        // when two async loads race, the earlier one loses even if it
+        // resolves last-to-first. Checked after every await.
+        const generation = ++referenceGenerationRef.current;
         const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined);
+        if (generation !== referenceGenerationRef.current) return;
         if (!entry?.imageBlob) {
           setToast(t('imageReferenceEvicted'));
+          onApplied?.(false);
           return;
         }
         const dataUrl = await new Promise<string | null>((resolve) => {
@@ -602,8 +718,10 @@ function SplitLayoutInner() {
           reader.onerror = () => resolve(null);
           reader.readAsDataURL(entry.imageBlob as Blob);
         });
+        if (generation !== referenceGenerationRef.current) return;
         if (!dataUrl) {
           setToast(t('imageReferenceEvicted'));
+          onApplied?.(false);
           return;
         }
         changeReference((s) => {
@@ -613,6 +731,7 @@ function SplitLayoutInner() {
           s.setLocalImageUrl(dataUrl);
           s.setReferenceInfo(info);
         });
+        onApplied?.(true);
         // Upsert with the Blob we already loaded so the call is self-
         // contained: no redundant DB read, and an evicted row between reads
         // can't recreate a blobless entry.
@@ -687,6 +806,7 @@ function SplitLayoutInner() {
         s.setReferenceInfo(info);
       }
     });
+    onApplied?.(true);
 
     let historyAdd: Promise<void> | null = null;
     if (info.source === 'url' && info.imageUrl) {
@@ -721,6 +841,140 @@ function SplitLayoutInner() {
       historyAdd.then(() => reloadUrlHistoryFnRef.current?.()).catch(() => { /* ignore */ });
     }
   }, [changeReference]);
+
+  /**
+   * Load a gallery record's strokes into the StrokeManager so the user can
+   * continue drawing. `referenceApplied` tells us whether the record's
+   * reference was actually restored (changeReference ran): legacy-coord
+   * strokes can only be shifted to the center-origin convention once that
+   * reference reports its size, so they go through pendingMigrationRef;
+   * everything else loads immediately. Runs synchronously after
+   * changeReference (see handleLoadReference's onApplied contract) so the
+   * pendingMigrationRef set here isn't wiped by it.
+   */
+  const applyLoadedDrawingStrokes = useCallback((
+    drawing: DrawingRecord,
+    referenceApplied: boolean,
+    knownSize?: { width: number; height: number } | null,
+  ) => {
+    // A gallery load supersedes any restore still waiting on a size callback
+    // (e.g. a legacy autosave draft whose reference hasn't loaded yet). The
+    // referenced-load path clears these via changeReference, but a record
+    // with no reference — or an evicted one — never calls it, and the stale
+    // pending draft strokes/camera would later land on top of this load.
+    pendingMigrationRef.current = null;
+    pendingGalleryCameraRef.current = null;
+    pendingCameraRef.current = null;
+    const ref = drawing.reference;
+    const isLegacyCoords = (drawing.coordVersion ?? 1) < COORD_VERSION_CURRENT;
+    // Mirrors the draft-restore referenceWillSize logic: sources whose viewer
+    // reports onReferenceImageSize once content loads.
+    const referenceWillSize = referenceApplied && !!ref && (
+      ref.source === 'image'
+      || ref.source === 'url'
+      || ref.source === 'pexels'
+      || ref.source === 'youtube'
+      || ref.source === 'trace-template'
+      || ((ref.source === 'sketchfab' || ref.source === 'pose') && !!ref.imageUrl)
+    );
+    if (isLegacyCoords && referenceWillSize && !knownSize) {
+      // Legacy strokes need the (-W/2, -H/2) shift, and the reference's size
+      // is only known once the viewer loads it — defer via pendingMigrationRef.
+      // The camera is centered on the migrated strokes at the same moment.
+      pendingMigrationRef.current = {
+        strokes: drawing.strokes,
+        redoStack: [],
+        gallerySaveDirty: false,
+        skipUserStartGuard: true,
+        centerCameraOnStrokes: true,
+      };
+      // Strokes land only when the viewer reports its size — keep input
+      // frozen until then so nothing drawn meanwhile gets wiped by the
+      // arriving loadState.
+      setDrawingLoadInFlight(true);
+    }
+    else {
+      // `knownSize` is set when the record's reference is the content already
+      // on screen (see handleLoadDrawing): the viewer won't reload identical
+      // content, so no onReferenceImageSize would ever arrive to apply a
+      // deferred migration — shift immediately with the size we already have.
+      const strokes = (isLegacyCoords && knownSize)
+        ? shiftStrokes(drawing.strokes, -knownSize.width / 2, -knownSize.height / 2)
+        : drawing.strokes;
+      strokeManager.loadState(strokes, []);
+      // The loaded strokes are bit-identical to the gallery record — mark
+      // clean so the Save button can't immediately write a duplicate.
+      strokeManager.markSavedToGallery();
+
+      // Bring the loaded drawing into view. Home (= world origin = reference
+      // center) is not enough: off-center drawings — and legacy strokes whose
+      // shift couldn't be determined (evicted reference) — can sit entirely
+      // outside the home viewport, making the load look like a no-op. Center
+      // on the strokes' bounding box instead; the reset-zoom button still
+      // offers the reference-centered home one tap away.
+      const box = strokes.length > 0 ? computeStrokesBoundingBox(strokes) : null;
+      if (!box) {
+        viewTransform.userResetToHome();
+      }
+      else if (referenceWillSize && !knownSize) {
+        // Fresh reference incoming: its loadContent(0,0,1) would stomp a
+        // camera set now — stash the target and let handleReferenceImageSize
+        // promote it to pendingCameraRef once the content has loaded. (With
+        // knownSize the content is already displayed and won't reload — that
+        // case must apply directly below or it would wait forever.)
+        pendingGalleryCameraRef.current = {
+          x: box.minX + box.width / 2,
+          y: box.minY + box.height / 2,
+        };
+      }
+      else {
+        // No viewer reload coming (same content already displayed, reference
+        // evicted, or no reference at all) — apply directly.
+        viewTransform.restoreCamera(box.minX + box.width / 2, box.minY + box.height / 2, 1);
+      }
+      // Strokes are on the canvas — lift the load-in-flight input freeze.
+      setDrawingLoadInFlight(false);
+    }
+    currentStrokeRef.current = null;
+    setOverlayStrokes(null);
+    setOverlayActive(false);
+    // Continue the record's drawing time; restore() leaves the timer stopped,
+    // and the next pen-down starts it (loadState cleared any tentative-clear
+    // state, so no reset fires).
+    timer.restore(drawing.elapsedMs);
+    setRestoreVersion(v => v + 1);
+    setHistorySyncVersion(v => v + 1);
+    incrementFlushVersion();
+  }, [strokeManager, timer, viewTransform, incrementFlushVersion, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes, setOverlayActive, setDrawingLoadInFlight]);
+
+  // Gallery "continue this drawing" — restore the reference first (its
+  // changeReference resets pendingMigrationRef and records the undo entry),
+  // then load the strokes on top. Records without a structured reference
+  // (free drawing / legacy) keep the current reference untouched.
+  const handleLoadDrawing = useCallback((drawing: DrawingRecord) => {
+    // Freeze drawing input for the whole load: the local-image path resolves
+    // its Blob asynchronously, and a stroke drawn in that window would be
+    // wiped by the loadState that follows. applyLoadedDrawingStrokes (always
+    // reached, including the eviction-failure path) settles the final state.
+    setDrawingLoadInFlight(true);
+    const ref = drawing.reference;
+    if (ref) {
+      // Snapshot BEFORE the load: if the record's reference is the content
+      // already displayed (and sized), the viewer won't fire a fresh
+      // onReferenceImageSize, so a deferred legacy migration would hang —
+      // pass the known size to migrate immediately instead.
+      const prev = captureReferenceSnapshot();
+      handleLoadReference(ref, (applied) => {
+        const knownSize = (applied && isSameReferenceContent(prev, ref))
+          ? referenceSizeRef.current
+          : null;
+        applyLoadedDrawingStrokes(drawing, applied, knownSize);
+      });
+    }
+    else {
+      applyLoadedDrawingStrokes(drawing, false);
+    }
+  }, [handleLoadReference, applyLoadedDrawingStrokes, captureReferenceSnapshot, setDrawingLoadInFlight]);
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
   const getAutosaveState = useCallback(() => ({
@@ -1044,6 +1298,7 @@ function SplitLayoutInner() {
               onCurrentStrokeChange={handleCurrentStrokeChange}
               onOverlayClear={() => { setOverlayStrokes(null); }}
               onLoadReference={handleLoadReference}
+              onLoadDrawing={handleLoadDrawing}
               captureReferenceSnapshot={captureReferenceSnapshot}
               timer={timer}
               restoreVersion={restoreVersion}
@@ -1054,7 +1309,7 @@ function SplitLayoutInner() {
               referenceCollapsed={referenceCollapsed}
               onToggleReferenceCollapsed={handleToggleReferenceCollapsed}
               collapseLocked={collapseLocked}
-              inputFrozen={gestureSession.transitioning}
+              inputFrozen={gestureSession.transitioning || drawingLoadInFlight}
               templateStrokes={traceScoring.templateStrokes}
               traceFeedback={traceScoring.latestFeedback}
               onStrokeFinalized={handleTraceStrokeFinalized}
