@@ -24,6 +24,11 @@ vi.mock('../storage', () => ({
 vi.mock('../storage/urlHistoryStore', () => ({
   getUrlHistoryEntry: (url: string) => getUrlHistoryEntryMock(url),
 }));
+// jsdom has no 2D canvas context — stub the high-res preview renderer.
+vi.mock('../storage/exportDrawing', () => ({
+  exportDrawing: vi.fn(),
+  renderDrawingToCanvas: () => ({ toDataURL: () => 'data:image/png;base64,HIRES' }),
+}));
 
 import { Gallery } from './Gallery';
 
@@ -256,5 +261,59 @@ describe('Gallery', () => {
       expect(screen.getByText('Gallery (1)')).toBeInTheDocument();
       expect(getUrlHistoryEntryMock).toHaveBeenCalledWith('local:abc');
     });
+  });
+
+  it('opens the enlarged preview on thumbnail tap and closes it again', async () => {
+    getAllDrawingsMock.mockResolvedValue([
+      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
+    ]);
+    render(<Gallery onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drawing preview' }));
+    const previewImg = await screen.findByRole('img', { name: 'Drawing preview' });
+    expect(previewImg).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('img', { name: 'Drawing preview' })).toBeNull(),
+    );
+  });
+
+  it('renders the preview from the vector strokes (high-res), not the stored thumbnail', async () => {
+    const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
+    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    getAllDrawingsMock.mockResolvedValue([drawing]);
+    render(<Gallery onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drawing preview' }));
+    const previewImg = await screen.findByRole('img', { name: 'Drawing preview' });
+    expect(previewImg).toHaveAttribute('src', 'data:image/png;base64,HIRES');
+  });
+
+  it('shows "Continue this drawing" only when onLoadDrawing is provided and forwards the record', async () => {
+    const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
+    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    getAllDrawingsMock.mockResolvedValue([drawing]);
+    const onLoadDrawing = vi.fn();
+    render(<Gallery onClose={() => {}} onLoadDrawing={onLoadDrawing} />);
+    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drawing preview' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Continue this drawing' }));
+    expect(onLoadDrawing).toHaveBeenCalledWith(drawing);
+  });
+
+  it('hides "Continue this drawing" when onLoadDrawing is not provided', async () => {
+    const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
+    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    getAllDrawingsMock.mockResolvedValue([drawing]);
+    render(<Gallery onClose={() => {}} />);
+    await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drawing preview' }));
+    await screen.findByRole('img', { name: 'Drawing preview' });
+    expect(screen.queryByRole('button', { name: 'Continue this drawing' })).toBeNull();
   });
 });

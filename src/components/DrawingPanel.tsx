@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense } from 'react';
-import { Box, CircularProgress, IconButton, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, IconButton, Typography } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, RotateCcw } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
@@ -10,7 +10,7 @@ import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
-import { saveDrawing } from '../storage';
+import { saveDrawing, type DrawingRecord } from '../storage';
 import { generateThumbnail } from '../storage/generateThumbnail';
 import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
@@ -39,6 +39,8 @@ interface DrawingPanelProps {
   onGallerySaved?: () => void;
   onOverlayClear?: () => void;
   onLoadReference?: (info: ReferenceInfo) => void;
+  /** Load a saved gallery drawing's strokes + reference back onto the canvas. */
+  onLoadDrawing?: (drawing: DrawingRecord) => void;
   onCurrentStrokeChange?: (stroke: Stroke | null) => void;
   /**
    * Called from undo/redo so StrokeManager can record the current reference
@@ -106,7 +108,7 @@ interface DrawingPanelProps {
 }
 
 export function DrawingPanel({
-  referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false,
+  referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onLoadDrawing, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false,
   templateStrokes = null,
   traceFeedback = null,
   onStrokeFinalized,
@@ -137,6 +139,9 @@ export function DrawingPanel({
   const [showGallery, setShowGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  // Gallery "continue this drawing" awaiting overwrite confirmation. Set only
+  // when the canvas holds unsaved strokes; a clean canvas loads immediately.
+  const [pendingLoadDrawing, setPendingLoadDrawing] = useState<DrawingRecord | null>(null);
 
   // FLIP animation across collapse-toggle. Per-child (not whole-toolbar) so
   // right-anchored icons that don't move in landscape stay perfectly still
@@ -347,6 +352,27 @@ export function DrawingPanel({
       setSaving(false);
     }
   }, [strokeManager, referenceInfo, timer, onGallerySaved]);
+
+  const executeLoadDrawing = useCallback((drawing: DrawingRecord) => {
+    setPendingLoadDrawing(null);
+    setShowGallery(false);
+    setHighlightedStrokeIndex(null);
+    setMode('pen');
+    onLoadDrawing?.(drawing);
+  }, [onLoadDrawing]);
+
+  // Gallery "continue this drawing": replacing an unsaved canvas is the one
+  // destructive step in the flow, so gate it behind a confirmation. Already-
+  // saved (or empty) canvases load immediately.
+  const handleGalleryLoadDrawing = useCallback((drawing: DrawingRecord) => {
+    const hasUnsavedStrokes
+      = strokeManager.getStrokes().length > 0 && strokeManager.isDirtySinceGallerySave();
+    if (hasUnsavedStrokes) {
+      setPendingLoadDrawing(drawing);
+      return;
+    }
+    executeLoadDrawing(drawing);
+  }, [strokeManager, executeLoadDrawing]);
 
   const handlePenTool = useCallback(() => {
     setMode('pen');
@@ -792,9 +818,55 @@ export function DrawingPanel({
               </Box>
             )}
           >
-            <Gallery onClose={() => setShowGallery(false)} onLoadReference={onLoadReference} />
+            <Gallery
+              onClose={() => setShowGallery(false)}
+              onLoadReference={onLoadReference}
+              onLoadDrawing={onLoadDrawing ? handleGalleryLoadDrawing : undefined}
+            />
           </Suspense>
         </LazyErrorBoundary>
+      )}
+
+      {/* Overwrite confirmation for gallery "continue this drawing". A small
+          modal (deviating from the toolbar-in-place confirmation rule) because
+          the request originates inside the gallery modal stack — there is no
+          toolbar context to replace, and the gallery stays open behind it so
+          Cancel returns the user exactly where they were. */}
+      {pendingLoadDrawing && (
+        <Box
+          onClick={() => setPendingLoadDrawing(null)}
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            bgcolor: 'rgba(0,0,0,0.5)',
+            zIndex: 1200,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Box
+            onClick={e => e.stopPropagation()}
+            sx={{ bgcolor: 'white', borderRadius: 2, p: 2, maxWidth: 400, mx: 2 }}
+          >
+            <Typography variant="body2" sx={{ mb: 2 }}>
+              {t('continueConfirmMessage')}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <Button size="small" onClick={() => setPendingLoadDrawing(null)}>
+                {t('cancel')}
+              </Button>
+              <Button
+                size="small"
+                variant="contained"
+                color="error"
+                onClick={() => executeLoadDrawing(pendingLoadDrawing)}
+              >
+                {t('continueConfirmLoad')}
+              </Button>
+            </Box>
+          </Box>
+        </Box>
       )}
     </Box>
   );

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Box, Typography, IconButton, Button, Checkbox, ToggleButton, ToggleButtonGroup, Menu, MenuItem } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { X, Trash2, ChevronDown, ChevronRight, Download } from 'lucide-react';
+import { X, Trash2, ChevronDown, ChevronRight, Download, Pencil } from 'lucide-react';
 import {
   getAllDrawings,
   bulkDeleteDrawings,
@@ -10,7 +10,7 @@ import {
   type DrawingRecord,
   type StorageUsage,
 } from '../storage';
-import { exportDrawing, type ExportFormat } from '../storage/exportDrawing';
+import { exportDrawing, renderDrawingToCanvas, type ExportFormat } from '../storage/exportDrawing';
 import { getUrlHistoryEntry } from '../storage/urlHistoryStore';
 import { formatTime } from '../hooks/useTimer';
 import { t } from '../i18n';
@@ -40,15 +40,18 @@ function formatGroupDateLabel(
 interface GalleryProps {
   onClose: () => void;
   onLoadReference?: (info: ReferenceInfo) => void;
+  /** Load a saved drawing's strokes (and reference) back onto the canvas. */
+  onLoadDrawing?: (drawing: DrawingRecord) => void;
 }
 
-export function Gallery({ onClose, onLoadReference }: GalleryProps) {
+export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProps) {
   const [drawings, setDrawings] = useState<DrawingRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [groupMode, setGroupModeState] = useState<GroupMode>(loadGroupMode);
   const [imageThumbs, setImageThumbs] = useState<Record<string, string | null>>({});
   const [usage, setUsage] = useState<StorageUsage | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  const [previewDrawing, setPreviewDrawing] = useState<DrawingRecord | null>(null);
   const enqueuedKeysRef = useRef<Set<string>>(new Set());
   const objectUrlsRef = useRef<string[]>([]);
 
@@ -308,6 +311,7 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
                       selected={drawing.id != null && selectedIds.has(drawing.id)}
                       onToggleSelect={toggleSelected}
                       onLoadReference={handleLoadDrawingReference}
+                      onPreview={setPreviewDrawing}
                     />
                   ))}
                 </Box>
@@ -316,6 +320,13 @@ export function Gallery({ onClose, onLoadReference }: GalleryProps) {
           })}
         </Box>
       </Box>
+      {previewDrawing && (
+        <DrawingPreviewDialog
+          drawing={previewDrawing}
+          onClose={() => setPreviewDrawing(null)}
+          onLoadDrawing={onLoadDrawing}
+        />
+      )}
     </Box>
   );
 }
@@ -456,6 +467,7 @@ interface DrawingCardProps {
   selected: boolean;
   onToggleSelect: (id: number) => void;
   onLoadReference: (drawing: DrawingRecord) => void;
+  onPreview: (drawing: DrawingRecord) => void;
 }
 
 function DrawingCard({
@@ -466,6 +478,7 @@ function DrawingCard({
   selected,
   onToggleSelect,
   onLoadReference,
+  onPreview,
 }: DrawingCardProps) {
   const refLabel = showReferenceLabel
     ? refLabelOf(drawing.reference, drawing.referenceInfo || '')
@@ -485,11 +498,19 @@ function DrawingCard({
       }}
     >
       {drawing.thumbnail && (
-        <img
-          src={drawing.thumbnail}
-          alt={`#${drawingId}`}
-          style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
-        />
+        <Box
+          component="button"
+          type="button"
+          onClick={() => onPreview(drawing)}
+          aria-label={t('previewDrawingTitle')}
+          sx={{ display: 'block', width: '100%', p: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
+        >
+          <img
+            src={drawing.thumbnail}
+            alt={`#${drawingId}`}
+            style={{ width: '100%', height: 140, objectFit: 'contain', background: '#fafafa' }}
+          />
+        </Box>
       )}
       {drawingId != null && (
         <Box
@@ -545,6 +566,92 @@ function DrawingCard({
                 {t('loadReference')}
               </Button>
             </>
+          )}
+          <Box sx={{ flex: 1 }} />
+          <ExportMenuButton drawing={drawing} />
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
+interface DrawingPreviewDialogProps {
+  drawing: DrawingRecord;
+  onClose: () => void;
+  onLoadDrawing?: (drawing: DrawingRecord) => void;
+}
+
+/**
+ * Enlarged view of a saved drawing. The stored thumbnail is only 200px, so the
+ * preview re-renders the vector strokes at export resolution instead of
+ * scaling the thumbnail up.
+ */
+function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPreviewDialogProps) {
+  const previewUrl = useMemo(
+    () => (drawing.strokes.length > 0 ? renderDrawingToCanvas(drawing).toDataURL('image/png') : drawing.thumbnail),
+    [drawing],
+  );
+  const refLabel = refLabelOf(drawing.reference, drawing.referenceInfo || '');
+
+  return (
+    <Box
+      onClick={onClose}
+      sx={{
+        position: 'fixed',
+        inset: 0,
+        bgcolor: 'rgba(0,0,0,0.6)',
+        zIndex: 1100,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Box
+        onClick={e => e.stopPropagation()}
+        sx={{
+          bgcolor: 'white',
+          borderRadius: 2,
+          maxWidth: '92vw',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderBottom: '1px solid #ddd' }}>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2" color="text.secondary">
+              {cardDateFormatter.format(new Date(drawing.createdAt))}
+              {' / '}
+              {formatTime(drawing.elapsedMs)}
+            </Typography>
+            {refLabel && (
+              <Typography variant="body2" sx={{ fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {refLabel}
+              </Typography>
+            )}
+          </Box>
+          <IconButton onClick={onClose} size="small" aria-label={t('closePreview')}>
+            <X size={20} />
+          </IconButton>
+        </Box>
+        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#fafafa', overflow: 'auto' }}>
+          <img
+            src={previewUrl}
+            alt={t('previewDrawingTitle')}
+            style={{ maxWidth: '92vw', maxHeight: 'calc(90vh - 120px)', objectFit: 'contain' }}
+          />
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderTop: '1px solid #ddd' }}>
+          {onLoadDrawing && drawing.strokes.length > 0 && (
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<Pencil size={16} />}
+              onClick={() => onLoadDrawing(drawing)}
+            >
+              {t('continueDrawing')}
+            </Button>
           )}
           <Box sx={{ flex: 1 }} />
           <ExportMenuButton drawing={drawing} />
