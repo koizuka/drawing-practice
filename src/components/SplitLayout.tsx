@@ -51,10 +51,11 @@ function SplitLayoutInner() {
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
   // Mirror for callbacks that need the current size without re-memoizing on
   // every size change (gallery drawing-load's same-content migration).
+  // Updated synchronously in handleReferenceImageSize — NOT via a post-render
+  // effect — so a load fired right after a size report can't read a stale
+  // value, take the deferred-migration branch, and hang waiting for a size
+  // event that identical content will never fire.
   const referenceSizeRef = useRef(referenceSize);
-  useEffect(() => {
-    referenceSizeRef.current = referenceSize;
-  });
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // StrokeManager owned by SplitLayout (not DrawingPanel) so it exists from
@@ -404,6 +405,9 @@ function SplitLayoutInner() {
     // onFitSize with the constant 1920x1080 on every mount, so without this
     // guard a remount triggers a wasted setState + re-render.
     setReferenceSize(prev => (prev && prev.width === width && prev.height === height) ? prev : { width, height });
+    if (width > 0 && height > 0) {
+      referenceSizeRef.current = { width, height };
+    }
 
     // Promote a queued gallery-load camera now that the fresh reference has
     // loaded: the pendingCameraRef effect runs after the viewer's

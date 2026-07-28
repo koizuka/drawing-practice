@@ -27,7 +27,9 @@ vi.mock('../storage/urlHistoryStore', () => ({
 // jsdom has no 2D canvas context — stub the high-res preview renderer.
 vi.mock('../storage/exportDrawing', () => ({
   exportDrawing: vi.fn(),
-  renderDrawingToCanvas: () => ({ toDataURL: () => 'data:image/png;base64,HIRES' }),
+  renderDrawingToCanvas: () => ({
+    toBlob: (cb: (blob: Blob) => void) => cb(new Blob(['hi-res'], { type: 'image/png' })),
+  }),
 }));
 
 import { Gallery } from './Gallery';
@@ -280,7 +282,7 @@ describe('Gallery', () => {
     );
   });
 
-  it('renders the preview from the vector strokes (high-res), not the stored thumbnail', async () => {
+  it('renders the preview from the vector strokes (high-res blob), not the stored thumbnail', async () => {
     const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
     drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
     getAllDrawingsMock.mockResolvedValue([drawing]);
@@ -289,7 +291,9 @@ describe('Gallery', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Drawing preview' }));
     const previewImg = await screen.findByRole('img', { name: 'Drawing preview' });
-    expect(previewImg).toHaveAttribute('src', 'data:image/png;base64,HIRES');
+    // The stored thumbnail may show briefly while the blob encodes; an
+    // object URL (blob:) replaces it once ready — never the data: thumbnail.
+    await waitFor(() => expect(previewImg.getAttribute('src')).toMatch(/^blob:/));
   });
 
   it('shows "Continue this drawing" only when onLoadDrawing is provided and forwards the record', async () => {

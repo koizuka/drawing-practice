@@ -322,6 +322,7 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
       </Box>
       {previewDrawing && (
         <DrawingPreviewDialog
+          key={previewDrawing.id}
           drawing={previewDrawing}
           onClose={() => setPreviewDrawing(null)}
           onLoadDrawing={onLoadDrawing}
@@ -584,13 +585,27 @@ interface DrawingPreviewDialogProps {
 /**
  * Enlarged view of a saved drawing. The stored thumbnail is only 200px, so the
  * preview re-renders the vector strokes at export resolution instead of
- * scaling the thumbnail up.
+ * scaling the thumbnail up. Encoded via toBlob + ObjectURL rather than a
+ * synchronous toDataURL — an up-to-8Mpx base64 string caused jank and memory
+ * pressure on iPad. The stored thumbnail fills in while the blob encodes.
  */
 function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPreviewDialogProps) {
-  const previewUrl = useMemo(
-    () => (drawing.strokes.length > 0 ? renderDrawingToCanvas(drawing).toDataURL('image/png') : drawing.thumbnail),
-    [drawing],
-  );
+  const [hiResUrl, setHiResUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (drawing.strokes.length === 0) return;
+    let cancelled = false;
+    let objectUrl: string | null = null;
+    renderDrawingToCanvas(drawing).toBlob((blob) => {
+      if (cancelled || !blob) return;
+      objectUrl = URL.createObjectURL(blob);
+      setHiResUrl(objectUrl);
+    }, 'image/png');
+    return () => {
+      cancelled = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [drawing]);
+  const previewUrl = hiResUrl ?? drawing.thumbnail;
   const refLabel = refLabelOf(drawing.reference, drawing.referenceInfo || '');
 
   return (
