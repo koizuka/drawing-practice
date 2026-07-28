@@ -1,4 +1,4 @@
-import { render, fireEvent, act } from '@testing-library/react';
+import { render, fireEvent, act, waitFor } from '@testing-library/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { DrawingPanel } from './DrawingPanel';
@@ -629,7 +629,10 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
     act(() => {
       fireEvent.click(getByText('Cancel'));
     });
-    expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull();
+    // MUI Dialog unmounts its content after a close transition.
+    await waitFor(() =>
+      expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull(),
+    );
     expect(queryByTestId('gallery-stub')).toBeInTheDocument();
     expect(onLoadDrawing).not.toHaveBeenCalled();
   });
