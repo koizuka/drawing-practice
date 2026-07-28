@@ -221,9 +221,21 @@ function SplitLayoutInner() {
     // it's a no-op for callback identity.
   }, [incrementFlushVersion, setReferenceCollapsed]);
 
+  /**
+   * Bumped on every reference navigation — all three paths (changeReference,
+   * resetReferenceOnError, undo/redo snapshot restore) funnel through
+   * pauseAndIncrementVersion below, which owns the bump. The async
+   * local-image load path bumps it at entry too and re-checks after each
+   * await: a load that has been superseded (by navigation OR by a newer
+   * load) must NOT apply its reference/strokes — it aborts silently.
+   */
+  const referenceGenerationRef = useRef(0);
+
   // Pause timer whenever the reference changes — the timer should only advance
   // during active drawing. The next stroke will resume it via handleStrokeCountChange.
+  // Also the single owner of the reference-generation bump (see above).
   const pauseAndIncrementVersion = useCallback(() => {
+    referenceGenerationRef.current = referenceGenerationRef.current + 1;
     timer.pause();
     setChangeVersion(v => v + 1);
   }, [timer]);
@@ -334,15 +346,6 @@ function SplitLayoutInner() {
    */
   const [drawingLoadInFlight, setDrawingLoadInFlight] = useState(false);
 
-  /**
-   * Bumped on every reference navigation (changeReference /
-   * resetReferenceOnError). The async local-image load path captures the
-   * value at entry and re-checks it after each await: if the user navigated
-   * meanwhile, the stale callback must NOT apply its reference/strokes on
-   * top of the newer navigation — it aborts silently instead.
-   */
-  const referenceGenerationRef = useRef(0);
-
   // Camera state captured from the autosave draft, applied AFTER the active
   // viewer fires its `loadContent(0,0,1)` on first reference load (which
   // would otherwise stomp the restored camera). Cleared on first apply.
@@ -371,7 +374,6 @@ function SplitLayoutInner() {
     pendingMigrationRef.current = null;
     pendingGalleryCameraRef.current = null;
     setDrawingLoadInFlight(false);
-    referenceGenerationRef.current++;
     const recordUndo = opts?.recordUndo !== false;
     if (recordUndo) {
       // User-initiated reference change → end any active gesture session so
@@ -416,7 +418,6 @@ function SplitLayoutInner() {
     pendingMigrationRef.current = null;
     pendingGalleryCameraRef.current = null;
     setDrawingLoadInFlight(false);
-    referenceGenerationRef.current++;
     setSource('none');
     setReferenceMode('browse');
     setFixedImageUrl(null);
@@ -697,11 +698,13 @@ function SplitLayoutInner() {
       void (async () => {
         const historyKey = info.url;
         if (!historyKey) return;
-        // Abort if the user navigated to another reference while an await
-        // was in flight — applying this stale result (reference AND, on the
-        // gallery path, strokes via onApplied) would overwrite their newer
-        // choice. Checked after every await.
-        const generation = referenceGenerationRef.current;
+        // Abort if this load was superseded while an await was in flight —
+        // applying a stale result (reference AND, on the gallery path,
+        // strokes via onApplied) would overwrite the newer state. The bump
+        // at capture time makes STARTING a load a generation change too, so
+        // when two async loads race, the earlier one loses even if it
+        // resolves last-to-first. Checked after every await.
+        const generation = ++referenceGenerationRef.current;
         const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined);
         if (generation !== referenceGenerationRef.current) return;
         if (!entry?.imageBlob) {
