@@ -128,7 +128,7 @@ function SplitLayoutInner() {
   });
 
   // Guide state (from context)
-  const { grid, lines, version: guideVersion, restoreGuides, guideManagerRef } = useGuides();
+  const { grid, lines, version: guideVersion, lastChangeTransient: guideChangeTransient, restoreGuides, guideManagerRef } = useGuides();
 
   // Trace-template scoring (from context). Driven by referenceInfo: when the
   // user selects a bundled trace template the matching strokes are loaded into
@@ -1037,14 +1037,22 @@ function SplitLayoutInner() {
   // Trigger autosave when guide state changes. Guide changes (grid mode, line
   // add/remove/clear) are discrete user actions, so flush immediately rather
   // than wait the 2s debounce — same rationale as collapse-toggle and
-  // reference change. Restore-time bumps are gated by suppressAutosaveRef in
-  // the flush path. Render-time prev-prop pattern instead of an effect so we
-  // don't violate react-hooks/set-state-in-effect.
+  // reference change. Exception: transient changes (mid-drag perspective
+  // rotation/strength) ride the 2s debounce; the gesture-end sync is
+  // non-transient and lands the immediate flush — same "one save per gesture"
+  // semantics as the camera tail-debounce. Restore-time bumps are gated by
+  // suppressAutosaveRef in the flush path. Render-time prev-prop pattern
+  // instead of an effect so we don't violate react-hooks/set-state-in-effect.
   const [prevGuideVersion, setPrevGuideVersion] = useState(guideVersion);
   if (prevGuideVersion !== guideVersion) {
     setPrevGuideVersion(guideVersion);
     if (guideVersion > 0) {
-      incrementFlushVersion();
+      if (guideChangeTransient) {
+        incrementChangeVersion();
+      }
+      else {
+        incrementFlushVersion();
+      }
     }
   }
 

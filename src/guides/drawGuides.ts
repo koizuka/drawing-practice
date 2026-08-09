@@ -1,5 +1,6 @@
-import type { GridSettings, GuideLine } from './types';
-import { getGridSpacing } from './types';
+import type { GridSettings, GuideLine, PerspectiveSettings } from './types';
+import { getGridSpacing, DEFAULT_PERSPECTIVE } from './types';
+import { computePerspectiveGridLines } from './perspective';
 import type { Point } from '../drawing/types';
 
 const GRID_COLOR = 'rgba(0, 150, 255, 0.35)';
@@ -25,6 +26,11 @@ export function drawGrid(
   center?: Point,
 ): void {
   if (grid.mode === 'none') return;
+
+  if (grid.mode === 'perspective') {
+    drawPerspectiveGrid(ctx, grid.perspective ?? DEFAULT_PERSPECTIVE, scale);
+    return;
+  }
 
   const spacing = getGridSpacing(grid.mode);
   if (spacing <= 0) return;
@@ -65,6 +71,48 @@ export function drawGrid(
     ctx.lineTo(endX, y);
     ctx.stroke();
   }
+
+  ctx.restore();
+}
+
+/**
+ * Draw the perspective box grid in world coordinate space. Like drawGrid, the
+ * caller has already applied the view transform (including DPR) to ctx.
+ */
+export function drawPerspectiveGrid(
+  ctx: CanvasRenderingContext2D,
+  perspective: PerspectiveSettings,
+  scale: number,
+): void {
+  const lines = computePerspectiveGridLines(perspective);
+
+  ctx.save();
+
+  const minorWidth = 1 / scale;
+  const majorWidth = 2 / scale;
+
+  for (const major of [false, true]) {
+    ctx.strokeStyle = major ? GRID_ORIGIN_COLOR : GRID_COLOR;
+    ctx.lineWidth = major ? majorWidth : minorWidth;
+    ctx.beginPath();
+    for (const line of lines) {
+      if (line.major !== major) continue;
+      ctx.moveTo(line.x1, line.y1);
+      ctx.lineTo(line.x2, line.y2);
+    }
+    ctx.stroke();
+  }
+
+  // Small cross marker at the anchor point as the placement affordance.
+  const r = 10 / scale;
+  ctx.strokeStyle = GRID_ORIGIN_COLOR;
+  ctx.lineWidth = majorWidth;
+  ctx.beginPath();
+  ctx.moveTo(perspective.centerX - r, perspective.centerY);
+  ctx.lineTo(perspective.centerX + r, perspective.centerY);
+  ctx.moveTo(perspective.centerX, perspective.centerY - r);
+  ctx.lineTo(perspective.centerX, perspective.centerY + r);
+  ctx.stroke();
 
   ctx.restore();
 }

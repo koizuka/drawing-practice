@@ -50,5 +50,23 @@ describe('coordMigration', () => {
         { id: 'b', x1: -50, y1: -100, x2: 0, y2: -50 },
       ]);
     });
+
+    it('shifts the perspective anchor point when present', () => {
+      const state: GuideState = {
+        grid: {
+          mode: 'perspective',
+          perspective: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200 },
+        },
+        lines: [],
+      };
+      const out = shiftGuideState(state, -50, -100);
+      expect(out.grid.perspective).toEqual({ yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100 });
+    });
+
+    it('keeps grid identity when no perspective settings exist', () => {
+      const state: GuideState = { grid: { mode: 'large' }, lines: [] };
+      const out = shiftGuideState(state, -50, -100);
+      expect(out.grid).toBe(state.grid);
+    });
   });
 });

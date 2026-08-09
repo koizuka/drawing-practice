@@ -91,7 +91,7 @@ function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
 }
 
 import { useGuides } from '../guides/useGuides';
-import type { GridMode } from '../guides/types';
+import { GridModePopoverButton } from './GridModePopoverButton';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { t } from '../i18n';
 import type { Stroke } from '../drawing/types';
@@ -108,43 +108,6 @@ export interface ReferenceSetters {
   setFixedImageUrl: (url: string | null) => void;
   setLocalImageUrl: (url: string | null) => void;
   setReferenceInfo: (info: ReferenceInfo | null) => void;
-}
-
-function GridIcon({ mode }: { mode: GridMode }) {
-  const size = 20;
-  const color = 'currentColor';
-  if (mode === 'none') {
-    // Empty square outline — no grid
-    return (
-      <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth="1.5">
-        <rect x="1" y="1" width="18" height="18" rx="1" />
-      </svg>
-    );
-  }
-  if (mode === 'large') {
-    // 2x2 grid with thick center lines
-    return (
-      <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color}>
-        <rect x="1" y="1" width="18" height="18" rx="1" strokeWidth="1.5" />
-        <line x1="10" y1="1" x2="10" y2="19" strokeWidth="2.5" />
-        <line x1="1" y1="10" x2="19" y2="10" strokeWidth="2.5" />
-      </svg>
-    );
-  }
-  // normal: 4x4 grid with thick center lines
-  return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color}>
-      <rect x="1" y="1" width="18" height="18" rx="1" strokeWidth="1.5" />
-      {/* Thin grid lines */}
-      <line x1="5.5" y1="1" x2="5.5" y2="19" strokeWidth="0.7" />
-      <line x1="14.5" y1="1" x2="14.5" y2="19" strokeWidth="0.7" />
-      <line x1="1" y1="5.5" x2="19" y2="5.5" strokeWidth="0.7" />
-      <line x1="1" y1="14.5" x2="19" y2="14.5" strokeWidth="0.7" />
-      {/* Thick center lines */}
-      <line x1="10" y1="1" x2="10" y2="19" strokeWidth="2" />
-      <line x1="1" y1="10" x2="19" y2="10" strokeWidth="2" />
-    </svg>
-  );
 }
 
 /**
@@ -325,7 +288,7 @@ export function ReferencePanel({
   viewTransform, fitLeader,
   traceFeedback = null,
 }: ReferencePanelProps) {
-  const { grid, lines, version: guideVersion, cycleGridMode, addLine, removeLine, clearLines } = useGuides();
+  const { grid, lines, version: guideVersion, setGridMode, addLine, removeLine, clearLines, placingCenter, placePerspectiveCenter } = useGuides();
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
@@ -334,7 +297,12 @@ export function ReferencePanel({
   // session is active so any reflexive reference-panel stroke can't be
   // interpreted as a guide-line drag. The user's selected guideMode is
   // preserved in state and restored automatically when the session ends.
-  const effectiveGuideMode: GuideInteractionMode = suppressGuideEditing ? 'none' : guideMode;
+  // The perspective-anchor placement mode (armed from the drawing-side
+  // controller) takes precedence over the local guide-line modes so the next
+  // tap on either panel places the anchor.
+  const effectiveGuideMode: GuideInteractionMode = suppressGuideEditing
+    ? 'none'
+    : placingCenter ? 'place-center' : guideMode;
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -1230,19 +1198,7 @@ export function ReferencePanel({
           </ToolbarTooltip>
         )}
 
-        <ToolbarTooltip title={t('cycleGrid')}>
-          <IconButton
-            size="small"
-            onClick={cycleGridMode}
-            sx={{
-              'bgcolor': grid.mode !== 'none' ? 'info.main' : 'transparent',
-              'color': grid.mode !== 'none' ? 'white' : 'inherit',
-              '&:hover': { bgcolor: grid.mode !== 'none' ? 'info.dark' : 'action.hover' },
-            }}
-          >
-            <GridIcon mode={grid.mode} />
-          </IconButton>
-        </ToolbarTooltip>
+        <GridModePopoverButton grid={grid} onSetGridMode={setGridMode} />
 
         {!isYouTube && (
           <ToolbarTooltip title={t('flipHorizontal')}>
@@ -1716,6 +1672,7 @@ export function ReferencePanel({
             onFitSize={onReferenceImageSize}
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
+            onPlaceCenter={placePerspectiveCenter}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
             viewTransform={viewTransform}
@@ -1754,6 +1711,7 @@ export function ReferencePanel({
             onTemplateLoaded={onReferenceImageSize}
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
+            onPlaceCenter={placePerspectiveCenter}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
@@ -1779,6 +1737,7 @@ export function ReferencePanel({
             onImageError={handleImageError}
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
+            onPlaceCenter={placePerspectiveCenter}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}

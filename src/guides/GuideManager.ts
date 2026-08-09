@@ -1,5 +1,5 @@
-import type { GuideLine, GridSettings, GridMode, GuideState } from './types';
-import { DEFAULT_GUIDE_STATE, nextGridMode, migrateGridSettings } from './types';
+import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
+import { DEFAULT_GUIDE_STATE, DEFAULT_PERSPECTIVE, migrateGridSettings, sanitizePerspectiveSettings } from './types';
 
 let nextId = 1;
 
@@ -19,11 +19,20 @@ export class GuideManager {
   }
 
   setGridMode(mode: GridMode): void {
-    this.state.grid = { mode };
+    // Keep perspective settings across mode switches so re-entering the
+    // perspective mode restores the previous composition.
+    const perspective = mode === 'perspective'
+      ? this.state.grid.perspective ?? DEFAULT_PERSPECTIVE
+      : this.state.grid.perspective;
+    this.state.grid = perspective ? { mode, perspective } : { mode };
   }
 
-  cycleGridMode(): void {
-    this.state.grid = { mode: nextGridMode(this.state.grid.mode) };
+  setPerspective(patch: Partial<PerspectiveSettings>): void {
+    const current = this.state.grid.perspective ?? DEFAULT_PERSPECTIVE;
+    this.state.grid = {
+      ...this.state.grid,
+      perspective: sanitizePerspectiveSettings({ ...current, ...patch }),
+    };
   }
 
   getLines(): readonly GuideLine[] {
