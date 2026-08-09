@@ -1,5 +1,6 @@
 import { GuideManager } from './GuideManager';
 import type { GuideLine, GuideState } from './types';
+import { DEFAULT_PERSPECTIVE } from './types';
 
 /** Simulates the legacy persisted format before GridMode migration */
 interface LegacyGuideState {
@@ -28,14 +29,42 @@ describe('GuideManager', () => {
       expect(manager.getGrid().mode).toBe('none');
     });
 
-    it('cycles grid mode: none → normal → large → none', () => {
-      expect(manager.getGrid().mode).toBe('none');
-      manager.cycleGridMode();
-      expect(manager.getGrid().mode).toBe('normal');
-      manager.cycleGridMode();
-      expect(manager.getGrid().mode).toBe('large');
-      manager.cycleGridMode();
-      expect(manager.getGrid().mode).toBe('none');
+    it('fills default perspective settings when entering perspective mode', () => {
+      manager.setGridMode('perspective');
+      expect(manager.getGrid().mode).toBe('perspective');
+      expect(manager.getGrid().perspective).toEqual(DEFAULT_PERSPECTIVE);
+    });
+
+    it('keeps perspective settings across mode switches', () => {
+      manager.setGridMode('perspective');
+      manager.setPerspective({ yaw: 30, strength: 0.8 });
+      manager.setGridMode('normal');
+      manager.setGridMode('perspective');
+      expect(manager.getGrid().perspective).toMatchObject({ yaw: 30, strength: 0.8 });
+    });
+  });
+
+  describe('setPerspective', () => {
+    it('merges a partial patch over defaults', () => {
+      manager.setGridMode('perspective');
+      manager.setPerspective({ pitch: 45 });
+      expect(manager.getGrid().perspective).toEqual({ ...DEFAULT_PERSPECTIVE, pitch: 45 });
+    });
+
+    it('clamps out-of-range values', () => {
+      manager.setGridMode('perspective');
+      manager.setPerspective({ yaw: 400, pitch: -400, strength: 3 });
+      expect(manager.getGrid().perspective).toMatchObject({ yaw: 90, pitch: -90, strength: 1 });
+    });
+
+    it('falls back to defaults for non-finite values', () => {
+      manager.setGridMode('perspective');
+      manager.setPerspective({ yaw: 10 });
+      manager.setPerspective({ yaw: Number.NaN, centerX: Number.POSITIVE_INFINITY });
+      expect(manager.getGrid().perspective).toMatchObject({
+        yaw: DEFAULT_PERSPECTIVE.yaw,
+        centerX: DEFAULT_PERSPECTIVE.centerX,
+      });
     });
   });
 
@@ -101,6 +130,22 @@ describe('GuideManager', () => {
 
       manager.importState(legacyState as unknown as GuideState);
 
+      expect(manager.getGrid().mode).toBe('none');
+    });
+
+    it('fills default perspective settings when a stored perspective draft lacks them', () => {
+      manager.importState({
+        grid: { mode: 'perspective' },
+        lines: [],
+      });
+      expect(manager.getGrid().perspective).toEqual(DEFAULT_PERSPECTIVE);
+    });
+
+    it('falls back to default grid for an unknown mode value', () => {
+      manager.importState({
+        grid: { mode: 'diagonal' },
+        lines: [],
+      } as unknown as GuideState);
       expect(manager.getGrid().mode).toBe('none');
     });
 

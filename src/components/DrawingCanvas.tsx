@@ -80,6 +80,9 @@ interface DrawingCanvasProps {
    * the lingering deviation feedback so the re-trace surface is clean.
    */
   onStrokeStart?: () => void;
+  /** When true, the next tap places the perspective grid anchor instead of drawing/erasing. */
+  placingPerspectiveCenter?: boolean;
+  onPlacePerspectiveCenter?: (x: number, y: number) => void;
 }
 
 /**
@@ -129,6 +132,8 @@ export function DrawingCanvas({
   onStrokeFinalized,
   dimmedStrokeTimestamps = null,
   onStrokeStart,
+  placingPerspectiveCenter = false,
+  onPlacePerspectiveCenter,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -805,6 +810,13 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(touch.clientX, touch.clientY);
 
+    // Perspective-anchor placement intercepts the tap in any mode. No
+    // startStroke → the timer stays untouched (it only starts on strokes).
+    if (placingPerspectiveCenter) {
+      onPlacePerspectiveCenter?.(point.x, point.y);
+      return;
+    }
+
     if (mode === 'erase') {
       // Arm pending state only — tap vs lasso is decided on move/up.
       beginErasePending(touch.clientX, touch.clientY, point);
@@ -817,7 +829,7 @@ export function DrawingCanvas({
       onStrokeStart?.();
       strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync, noteTouch]);
+  }, [mode, getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw, cancelLasso, beginErasePending, onStrokeStart, placingPerspectiveCenter, onPlacePerspectiveCenter, syncActiveTouchesFromEvent, clearStalePinchAfterTouchSync, noteTouch]);
 
   const handleTouchMove = useCallback((e: TouchEvent) => {
     e.preventDefault();
@@ -1013,6 +1025,13 @@ export function DrawingCanvas({
 
     const point = getCanvasPoint(e.clientX, e.clientY);
 
+    // See handleTouchStart — perspective-anchor placement wins over both modes.
+    if (placingPerspectiveCenter) {
+      isMouseDownRef.current = false;
+      onPlacePerspectiveCenter?.(point.x, point.y);
+      return;
+    }
+
     if (mode === 'erase') {
       beginErasePending(e.clientX, e.clientY, point);
     }
@@ -1022,7 +1041,7 @@ export function DrawingCanvas({
       onStrokeStart?.();
       strokeManager.startStroke(point);
     }
-  }, [mode, getCanvasPoint, strokeManager, beginErasePending, onStrokeStart]);
+  }, [mode, getCanvasPoint, strokeManager, beginErasePending, onStrokeStart, placingPerspectiveCenter, onPlacePerspectiveCenter]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isMouseDownRef.current) return;
@@ -1083,7 +1102,7 @@ export function DrawingCanvas({
         width: '100%',
         height: '100%',
         position: 'relative',
-        cursor: mode === 'erase' ? 'crosshair' : 'default',
+        cursor: placingPerspectiveCenter || mode === 'erase' ? 'crosshair' : 'default',
         touchAction: 'none',
       }}
     >

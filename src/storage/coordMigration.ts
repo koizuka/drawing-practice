@@ -29,7 +29,17 @@ export function shiftStrokes(strokes: readonly Stroke[], dx: number, dy: number)
 
 export function shiftGuideState(state: GuideState, dx: number, dy: number): GuideState {
   return {
-    grid: state.grid,
+    // The perspective anchor point is a world coordinate, so it shifts too.
+    grid: state.grid.perspective
+      ? {
+          ...state.grid,
+          perspective: {
+            ...state.grid.perspective,
+            centerX: state.grid.perspective.centerX + dx,
+            centerY: state.grid.perspective.centerY + dy,
+          },
+        }
+      : state.grid,
     lines: state.lines.map(l => shiftGuideLine(l, dx, dy)),
   };
 }

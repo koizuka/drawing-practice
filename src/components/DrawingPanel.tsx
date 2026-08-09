@@ -8,6 +8,8 @@ import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
+import { PerspectiveController } from './PerspectiveController';
+import { GridModePopoverButton } from './GridModePopoverButton';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
 import { saveDrawing, type DrawingRecord } from '../storage';
@@ -158,7 +160,7 @@ export function DrawingPanel({
   const toolbarCoverRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  const { grid, lines, version: guideVersion } = useGuides();
+  const { grid, lines, version: guideVersion, setGridMode, placingCenter, placePerspectiveCenter } = useGuides();
 
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
@@ -574,6 +576,10 @@ export function DrawingPanel({
               <ToolbarTooltip title={tooltip}>
                 {collapseLocked ? <span>{button}</span> : button}
               </ToolbarTooltip>
+              {/* Grid controls live on the reference toolbar (ui-design-principles
+                  §8), but that toolbar is unreachable while the reference panel is
+                  collapsed — the drawing side stands in for it only then. */}
+              {referenceCollapsed && <GridModePopoverButton grid={grid} onSetGridMode={setGridMode} />}
               <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
             </>
           );
@@ -779,6 +785,7 @@ export function DrawingPanel({
             )}
           </Box>
         )}
+        {grid.mode === 'perspective' && <PerspectiveController />}
         <Box sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
           <DrawingCanvas
             mode={mode}
@@ -803,6 +810,8 @@ export function DrawingPanel({
             onStrokeFinalized={onStrokeFinalized}
             dimmedStrokeTimestamps={dimmedStrokeTimestamps}
             onStrokeStart={handleStrokeStart}
+            placingPerspectiveCenter={placingCenter}
+            onPlacePerspectiveCenter={placePerspectiveCenter}
           />
         </Box>
       </Box>

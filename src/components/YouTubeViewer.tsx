@@ -54,6 +54,8 @@ interface YouTubeViewerProps {
   onFitSize?: (width: number, height: number) => void;
   guideMode: GuideInteractionMode;
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void;
+  /** Tap handler for the 'place-center' mode (perspective grid anchor). */
+  onPlaceCenter?: (x: number, y: number) => void;
   highlightedGuideId?: string | null;
   onHighlightGuide?: (id: string | null) => void;
   /** Optional shared ViewTransform to sync iframe placement with the drawing canvas. */
@@ -81,7 +83,7 @@ export function YouTubeViewer({
   videoId, grid, guideLines, guideVersion,
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
   onFitSize,
-  guideMode, onAddGuideLine, highlightedGuideId, onHighlightGuide,
+  guideMode, onAddGuideLine, onPlaceCenter, highlightedGuideId, onHighlightGuide,
   viewTransform,
   isFitLeader = false,
   videoInteractMode = false,
@@ -411,7 +413,10 @@ export function YouTubeViewer({
       }
       onHighlightGuide?.(best?.id ?? null);
     }
-  }, [guideMode, getWorldPoint, getLogicalScale, guideLines, onHighlightGuide]);
+    else if (guideMode === 'place-center') {
+      onPlaceCenter?.(point.x, point.y);
+    }
+  }, [guideMode, getWorldPoint, getLogicalScale, guideLines, onHighlightGuide, onPlaceCenter]);
 
   const updateGuideInteraction = useCallback((clientX: number, clientY: number) => {
     if (guideMode !== 'add' || !dragStart) return;
@@ -601,7 +606,7 @@ export function YouTubeViewer({
 
   const overlayActive = !videoInteractMode;
   const cursor
-    = guideMode === 'add'
+    = guideMode === 'add' || guideMode === 'place-center'
       ? 'crosshair'
       : guideMode === 'delete'
         ? 'pointer'

@@ -307,6 +307,20 @@ db.version(16).stores({
   poseHistory: '++id, lastUsedAt',
 });
 
+// v17: no index change — anchors the additive 'perspective' GridSettings
+// field ({ yaw, pitch, strength, centerX, centerY }) and the 'perspective'
+// GridMode stored inside session.guideState.grid. Old drafts lack the field
+// and are healed by migrateGridSettings on restore.
+db.version(17).stores({
+  drawings: '++id, createdAt',
+  session: 'id',
+  urlHistory: 'url, lastUsedAt',
+  pexelsSearchHistory: 'key, lastUsedAt',
+  sketchfabSearchHistory: 'key, lastUsedAt',
+  poseAssets: 'id',
+  poseHistory: '++id, lastUsedAt',
+});
+
 export { db };
 
 /**

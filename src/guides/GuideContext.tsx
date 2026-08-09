@@ -1,6 +1,6 @@
 import { createContext, useRef, useState, useCallback, type ReactNode } from 'react';
 import { GuideManager } from './GuideManager';
-import type { GuideLine, GridSettings, GuideState } from './types';
+import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
 import { DEFAULT_GUIDE_STATE } from './types';
 
 interface GuideContextValue {
@@ -8,7 +8,14 @@ interface GuideContextValue {
   grid: GridSettings;
   lines: readonly GuideLine[];
   version: number;
-  cycleGridMode: () => void;
+  /** True when the last change was mid-gesture (drag); autosave may debounce it. */
+  lastChangeTransient: boolean;
+  setGridMode: (mode: GridMode) => void;
+  setPerspective: (patch: Partial<PerspectiveSettings>, opts?: { transient?: boolean }) => void;
+  /** Non-persisted UI state: next tap on a panel places the perspective anchor. */
+  placingCenter: boolean;
+  setPlacingCenter: (placing: boolean) => void;
+  placePerspectiveCenter: (x: number, y: number) => void;
   addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine;
   removeLine: (id: string) => void;
   clearLines: () => void;
@@ -22,15 +29,32 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0);
   const [grid, setGrid] = useState<GridSettings>(DEFAULT_GUIDE_STATE.grid);
   const [lines, setLines] = useState<readonly GuideLine[]>([]);
+  const [lastChangeTransient, setLastChangeTransient] = useState(false);
+  const [placingCenter, setPlacingCenter] = useState(false);
 
-  const sync = useCallback(() => {
+  const sync = useCallback((transient = false) => {
     setVersion(v => v + 1);
     setGrid(guideManagerRef.current.getGrid());
     setLines([...guideManagerRef.current.getLines()]);
+    setLastChangeTransient(transient);
   }, []);
 
-  const cycleGridMode = useCallback(() => {
-    guideManagerRef.current.cycleGridMode();
+  const setGridMode = useCallback((mode: GridMode) => {
+    guideManagerRef.current.setGridMode(mode);
+    // Disarm the place-anchor mode when leaving perspective — otherwise the
+    // next tap would still mutate the (now hidden) perspective settings.
+    if (mode !== 'perspective') setPlacingCenter(false);
+    sync();
+  }, [sync]);
+
+  const setPerspective = useCallback((patch: Partial<PerspectiveSettings>, opts?: { transient?: boolean }) => {
+    guideManagerRef.current.setPerspective(patch);
+    sync(opts?.transient ?? false);
+  }, [sync]);
+
+  const placePerspectiveCenter = useCallback((x: number, y: number) => {
+    guideManagerRef.current.setPerspective({ centerX: x, centerY: y });
+    setPlacingCenter(false);
     sync();
   }, [sync]);
 
@@ -61,7 +85,12 @@ export function GuideProvider({ children }: { children: ReactNode }) {
       grid,
       lines,
       version,
-      cycleGridMode,
+      lastChangeTransient,
+      setGridMode,
+      setPerspective,
+      placingCenter,
+      setPlacingCenter,
+      placePerspectiveCenter,
       addLine,
       removeLine,
       clearLines,

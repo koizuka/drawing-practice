@@ -57,7 +57,10 @@ export function useAutosave(
       referenceInfo: state.referenceInfo,
       referenceImageData: state.referenceImageData,
       guideState: {
-        grid: { ...state.grid },
+        grid: {
+          ...state.grid,
+          ...(state.grid.perspective ? { perspective: { ...state.grid.perspective } } : {}),
+        },
         lines: [...state.lines],
       },
       referenceCollapsed: state.referenceCollapsed ?? false,

@@ -10,7 +10,7 @@ import type { Stroke, Point } from '../drawing/types';
 import type { TraceTemplate } from '../templates/types';
 import type { TraceFeedback } from '../trace/types';
 
-export type GuideInteractionMode = 'none' | 'add' | 'delete';
+export type GuideInteractionMode = 'none' | 'add' | 'delete' | 'place-center';
 
 interface TraceTemplateViewerProps {
   template: TraceTemplate;
@@ -25,6 +25,8 @@ interface TraceTemplateViewerProps {
   guideMode: GuideInteractionMode;
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void;
   onDeleteGuideLine?: (id: string) => void;
+  /** Tap handler for the 'place-center' mode (perspective grid anchor). */
+  onPlaceCenter?: (x: number, y: number) => void;
   highlightedGuideId?: string | null;
   onHighlightGuide?: (id: string | null) => void;
   isFlipped?: boolean;
@@ -51,6 +53,7 @@ export function TraceTemplateViewer({
   onTemplateLoaded,
   guideMode,
   onAddGuideLine,
+  onPlaceCenter,
   highlightedGuideId,
   onHighlightGuide,
   isFlipped,
@@ -325,7 +328,10 @@ export function TraceTemplateViewer({
       }
       onHighlightGuide?.(best?.id ?? null);
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, getCurrentScale]);
+    else if (guideMode === 'place-center') {
+      onPlaceCenter?.(point.x, point.y);
+    }
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, onPlaceCenter, getCurrentScale]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (guideMode !== 'add' || !dragStart) return;
@@ -391,7 +397,10 @@ export function TraceTemplateViewer({
       }
       onHighlightGuide?.(best?.id ?? null);
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, dragStart, dragEnd, getCurrentScale]);
+    else if (guideMode === 'place-center') {
+      onPlaceCenter?.(point.x, point.y);
+    }
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, onPlaceCenter, dragStart, dragEnd, getCurrentScale]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -456,7 +465,7 @@ export function TraceTemplateViewer({
     setDragEnd(null);
   }, [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale]);
 
-  const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default';
+  const cursor = guideMode === 'add' || guideMode === 'place-center' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default';
 
   return (
     <Box

@@ -27,12 +27,14 @@ function touch(identifier: number, clientX: number, clientY: number): Touch {
 interface RenderOpts {
   mode?: DrawingMode;
   highlightedStrokeIndex?: number | null;
+  placingPerspectiveCenter?: boolean;
 }
 
 function renderCanvas(strokeManager = new StrokeManager(), opts: RenderOpts = {}) {
   const onStrokeCountChange = vi.fn();
   const onHighlightStroke = vi.fn();
   const onDeleteHighlightedStroke = vi.fn();
+  const onPlacePerspectiveCenter = vi.fn();
   const view = render(
     <DrawingCanvas
       mode={opts.mode ?? 'pen'}
@@ -46,6 +48,8 @@ function renderCanvas(strokeManager = new StrokeManager(), opts: RenderOpts = {}
       grid={grid}
       guideLines={[]}
       guideVersion={0}
+      placingPerspectiveCenter={opts.placingPerspectiveCenter ?? false}
+      onPlacePerspectiveCenter={onPlacePerspectiveCenter}
     />,
   );
   return {
@@ -54,6 +58,7 @@ function renderCanvas(strokeManager = new StrokeManager(), opts: RenderOpts = {}
     onStrokeCountChange,
     onHighlightStroke,
     onDeleteHighlightedStroke,
+    onPlacePerspectiveCenter,
     strokeManager,
   };
 }
@@ -452,5 +457,50 @@ describe('DrawingCanvas synthetic-mouse suppression after touch', () => {
     fireEvent.mouseMove(canvas, { clientX: 70, clientY: 80 });
     fireEvent.mouseUp(canvas, { clientX: 70, clientY: 80 });
     expect(sm.getStrokes()).toHaveLength(1);
+  });
+});
+
+describe('DrawingCanvas perspective-anchor placement', () => {
+  it('routes a pen-mode tap to onPlacePerspectiveCenter without starting a stroke', () => {
+    const sm = new StrokeManager();
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { placingPerspectiveCenter: true });
+
+    fireEvent.touchStart(canvas, {
+      touches: [touch(1, 200, 150)],
+      changedTouches: [touch(1, 200, 150)],
+    });
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [touch(1, 200, 150)] });
+
+    // Container center maps to world origin (see addStrokeAt comment).
+    expect(onPlacePerspectiveCenter).toHaveBeenCalledWith(0, 0);
+    expect(sm.getStrokes()).toHaveLength(0);
+    expect(sm.getCurrentStroke()).toBeNull();
+  });
+
+  it('routes an erase-mode tap to onPlacePerspectiveCenter without erasing', () => {
+    const sm = new StrokeManager();
+    addStrokeAt(sm, 0, 0);
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { mode: 'erase', placingPerspectiveCenter: true });
+
+    fireEvent.touchStart(canvas, {
+      touches: [touch(1, 200, 150)],
+      changedTouches: [touch(1, 200, 150)],
+    });
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [touch(1, 200, 150)] });
+
+    expect(onPlacePerspectiveCenter).toHaveBeenCalledWith(0, 0);
+    expect(sm.getStrokes()).toHaveLength(1);
+  });
+
+  it('routes a mouse click to onPlacePerspectiveCenter without drawing', () => {
+    const sm = new StrokeManager();
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { placingPerspectiveCenter: true });
+
+    fireEvent.mouseDown(canvas, { clientX: 250, clientY: 150 });
+    fireEvent.mouseMove(canvas, { clientX: 260, clientY: 160 });
+    fireEvent.mouseUp(canvas, { clientX: 260, clientY: 160 });
+
+    expect(onPlacePerspectiveCenter).toHaveBeenCalledWith(50, 0);
+    expect(sm.getStrokes()).toHaveLength(0);
   });
 });

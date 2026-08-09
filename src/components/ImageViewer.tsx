@@ -8,7 +8,7 @@ import { pointToSegmentDistance } from '../guides/GuideManager';
 import type { GridSettings, GuideLine } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
 
-export type GuideInteractionMode = 'none' | 'add' | 'delete';
+export type GuideInteractionMode = 'none' | 'add' | 'delete' | 'place-center';
 
 interface ImageViewerProps {
   imageUrl: string;
@@ -25,6 +25,8 @@ interface ImageViewerProps {
   guideMode: GuideInteractionMode;
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void;
   onDeleteGuideLine?: (id: string) => void;
+  /** Tap handler for the 'place-center' mode (perspective grid anchor). */
+  onPlaceCenter?: (x: number, y: number) => void;
   /** ID of the guide line currently highlighted for deletion */
   highlightedGuideId?: string | null;
   onHighlightGuide?: (id: string | null) => void;
@@ -47,7 +49,7 @@ export function ImageViewer({
   imageUrl, viewResetVersion, grid, guideLines, guideVersion,
   overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
   onImageLoaded, onImageError,
-  guideMode, onAddGuideLine,
+  guideMode, onAddGuideLine, onPlaceCenter,
   highlightedGuideId, onHighlightGuide,
   isFlipped,
   viewTransform,
@@ -329,7 +331,10 @@ export function ImageViewer({
       }
       onHighlightGuide?.(best?.id ?? null);
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, getCurrentScale]);
+    else if (guideMode === 'place-center') {
+      onPlaceCenter?.(point.x, point.y);
+    }
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, onPlaceCenter, getCurrentScale]);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (guideMode !== 'add' || !dragStart) return;
@@ -398,7 +403,10 @@ export function ImageViewer({
       }
       onHighlightGuide?.(best?.id ?? null);
     }
-  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, dragStart, dragEnd, getCurrentScale]);
+    else if (guideMode === 'place-center') {
+      onPlaceCenter?.(point.x, point.y);
+    }
+  }, [guideMode, getCanvasPoint, guideLines, onHighlightGuide, onPlaceCenter, dragStart, dragEnd, getCurrentScale]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     for (let i = 0; i < e.changedTouches.length; i++) {
@@ -473,7 +481,7 @@ export function ImageViewer({
     setDragEnd(null);
   }, [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale]);
 
-  const cursor = guideMode === 'add' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default';
+  const cursor = guideMode === 'add' || guideMode === 'place-center' ? 'crosshair' : guideMode === 'delete' ? 'pointer' : 'default';
 
   return (
     <Box
