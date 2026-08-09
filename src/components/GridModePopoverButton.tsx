@@ -81,6 +81,7 @@ export function GridModePopoverButton({
       <ToolbarTooltip title={t('gridMenu')}>
         <IconButton
           size="small"
+          aria-label={t('gridMenu')}
           onClick={e => setAnchorEl(e.currentTarget)}
           sx={{
             'bgcolor': active ? 'info.main' : 'transparent',

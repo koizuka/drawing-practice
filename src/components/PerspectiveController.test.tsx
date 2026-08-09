@@ -20,7 +20,9 @@ function Probe() {
       data-strength={grid.perspective?.strength}
       data-transient={String(lastChangeTransient)}
       data-placing={String(placingCenter)}
-    />
+    >
+      <button type="button" data-testid="to-normal-grid" onClick={() => setGridMode('normal')} />
+    </div>
   );
 }
 
@@ -94,6 +96,16 @@ describe('PerspectiveController', () => {
     expect(screen.getByTestId('probe').dataset.placing).toBe('true');
 
     fireEvent.click(screen.getByRole('button', { name: t('perspectivePlaceCenter') }));
+    expect(screen.getByTestId('probe').dataset.placing).toBe('false');
+  });
+
+  it('disarms the place-anchor mode when leaving perspective mode', () => {
+    renderController();
+
+    fireEvent.click(screen.getByRole('button', { name: t('perspectivePlaceCenter') }));
+    expect(screen.getByTestId('probe').dataset.placing).toBe('true');
+
+    fireEvent.click(screen.getByTestId('to-normal-grid'));
     expect(screen.getByTestId('probe').dataset.placing).toBe('false');
   });
 
