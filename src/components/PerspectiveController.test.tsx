@@ -207,6 +207,10 @@ describe('PerspectiveController', () => {
 
     fireEvent.click(screen.getByTestId('record-memory'));
     fireEvent.click(screen.getByTestId('perspective-memory-delete'));
+    // While confirming, the target's button is hidden (the ✓/✗ pair takes its
+    // slot so the grid never exceeds 5×2, and the gap previews the deletion).
+    expect(screen.queryByTestId('perspective-memory-1')).toBeNull();
+
     fireEvent.click(screen.getByTestId('perspective-memory-delete-cancel'));
 
     expect(screen.getByTestId('perspective-memory-1')).toBeInTheDocument();

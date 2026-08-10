@@ -192,7 +192,10 @@ export function PerspectiveController() {
       </Box>
       {memories.length > 0 && (
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: PAD_SIZE + 40 }}>
-          {memories.map((memory) => {
+          {/* While confirming, the target's numbered button is hidden: the ✓/✗
+              pair takes its slot (keeping the row within the 5×2 grid even at
+              the 9-memory cap) and the gap previews the deletion. */}
+          {memories.filter(m => !(confirmingDelete && m.seq === activeMemory?.seq)).map((memory) => {
             const active = memory.seq === activeMemory?.seq;
             return (
               <ToolbarTooltip key={memory.seq} title={`${t('perspectiveMemoryRecall')} ${memory.seq}`}>
