@@ -207,9 +207,10 @@ describe('PerspectiveController', () => {
 
     fireEvent.click(screen.getByTestId('record-memory'));
     fireEvent.click(screen.getByTestId('perspective-memory-delete'));
-    // While confirming, the target's button is hidden (the ✓/✗ pair takes its
-    // slot so the grid never exceeds 5×2, and the gap previews the deletion).
+    // While confirming, ✓ replaces the target's own numbered button and ✗
+    // replaces the trash — no button moves and the grid never exceeds 5×2.
     expect(screen.queryByTestId('perspective-memory-1')).toBeNull();
+    expect(screen.queryByTestId('perspective-memory-delete')).toBeNull();
 
     fireEvent.click(screen.getByTestId('perspective-memory-delete-cancel'));
 
