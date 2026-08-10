@@ -1,5 +1,13 @@
 import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
-import { DEFAULT_GUIDE_STATE, DEFAULT_PERSPECTIVE, migrateGridSettings, sanitizePerspectiveSettings } from './types';
+import {
+  DEFAULT_GUIDE_STATE,
+  DEFAULT_PERSPECTIVE,
+  MAX_PERSPECTIVE_MEMORIES,
+  migrateGridSettings,
+  perspectiveSettingsEqual,
+  sanitizePerspectiveSettings,
+  smallestFreeMemorySeq,
+} from './types';
 
 let nextId = 1;
 
@@ -19,12 +27,17 @@ export class GuideManager {
   }
 
   setGridMode(mode: GridMode): void {
-    // Keep perspective settings across mode switches so re-entering the
-    // perspective mode restores the previous composition.
+    // Keep perspective settings (and captured memories) across mode switches
+    // so re-entering the perspective mode restores the previous composition.
     const perspective = mode === 'perspective'
       ? this.state.grid.perspective ?? DEFAULT_PERSPECTIVE
       : this.state.grid.perspective;
-    this.state.grid = perspective ? { mode, perspective } : { mode };
+    const memories = this.state.grid.perspectiveMemories;
+    this.state.grid = {
+      mode,
+      ...(perspective ? { perspective } : {}),
+      ...(memories?.length ? { perspectiveMemories: memories } : {}),
+    };
   }
 
   setPerspective(patch: Partial<PerspectiveSettings>): void {
@@ -33,6 +46,38 @@ export class GuideManager {
       ...this.state.grid,
       perspective: sanitizePerspectiveSettings({ ...current, ...patch }),
     };
+  }
+
+  /**
+   * Snapshot the current perspective settings into the memory list so the user
+   * can recall this angle later. Appends (oldest first, oldest evicted at the
+   * cap); a snapshot identical to an existing memory is skipped so repeated
+   * strokes at the same angle don't flood the list. Returns whether the list
+   * changed, so callers can skip a state sync on the common same-angle stroke.
+   */
+  recordPerspectiveMemory(): boolean {
+    const current = this.state.grid.perspective ?? DEFAULT_PERSPECTIVE;
+    const memories = this.state.grid.perspectiveMemories ?? [];
+    if (memories.some(m => perspectiveSettingsEqual(m.settings, current))) return false;
+    // Evict the oldest entry when full, then label the new one with the
+    // smallest free number — surviving entries keep their labels, and reuse
+    // keeps every label single-digit (see PerspectiveMemory.seq).
+    const kept = memories.slice(-(MAX_PERSPECTIVE_MEMORIES - 1));
+    const seq = smallestFreeMemorySeq(new Set(kept.map(m => m.seq)));
+    this.state.grid = {
+      ...this.state.grid,
+      perspectiveMemories: [...kept, { seq, settings: { ...current } }],
+    };
+    return true;
+  }
+
+  /** Delete one memory by its label number; the freed number goes back into the reuse pool. */
+  removePerspectiveMemory(seq: number): boolean {
+    const memories = this.state.grid.perspectiveMemories ?? [];
+    const filtered = memories.filter(m => m.seq !== seq);
+    if (filtered.length === memories.length) return false;
+    this.state.grid = { ...this.state.grid, perspectiveMemories: filtered };
+    return true;
   }
 
   getLines(): readonly GuideLine[] {

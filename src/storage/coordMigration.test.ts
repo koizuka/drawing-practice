@@ -63,6 +63,25 @@ describe('coordMigration', () => {
       expect(out.grid.perspective).toEqual({ yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100 });
     });
 
+    it('shifts every perspective memory anchor too', () => {
+      const state: GuideState = {
+        grid: {
+          mode: 'perspective',
+          perspective: { yaw: 0, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 },
+          perspectiveMemories: [
+            { seq: 1, settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200 } },
+            { seq: 2, settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: 10, centerY: 20 } },
+          ],
+        },
+        lines: [],
+      };
+      const out = shiftGuideState(state, -50, -100);
+      expect(out.grid.perspectiveMemories).toEqual([
+        { seq: 1, settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100 } },
+        { seq: 2, settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: -40, centerY: -80 } },
+      ]);
+    });
+
     it('keeps grid identity when no perspective settings exist', () => {
       const state: GuideState = { grid: { mode: 'large' }, lines: [] };
       const out = shiftGuideState(state, -50, -100);

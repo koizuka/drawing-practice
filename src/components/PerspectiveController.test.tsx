@@ -8,7 +8,7 @@ import { t } from '../i18n';
 
 /** Enters perspective mode and exposes the live guide state for assertions. */
 function Probe() {
-  const { grid, setGridMode, lastChangeTransient, placingCenter } = useGuides();
+  const { grid, setGridMode, lastChangeTransient, placingCenter, recordPerspectiveMemory } = useGuides();
   useEffect(() => {
     setGridMode('perspective');
   }, [setGridMode]);
@@ -22,6 +22,7 @@ function Probe() {
       data-placing={String(placingCenter)}
     >
       <button type="button" data-testid="to-normal-grid" onClick={() => setGridMode('normal')} />
+      <button type="button" data-testid="record-memory" onClick={recordPerspectiveMemory} />
     </div>
   );
 }
@@ -125,6 +126,108 @@ describe('PerspectiveController', () => {
     expect(Number(probe.dataset.pitch)).toBe(0);
     expect(Number(probe.dataset.strength)).toBe(0.5);
     expect(probe.dataset.transient).toBe('false');
+  });
+
+  it('shows no memory buttons until a memory is recorded', () => {
+    renderController();
+    expect(screen.queryByTestId('perspective-memory-1')).toBeNull();
+    expect(screen.queryByTestId('perspective-memory-delete')).toBeNull();
+  });
+
+  it('recalls a memorized angle from its button', () => {
+    renderController();
+    const pad = padElement();
+
+    // Memorize the neutral pose, then move away and memorize the new angle.
+    fireEvent.click(screen.getByTestId('record-memory'));
+    fireEvent.pointerDown(pad, { clientX: 96, clientY: 48, pointerId: 1 });
+    fireEvent.pointerUp(pad, { pointerId: 1 });
+    fireEvent.click(screen.getByTestId('record-memory'));
+
+    expect(screen.getByTestId('perspective-memory-2')).toBeInTheDocument();
+    expect(Number(screen.getByTestId('probe').dataset.yaw)).toBe(90);
+
+    fireEvent.click(screen.getByTestId('perspective-memory-1'));
+
+    const probe = screen.getByTestId('probe');
+    expect(Number(probe.dataset.yaw)).toBe(0);
+    expect(Number(probe.dataset.pitch)).toBe(0);
+    // Recall is a discrete button action — must flush, not debounce.
+    expect(probe.dataset.transient).toBe('false');
+  });
+
+  it('does not duplicate a memory for the same angle', () => {
+    renderController();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+    fireEvent.click(screen.getByTestId('record-memory'));
+
+    expect(screen.getByTestId('perspective-memory-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('perspective-memory-2')).toBeNull();
+  });
+
+  it('disables the trash button while no memory matches the current angle', () => {
+    renderController();
+    const pad = padElement();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+    expect(screen.getByTestId('perspective-memory-delete')).toBeEnabled();
+
+    // Rotate away from the memorized angle — nothing is selected to delete.
+    fireEvent.pointerDown(pad, { clientX: 96, clientY: 48, pointerId: 1 });
+    fireEvent.pointerUp(pad, { pointerId: 1 });
+    expect(screen.getByTestId('perspective-memory-delete')).toBeDisabled();
+
+    // Recalling a memory re-enables it.
+    fireEvent.click(screen.getByTestId('perspective-memory-1'));
+    expect(screen.getByTestId('perspective-memory-delete')).toBeEnabled();
+  });
+
+  it('deletes the selected memory after the in-place confirmation', () => {
+    renderController();
+    const pad = padElement();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+    fireEvent.pointerDown(pad, { clientX: 96, clientY: 48, pointerId: 1 });
+    fireEvent.pointerUp(pad, { pointerId: 1 });
+    fireEvent.click(screen.getByTestId('record-memory'));
+
+    // Select memory 1 and delete it via trash → ✓.
+    fireEvent.click(screen.getByTestId('perspective-memory-1'));
+    fireEvent.click(screen.getByTestId('perspective-memory-delete'));
+    fireEvent.click(screen.getByTestId('perspective-memory-delete-confirm'));
+
+    // Memory 1 is gone, memory 2 keeps its label.
+    expect(screen.queryByTestId('perspective-memory-1')).toBeNull();
+    expect(screen.getByTestId('perspective-memory-2')).toBeInTheDocument();
+  });
+
+  it('keeps the memory when the confirmation is cancelled', () => {
+    renderController();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+    fireEvent.click(screen.getByTestId('perspective-memory-delete'));
+    fireEvent.click(screen.getByTestId('perspective-memory-delete-cancel'));
+
+    expect(screen.getByTestId('perspective-memory-1')).toBeInTheDocument();
+    expect(screen.getByTestId('perspective-memory-delete')).toBeInTheDocument();
+  });
+
+  it('drops a pending delete confirmation when another memory is recalled', () => {
+    renderController();
+    const pad = padElement();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+    fireEvent.pointerDown(pad, { clientX: 96, clientY: 48, pointerId: 1 });
+    fireEvent.pointerUp(pad, { pointerId: 1 });
+    fireEvent.click(screen.getByTestId('record-memory'));
+
+    // Arm deletion of memory 2 (currently active), then recall memory 1 —
+    // the confirmation must vanish instead of silently retargeting.
+    fireEvent.click(screen.getByTestId('perspective-memory-delete'));
+    fireEvent.click(screen.getByTestId('perspective-memory-1'));
+    expect(screen.queryByTestId('perspective-memory-delete-confirm')).toBeNull();
+    expect(screen.getByTestId('perspective-memory-delete')).toBeInTheDocument();
   });
 
   it('collapses to a single expand button and back', () => {

@@ -42,6 +42,98 @@ describe('GuideManager', () => {
       manager.setGridMode('perspective');
       expect(manager.getGrid().perspective).toMatchObject({ yaw: 30, strength: 0.8 });
     });
+
+    it('keeps perspective memories across mode switches', () => {
+      manager.setGridMode('perspective');
+      manager.setPerspective({ yaw: 30 });
+      manager.recordPerspectiveMemory();
+      manager.setGridMode('normal');
+      manager.setGridMode('perspective');
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([{ seq: 1, settings: { yaw: 30 } }]);
+      // Labels stay consistent after the round-trip: the next memory takes
+      // the next free number, not label 1 again.
+      manager.setPerspective({ yaw: 60 });
+      manager.recordPerspectiveMemory();
+      expect(manager.getGrid().perspectiveMemories![1].seq).toBe(2);
+    });
+  });
+
+  describe('recordPerspectiveMemory', () => {
+    beforeEach(() => {
+      manager.setGridMode('perspective');
+    });
+
+    it('appends snapshots oldest first with sequential labels', () => {
+      manager.setPerspective({ yaw: 10 });
+      expect(manager.recordPerspectiveMemory()).toBe(true);
+      manager.setPerspective({ yaw: 20 });
+      expect(manager.recordPerspectiveMemory()).toBe(true);
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([
+        { seq: 1, settings: { yaw: 10 } },
+        { seq: 2, settings: { yaw: 20 } },
+      ]);
+    });
+
+    it('skips a snapshot identical to an existing memory', () => {
+      manager.setPerspective({ yaw: 10 });
+      manager.recordPerspectiveMemory();
+      manager.setPerspective({ yaw: 20 });
+      manager.recordPerspectiveMemory();
+      // Recalling memory 1 and drawing again must not duplicate it.
+      manager.setPerspective({ yaw: 10 });
+      expect(manager.recordPerspectiveMemory()).toBe(false);
+      expect(manager.getGrid().perspectiveMemories).toHaveLength(2);
+    });
+
+    it('evicts the oldest memory at the cap, reusing its freed label for the new entry', () => {
+      for (let i = 0; i < 10; i++) {
+        manager.setPerspective({ yaw: i * 5 });
+        manager.recordPerspectiveMemory();
+      }
+      const memories = manager.getGrid().perspectiveMemories!;
+      expect(memories).toHaveLength(9);
+      // #1 (oldest) evicted; survivors keep #2..#9 and the newest entry
+      // takes the freed #1 — labels never exceed one digit.
+      expect(memories[0]).toMatchObject({ seq: 2, settings: { yaw: 5 } });
+      expect(memories[8]).toMatchObject({ seq: 1, settings: { yaw: 45 } });
+    });
+
+    it('snapshots by value, not by reference to the live settings', () => {
+      manager.setPerspective({ yaw: 10 });
+      manager.recordPerspectiveMemory();
+      manager.setPerspective({ yaw: 55 });
+      expect(manager.getGrid().perspectiveMemories![0].settings.yaw).toBe(10);
+    });
+  });
+
+  describe('removePerspectiveMemory', () => {
+    beforeEach(() => {
+      manager.setGridMode('perspective');
+      for (const yaw of [10, 20, 30]) {
+        manager.setPerspective({ yaw });
+        manager.recordPerspectiveMemory();
+      }
+    });
+
+    it('removes the targeted memory and keeps the other labels', () => {
+      expect(manager.removePerspectiveMemory(2)).toBe(true);
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([{ seq: 1 }, { seq: 3 }]);
+    });
+
+    it('returns false for an unknown label', () => {
+      expect(manager.removePerspectiveMemory(99)).toBe(false);
+      expect(manager.getGrid().perspectiveMemories).toHaveLength(3);
+    });
+
+    it('reuses the smallest freed label for the next memory, appended last', () => {
+      manager.removePerspectiveMemory(2);
+      manager.setPerspective({ yaw: 40 });
+      manager.recordPerspectiveMemory();
+      // 1 2 3 → delete 2 → 1 3 → record → 1 3 2 (freed label, appended at the end).
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([
+        { seq: 1 }, { seq: 3 }, { seq: 2, settings: { yaw: 40 } },
+      ]);
+    });
   });
 
   describe('setPerspective', () => {
@@ -139,6 +231,39 @@ describe('GuideManager', () => {
         lines: [],
       });
       expect(manager.getGrid().perspective).toEqual(DEFAULT_PERSPECTIVE);
+    });
+
+    it('sanitizes and caps stored perspective memories', () => {
+      const memories = Array.from({ length: 12 }, (_, i) => (
+        { seq: i + 1, settings: { yaw: i * 5, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 } }
+      ));
+      memories[1] = { seq: 30, settings: { yaw: 400, pitch: Number.NaN, strength: 0.5, centerX: 0, centerY: 0 } };
+      manager.importState({
+        grid: { mode: 'perspective', perspectiveMemories: memories },
+        lines: [],
+      } as unknown as GuideState);
+      const imported = manager.getGrid().perspectiveMemories!;
+      expect(imported).toHaveLength(9);
+      // Out-of-range label 30 falls back to the smallest free number; the
+      // invalid setting values are clamped/defaulted.
+      expect(imported[1]).toMatchObject({ seq: 2, settings: { yaw: 90, pitch: 0 } });
+    });
+
+    it('adopts legacy memory entries (bare settings) with positional labels', () => {
+      manager.importState({
+        grid: {
+          mode: 'perspective',
+          perspectiveMemories: [
+            { yaw: 10, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 },
+            { yaw: 20, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 },
+          ],
+        },
+        lines: [],
+      } as unknown as GuideState);
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([
+        { seq: 1, settings: { yaw: 10 } },
+        { seq: 2, settings: { yaw: 20 } },
+      ]);
     });
 
     it('falls back to default grid for an unknown mode value', () => {

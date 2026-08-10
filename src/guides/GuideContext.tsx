@@ -12,6 +12,10 @@ interface GuideContextValue {
   lastChangeTransient: boolean;
   setGridMode: (mode: GridMode) => void;
   setPerspective: (patch: Partial<PerspectiveSettings>, opts?: { transient?: boolean }) => void;
+  /** Snapshot the current perspective settings into the recall-memory list (no-op if already memorized). */
+  recordPerspectiveMemory: () => void;
+  /** Delete one perspective memory by its label number. */
+  removePerspectiveMemory: (seq: number) => void;
   /** Non-persisted UI state: next tap on a panel places the perspective anchor. */
   placingCenter: boolean;
   setPlacingCenter: (placing: boolean) => void;
@@ -52,6 +56,18 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     sync(opts?.transient ?? false);
   }, [sync]);
 
+  const recordPerspectiveMemory = useCallback(() => {
+    // Transient sync: capture rides along a freehand stroke commit, so it takes
+    // the same 2s-debounce autosave path as the stroke instead of an immediate
+    // flush per stroke.
+    if (guideManagerRef.current.recordPerspectiveMemory()) sync(true);
+  }, [sync]);
+
+  const removePerspectiveMemory = useCallback((seq: number) => {
+    // Discrete button action — non-transient sync so autosave flushes at once.
+    if (guideManagerRef.current.removePerspectiveMemory(seq)) sync();
+  }, [sync]);
+
   const placePerspectiveCenter = useCallback((x: number, y: number) => {
     guideManagerRef.current.setPerspective({ centerX: x, centerY: y });
     setPlacingCenter(false);
@@ -88,6 +104,8 @@ export function GuideProvider({ children }: { children: ReactNode }) {
       lastChangeTransient,
       setGridMode,
       setPerspective,
+      recordPerspectiveMemory,
+      removePerspectiveMemory,
       placingCenter,
       setPlacingCenter,
       placePerspectiveCenter,

@@ -160,7 +160,7 @@ export function DrawingPanel({
   const toolbarCoverRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  const { grid, lines, version: guideVersion, setGridMode, placingCenter, placePerspectiveCenter } = useGuides();
+  const { grid, lines, version: guideVersion, setGridMode, placingCenter, placePerspectiveCenter, recordPerspectiveMemory } = useGuides();
 
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
@@ -295,6 +295,16 @@ export function DrawingPanel({
       timer.start();
     }
   }, [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts]);
+
+  const handleStrokeFinalized = useCallback((stroke: Stroke) => {
+    // A committed stroke under the perspective grid means the user actually
+    // sketched at this angle — snapshot it so they can flip back later from
+    // the controller's recall buttons.
+    if (grid.mode === 'perspective') {
+      recordPerspectiveMemory();
+    }
+    onStrokeFinalized?.(stroke);
+  }, [grid.mode, recordPerspectiveMemory, onStrokeFinalized]);
 
   const handleStrokeStart = useCallback(() => {
     // Clear the previous attempt's red deviation feedback in the same React
@@ -807,7 +817,7 @@ export function DrawingPanel({
             inputFrozen={inputFrozen}
             templateStrokes={templateStrokes}
             traceFeedback={traceFeedback}
-            onStrokeFinalized={onStrokeFinalized}
+            onStrokeFinalized={handleStrokeFinalized}
             dimmedStrokeTimestamps={dimmedStrokeTimestamps}
             onStrokeStart={handleStrokeStart}
             placingPerspectiveCenter={placingCenter}
