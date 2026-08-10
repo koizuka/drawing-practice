@@ -213,6 +213,23 @@ describe('PerspectiveController', () => {
     expect(screen.getByTestId('perspective-memory-delete')).toBeInTheDocument();
   });
 
+  it('does not resurrect a dropped confirmation when the same memory is recalled again', () => {
+    renderController();
+    const pad = padElement();
+
+    fireEvent.click(screen.getByTestId('record-memory'));
+
+    // Arm deletion, rotate away (deselects), then recall the same memory —
+    // the earlier confirmation must not reappear out of nowhere.
+    fireEvent.click(screen.getByTestId('perspective-memory-delete'));
+    fireEvent.pointerDown(pad, { clientX: 96, clientY: 48, pointerId: 1 });
+    fireEvent.pointerUp(pad, { pointerId: 1 });
+    fireEvent.click(screen.getByTestId('perspective-memory-1'));
+
+    expect(screen.queryByTestId('perspective-memory-delete-confirm')).toBeNull();
+    expect(screen.getByTestId('perspective-memory-delete')).toBeEnabled();
+  });
+
   it('drops a pending delete confirmation when another memory is recalled', () => {
     renderController();
     const pad = padElement();

@@ -297,14 +297,19 @@ export function DrawingPanel({
   }, [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts]);
 
   const handleStrokeFinalized = useCallback((stroke: Stroke) => {
-    // A committed stroke under the perspective grid means the user actually
-    // sketched at this angle — snapshot it so they can flip back later from
-    // the controller's recall buttons.
-    if (grid.mode === 'perspective') {
+    // Scoring first: trace-template scoring may reject an out-of-range stroke
+    // and discard it from the manager (see TraceScoringContext).
+    onStrokeFinalized?.(stroke);
+    // A stroke that survived scoring under the perspective grid means the user
+    // actually sketched at this angle — snapshot it so they can flip back
+    // later from the controller's recall buttons. Timestamps are unique per
+    // stroke (see StrokeManager.nextTimestamp), so presence-by-timestamp is a
+    // reliable "was it kept" check.
+    if (grid.mode === 'perspective'
+      && strokeManager.getStrokes().some(s => s.timestamp === stroke.timestamp)) {
       recordPerspectiveMemory();
     }
-    onStrokeFinalized?.(stroke);
-  }, [grid.mode, recordPerspectiveMemory, onStrokeFinalized]);
+  }, [grid.mode, recordPerspectiveMemory, onStrokeFinalized, strokeManager]);
 
   const handleStrokeStart = useCallback(() => {
     // Clear the previous attempt's red deviation feedback in the same React

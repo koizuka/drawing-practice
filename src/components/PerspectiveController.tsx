@@ -21,9 +21,7 @@ export function PerspectiveController() {
   const { grid, setPerspective, placingCenter, setPlacingCenter, removePerspectiveMemory } = useGuides();
   const [collapsed, setCollapsed] = useState(false);
   // Label of the memory whose deletion is awaiting the in-place ✓/✗
-  // confirmation. Compared against the active memory at render time, so
-  // recalling another memory (or rotating away) implicitly drops the pending
-  // confirmation instead of deleting something no longer highlighted.
+  // confirmation.
   const [confirmingDeleteSeq, setConfirmingDeleteSeq] = useState<number | null>(null);
   const perspective = grid.perspective ?? DEFAULT_PERSPECTIVE;
   const memories = grid.perspectiveMemories ?? [];
@@ -32,6 +30,14 @@ export function PerspectiveController() {
   // beats a delete-by-number mode: the user doesn't have to remember which
   // number holds which angle.
   const activeMemory = memories.find(m => perspectiveSettingsEqual(m.settings, perspective));
+  // Drop a pending confirmation the moment the active memory changes
+  // (recalling another memory, rotating away) so it can't delete something no
+  // longer highlighted — and can't resurface later when the user happens to
+  // land on the same angle again. Render-time state adjustment, not an
+  // effect, so the ✓/✗ never paints for a stale target.
+  if (confirmingDeleteSeq !== null && confirmingDeleteSeq !== activeMemory?.seq) {
+    setConfirmingDeleteSeq(null);
+  }
   const confirmingDelete = confirmingDeleteSeq !== null && confirmingDeleteSeq === activeMemory?.seq;
 
   const padRef = useRef<HTMLDivElement>(null);
@@ -193,6 +199,7 @@ export function PerspectiveController() {
                 <IconButton
                   size="small"
                   data-testid={`perspective-memory-${memory.seq}`}
+                  aria-label={`${t('perspectiveMemoryRecall')} ${memory.seq}`}
                   onClick={() => setPerspective({ ...memory.settings })}
                   sx={{
                     'width': 22,
@@ -220,6 +227,7 @@ export function PerspectiveController() {
                     <IconButton
                       size="small"
                       data-testid="perspective-memory-delete-confirm"
+                      aria-label={t('delete')}
                       onClick={() => {
                         removePerspectiveMemory(activeMemory.seq);
                         setConfirmingDeleteSeq(null);
@@ -239,6 +247,7 @@ export function PerspectiveController() {
                     <IconButton
                       size="small"
                       data-testid="perspective-memory-delete-cancel"
+                      aria-label={t('cancel')}
                       onClick={() => setConfirmingDeleteSeq(null)}
                       sx={{ width: 22, height: 22 }}
                     >
@@ -254,6 +263,7 @@ export function PerspectiveController() {
                     <IconButton
                       size="small"
                       data-testid="perspective-memory-delete"
+                      aria-label={t('perspectiveMemoryDelete')}
                       disabled={!activeMemory}
                       onClick={() => setConfirmingDeleteSeq(activeMemory!.seq)}
                       sx={{ width: 22, height: 22 }}
