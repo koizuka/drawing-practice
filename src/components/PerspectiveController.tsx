@@ -1,10 +1,10 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Box, IconButton, Paper, Slider } from '@mui/material';
-import { Crosshair, Minimize2, RotateCcw } from 'lucide-react';
+import { Check, Crosshair, Minimize2, RotateCcw, Trash2, X } from 'lucide-react';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { t } from '../i18n';
 import { useGuides } from '../guides/useGuides';
-import { DEFAULT_PERSPECTIVE } from '../guides/types';
+import { DEFAULT_PERSPECTIVE, perspectiveSettingsEqual } from '../guides/types';
 import { GridIcon } from './GridModePopoverButton';
 
 const PAD_SIZE = 96;
@@ -18,9 +18,27 @@ const DOT_RADIUS = 6;
  * place-anchor tap mode. Mounted only while grid.mode === 'perspective'.
  */
 export function PerspectiveController() {
-  const { grid, setPerspective, placingCenter, setPlacingCenter } = useGuides();
+  const { grid, setPerspective, placingCenter, setPlacingCenter, removePerspectiveMemory } = useGuides();
   const [collapsed, setCollapsed] = useState(false);
+  // Label of the memory whose deletion is awaiting the in-place ✓/✗
+  // confirmation.
+  const [confirmingDeleteSeq, setConfirmingDeleteSeq] = useState<number | null>(null);
   const perspective = grid.perspective ?? DEFAULT_PERSPECTIVE;
+  const memories = grid.perspectiveMemories ?? [];
+  // The memory matching the current settings — the highlighted button, and
+  // the one the trash button targets. Deleting "the number I tapped last"
+  // beats a delete-by-number mode: the user doesn't have to remember which
+  // number holds which angle.
+  const activeMemory = memories.find(m => perspectiveSettingsEqual(m.settings, perspective));
+  // Drop a pending confirmation the moment the active memory changes
+  // (recalling another memory, rotating away) so it can't delete something no
+  // longer highlighted — and can't resurface later when the user happens to
+  // land on the same angle again. Render-time state adjustment, not an
+  // effect, so the ✓/✗ never paints for a stale target.
+  if (confirmingDeleteSeq !== null && confirmingDeleteSeq !== activeMemory?.seq) {
+    setConfirmingDeleteSeq(null);
+  }
+  const confirmingDelete = confirmingDeleteSeq !== null && confirmingDeleteSeq === activeMemory?.seq;
 
   const padRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -172,6 +190,97 @@ export function PerspectiveController() {
           sx={{ height: PAD_SIZE, touchAction: 'none' }}
         />
       </Box>
+      {memories.length > 0 && (
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, maxWidth: PAD_SIZE + 40 }}>
+          {/* In-place ✓/✗ confirmation (no modal — same pattern as
+              DrawingPanel's toolbar confirms): ✓ replaces the target's own
+              numbered button and ✗ replaces the trash, so no button moves and
+              the row stays within the 5×2 grid even at the 9-memory cap. The
+              ✓ sitting exactly where the number was also reads as "delete
+              THIS one". */}
+          {memories.map((memory) => {
+            if (confirmingDelete && memory.seq === activeMemory?.seq) {
+              return (
+                <ToolbarTooltip key={memory.seq} title={t('delete')}>
+                  <IconButton
+                    size="small"
+                    data-testid="perspective-memory-delete-confirm"
+                    aria-label={t('delete')}
+                    onClick={() => {
+                      removePerspectiveMemory(memory.seq);
+                      setConfirmingDeleteSeq(null);
+                    }}
+                    sx={{
+                      'width': 22,
+                      'height': 22,
+                      'bgcolor': 'error.main',
+                      'color': 'white',
+                      '&:hover': { bgcolor: 'error.dark' },
+                    }}
+                  >
+                    <Check size={14} />
+                  </IconButton>
+                </ToolbarTooltip>
+              );
+            }
+            const active = memory.seq === activeMemory?.seq;
+            return (
+              <ToolbarTooltip key={memory.seq} title={`${t('perspectiveMemoryRecall')} ${memory.seq}`}>
+                <IconButton
+                  size="small"
+                  data-testid={`perspective-memory-${memory.seq}`}
+                  aria-label={`${t('perspectiveMemoryRecall')} ${memory.seq}`}
+                  onClick={() => setPerspective({ ...memory.settings })}
+                  sx={{
+                    'width': 22,
+                    'height': 22,
+                    'fontSize': 12,
+                    'border': '1px solid',
+                    'borderColor': active ? 'info.main' : 'divider',
+                    'borderRadius': 1,
+                    'bgcolor': active ? 'info.main' : 'transparent',
+                    'color': active ? 'white' : 'inherit',
+                    '&:hover': { bgcolor: active ? 'info.dark' : 'action.hover' },
+                  }}
+                >
+                  {memory.seq}
+                </IconButton>
+              </ToolbarTooltip>
+            );
+          })}
+          {confirmingDelete
+            ? (
+                <ToolbarTooltip title={t('cancel')}>
+                  <IconButton
+                    size="small"
+                    data-testid="perspective-memory-delete-cancel"
+                    aria-label={t('cancel')}
+                    onClick={() => setConfirmingDeleteSeq(null)}
+                    sx={{ width: 22, height: 22 }}
+                  >
+                    <X size={14} />
+                  </IconButton>
+                </ToolbarTooltip>
+              )
+            : (
+                <ToolbarTooltip title={t('perspectiveMemoryDelete')}>
+                  {/* span keeps the tooltip working while the button is disabled */}
+                  <span>
+                    <IconButton
+                      size="small"
+                      data-testid="perspective-memory-delete"
+                      aria-label={t('perspectiveMemoryDelete')}
+                      disabled={!activeMemory}
+                      onClick={() => setConfirmingDeleteSeq(activeMemory!.seq)}
+                      sx={{ width: 22, height: 22 }}
+                    >
+                      <Trash2 size={14} />
+                    </IconButton>
+                  </span>
+                </ToolbarTooltip>
+              )}
+        </Box>
+      )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
         <ToolbarTooltip title={t('perspectivePlaceCenter')}>
           <IconButton

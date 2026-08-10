@@ -1,5 +1,5 @@
 import type { Stroke } from '../drawing/types';
-import type { GuideLine, GuideState } from '../guides/types';
+import type { GuideLine, GuideState, PerspectiveSettings } from '../guides/types';
 
 /**
  * Translate every coordinate by `(dx, dy)`. Used to migrate legacy stored
@@ -28,16 +28,22 @@ export function shiftStrokes(strokes: readonly Stroke[], dx: number, dy: number)
 }
 
 export function shiftGuideState(state: GuideState, dx: number, dy: number): GuideState {
+  // The perspective anchor point is a world coordinate, so it shifts too —
+  // both the active settings and every captured memory snapshot.
+  const shiftPerspective = (p: PerspectiveSettings): PerspectiveSettings => ({
+    ...p,
+    centerX: p.centerX + dx,
+    centerY: p.centerY + dy,
+  });
+  const { perspective, perspectiveMemories } = state.grid;
   return {
-    // The perspective anchor point is a world coordinate, so it shifts too.
-    grid: state.grid.perspective
+    grid: perspective || perspectiveMemories?.length
       ? {
           ...state.grid,
-          perspective: {
-            ...state.grid.perspective,
-            centerX: state.grid.perspective.centerX + dx,
-            centerY: state.grid.perspective.centerY + dy,
-          },
+          ...(perspective ? { perspective: shiftPerspective(perspective) } : {}),
+          ...(perspectiveMemories
+            ? { perspectiveMemories: perspectiveMemories.map(m => ({ ...m, settings: shiftPerspective(m.settings) })) }
+            : {}),
         }
       : state.grid,
     lines: state.lines.map(l => shiftGuideLine(l, dx, dy)),
