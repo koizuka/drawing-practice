@@ -1,5 +1,5 @@
 import { useContext } from 'react';
-import { GuideContext, type GuideContextValue } from './GuideContext';
+import { GuideContext, type GuideContextValue } from './guideContextValue';
 
 export function useGuides(): GuideContextValue {
   const ctx = useContext(GuideContext);

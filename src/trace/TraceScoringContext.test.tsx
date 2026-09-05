@@ -1,7 +1,8 @@
 import { render, act } from '@testing-library/react';
 import { useEffect } from 'react';
 import { describe, it, expect } from 'vitest';
-import { TraceScoringProvider, useTraceScoring } from './TraceScoringContext';
+import { TraceScoringProvider } from './TraceScoringContext';
+import { useTraceScoring } from './useTraceScoring';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { circle, polyline } from '../templates/builders';
 import type { Stroke } from '../drawing/types';
