@@ -5,7 +5,12 @@ const API_KEY_STORAGE_KEY = 'pexelsApiKey';
 const LAST_SEARCH_STORAGE_KEY = 'pexels.lastSearch';
 
 export type PexelsOrientationFilter = 'all' | 'landscape' | 'portrait' | 'square';
-const ORIENTATION_FILTERS: readonly PexelsOrientationFilter[] = ['all', 'landscape', 'portrait', 'square'];
+const ORIENTATION_FILTERS: readonly PexelsOrientationFilter[] = [
+  'all',
+  'landscape',
+  'portrait',
+  'square',
+];
 
 export interface PexelsLastSearch {
   query: string;
@@ -82,10 +87,10 @@ export class PexelsNetworkError extends Error {
 
 export function getPexelsApiKey(): string {
   try {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(API_KEY_STORAGE_KEY) : null;
+    const stored =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(API_KEY_STORAGE_KEY) : null;
     if (stored && stored.length > 0) return stored;
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
   return '';
@@ -95,12 +100,10 @@ export function setPexelsApiKey(key: string): void {
   try {
     if (key === '') {
       localStorage.removeItem(API_KEY_STORAGE_KEY);
-    }
-    else {
+    } else {
       localStorage.setItem(API_KEY_STORAGE_KEY, key);
     }
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
 }
@@ -115,8 +118,7 @@ export function getPexelsLastSearch(): PexelsLastSearch | null {
     if (typeof query !== 'string' || typeof orientation !== 'string') return null;
     if (!ORIENTATION_FILTERS.includes(orientation as PexelsOrientationFilter)) return null;
     return { query, orientation: orientation as PexelsOrientationFilter };
-  }
-  catch {
+  } catch {
     return null;
   }
 }
@@ -124,8 +126,7 @@ export function getPexelsLastSearch(): PexelsLastSearch | null {
 export function setPexelsLastSearch(query: string, orientation: PexelsOrientationFilter): void {
   try {
     localStorage.setItem(LAST_SEARCH_STORAGE_KEY, JSON.stringify({ query, orientation }));
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
 }
@@ -133,7 +134,7 @@ export function setPexelsLastSearch(query: string, orientation: PexelsOrientatio
 /** Allowed gesture-session per-pose durations (ms). Closed set so the
  *  Pexels search UI can render an exclusive ToggleButtonGroup. */
 export const PEXELS_SESSION_DURATIONS_MS = [30_000, 60_000, 90_000, 120_000] as const;
-export type PexelsSessionDurationMs = typeof PEXELS_SESSION_DURATIONS_MS[number];
+export type PexelsSessionDurationMs = (typeof PEXELS_SESSION_DURATIONS_MS)[number];
 export const DEFAULT_PEXELS_SESSION_DURATION_MS: PexelsSessionDurationMs = 30_000;
 export const PEXELS_SESSION_DURATION_STORAGE_KEY = 'pexels.gestureSessionDuration';
 
@@ -141,9 +142,9 @@ export function getPexelsSessionDuration(): PexelsSessionDurationMs {
   try {
     const raw = localStorage.getItem(PEXELS_SESSION_DURATION_STORAGE_KEY);
     const n = raw === null ? NaN : Number(raw);
-    if ((PEXELS_SESSION_DURATIONS_MS as readonly number[]).includes(n)) return n as PexelsSessionDurationMs;
-  }
-  catch {
+    if ((PEXELS_SESSION_DURATIONS_MS as readonly number[]).includes(n))
+      return n as PexelsSessionDurationMs;
+  } catch {
     // localStorage disabled / unavailable
   }
   return DEFAULT_PEXELS_SESSION_DURATION_MS;
@@ -152,8 +153,7 @@ export function getPexelsSessionDuration(): PexelsSessionDurationMs {
 export function setPexelsSessionDuration(ms: PexelsSessionDurationMs): void {
   try {
     localStorage.setItem(PEXELS_SESSION_DURATION_STORAGE_KEY, String(ms));
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
 }
@@ -165,8 +165,7 @@ async function pexelsFetch(url: string, signal?: AbortSignal): Promise<Response>
   let res: Response;
   try {
     res = await fetch(url, { headers: { Authorization: key }, signal });
-  }
-  catch (e) {
+  } catch (e) {
     // Propagate AbortError so callers can distinguish cancellations from real failures.
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     throw new PexelsNetworkError(e instanceof Error ? e.message : undefined);
@@ -191,18 +190,19 @@ export function isAbortError(e: unknown): boolean {
  * null for cases where the caller should suppress error text (e.g. missing /
  * invalid key — the API-key banner already communicates the problem).
  */
-export function mapPexelsErrorKey(e: unknown):
-  | 'pexelsKeyRequired'
-  | 'pexelsKeyInvalid'
-  | 'pexelsRateLimit'
-  | 'pexelsNetworkError' {
+export function mapPexelsErrorKey(
+  e: unknown,
+): 'pexelsKeyRequired' | 'pexelsKeyInvalid' | 'pexelsRateLimit' | 'pexelsNetworkError' {
   if (e instanceof PexelsKeyMissingError) return 'pexelsKeyRequired';
   if (e instanceof PexelsAuthError) return 'pexelsKeyInvalid';
   if (e instanceof PexelsRateLimitError) return 'pexelsRateLimit';
   return 'pexelsNetworkError';
 }
 
-export async function searchPhotos(params: PexelsSearchParams, signal?: AbortSignal): Promise<PexelsSearchResponse> {
+export async function searchPhotos(
+  params: PexelsSearchParams,
+  signal?: AbortSignal,
+): Promise<PexelsSearchResponse> {
   const search = new URLSearchParams({
     query: params.query,
     page: String(params.page ?? 1),
@@ -223,8 +223,7 @@ export function parsePexelsPhotoUrl(rawUrl: string): { id: number } | null {
   let url: URL;
   try {
     url = new URL(rawUrl.trim());
-  }
-  catch {
+  } catch {
     return null;
   }
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
@@ -246,7 +245,9 @@ export function parsePexelsPhotoUrl(rawUrl: string): { id: number } | null {
   return { id };
 }
 
-export function buildPexelsReferenceInfo(photo: PexelsPhoto): Extract<ReferenceInfo, { source: 'pexels' }> {
+export function buildPexelsReferenceInfo(
+  photo: PexelsPhoto,
+): Extract<ReferenceInfo, { source: 'pexels' }> {
   const title = photo.alt?.trim() || `Photo #${photo.id}`;
   return {
     title,

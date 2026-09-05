@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateFreezeHint, type FreezeHintInput, type FreezeHintThresholds } from './freezeHintLogic';
+import {
+  evaluateFreezeHint,
+  type FreezeHintInput,
+  type FreezeHintThresholds,
+} from './freezeHintLogic';
 
 const TH: FreezeHintThresholds = { streakMs: 15_000, silenceMs: 4_000, maxVisibleMs: 4_000 };
 const RECT = { left: 0, top: 0, width: 400, height: 300 };
@@ -66,7 +70,10 @@ describe('evaluateFreezeHint', () => {
   it('centers the pill when the container is too narrow to honor the edge reserve', () => {
     // width 200 < 2*(EST_HALF_W+MARGIN)=256 → no valid clamp range → center at width/2.
     const r = evaluateFreezeHint(
-      frozen({ client: { x: 10, y: 150 }, containerRect: { left: 0, top: 0, width: 200, height: 300 } }),
+      frozen({
+        client: { x: 10, y: 150 },
+        containerRect: { left: 0, top: 0, width: 200, height: 300 },
+      }),
       19_000,
       TH,
     );
@@ -76,7 +83,10 @@ describe('evaluateFreezeHint', () => {
 
   it('translates client coords to container-relative using the container offset', () => {
     const r = evaluateFreezeHint(
-      frozen({ client: { x: 250, y: 200 }, containerRect: { left: 50, top: 40, width: 400, height: 300 } }),
+      frozen({
+        client: { x: 250, y: 200 },
+        containerRect: { left: 50, top: 40, width: 400, height: 300 },
+      }),
       19_000,
       TH,
     );

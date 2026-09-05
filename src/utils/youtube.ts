@@ -12,8 +12,7 @@ export function parseYouTubeVideoId(rawUrl: string): string | null {
   let url: URL;
   try {
     url = new URL(rawUrl.trim());
-  }
-  catch {
+  } catch {
     return null;
   }
 
@@ -30,7 +29,10 @@ export function parseYouTubeVideoId(rawUrl: string): string | null {
       return isValidVideoId(id) ? id : null;
     }
     const segments = url.pathname.split('/').filter(Boolean);
-    if (segments.length >= 2 && (segments[0] === 'shorts' || segments[0] === 'embed' || segments[0] === 'live')) {
+    if (
+      segments.length >= 2 &&
+      (segments[0] === 'shorts' || segments[0] === 'embed' || segments[0] === 'live')
+    ) {
       const id = segments[1];
       return isValidVideoId(id) ? id : null;
     }
@@ -86,17 +88,19 @@ export function buildYouTubeEmbedUrl(videoId: string): string {
  * The endpoint sets `Access-Control-Allow-Origin: *`, so this works from the
  * browser without a proxy.
  */
-export async function fetchYouTubeTitle(videoId: string, signal?: AbortSignal): Promise<string | null> {
+export async function fetchYouTubeTitle(
+  videoId: string,
+  signal?: AbortSignal,
+): Promise<string | null> {
   if (!isValidVideoId(videoId)) return null;
   const target = `${YOUTUBE_ORIGIN}/watch?v=${videoId}`;
   const oembedUrl = `${YOUTUBE_ORIGIN}/oembed?url=${encodeURIComponent(target)}&format=json`;
   try {
     const res = await fetch(oembedUrl, { signal });
     if (!res.ok) return null;
-    const data = await res.json() as { title?: unknown };
+    const data = (await res.json()) as { title?: unknown };
     return typeof data.title === 'string' && data.title.trim() ? data.title.trim() : null;
-  }
-  catch {
+  } catch {
     return null;
   }
 }

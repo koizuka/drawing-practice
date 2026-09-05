@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Box, Typography, IconButton, Button, Checkbox, ToggleButton, ToggleButtonGroup, Menu, MenuItem } from '@mui/material';
+import {
+  Box,
+  Typography,
+  IconButton,
+  Button,
+  Checkbox,
+  ToggleButton,
+  ToggleButtonGroup,
+  Menu,
+  MenuItem,
+} from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { X, Trash2, ChevronDown, ChevronRight, Download, Pencil } from 'lucide-react';
 import {
@@ -25,15 +35,17 @@ import {
   type GroupMode,
 } from './galleryGrouping';
 
-const dayFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+const dayFormatter = new Intl.DateTimeFormat(undefined, {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
-function formatGroupDateLabel(
-  mode: GroupMode,
-  firstUsedAt: Date,
-  lastUsedAt: Date,
-): string | null {
-  if (mode === 'ref-first') return `${t('groupLabelFirstUsed')}: ${dayFormatter.format(firstUsedAt)}`;
-  if (mode === 'ref-recent') return `${t('groupLabelRecentUsed')}: ${dayFormatter.format(lastUsedAt)}`;
+function formatGroupDateLabel(mode: GroupMode, firstUsedAt: Date, lastUsedAt: Date): string | null {
+  if (mode === 'ref-first')
+    return `${t('groupLabelFirstUsed')}: ${dayFormatter.format(firstUsedAt)}`;
+  if (mode === 'ref-recent')
+    return `${t('groupLabelRecentUsed')}: ${dayFormatter.format(lastUsedAt)}`;
   return null;
 }
 
@@ -63,7 +75,9 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
   const mountedRef = useRef(true);
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -72,11 +86,17 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
       if (cancelled) return;
       setDrawings(all);
       setLoading(false);
-      computeStorageUsage(all).then((u) => {
-        if (!cancelled) setUsage(u);
-      }).catch(() => { /* ignore */ });
+      computeStorageUsage(all)
+        .then((u) => {
+          if (!cancelled) setUsage(u);
+        })
+        .catch(() => {
+          /* ignore */
+        });
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -91,22 +111,25 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
       tasks.push({ key, historyKey: ref.url });
     }
     for (const task of tasks) {
-      getUrlHistoryEntry(task.historyKey).then((entry) => {
-        if (cancelled) return;
-        if (entry?.imageBlob) {
-          const url = URL.createObjectURL(entry.imageBlob);
-          objectUrlsRef.current.push(url);
-          setImageThumbs(prev => ({ ...prev, [task.key]: url }));
-        }
-        else {
-          setImageThumbs(prev => ({ ...prev, [task.key]: null }));
-        }
-      }).catch(() => {
-        if (cancelled) return;
-        setImageThumbs(prev => ({ ...prev, [task.key]: null }));
-      });
+      getUrlHistoryEntry(task.historyKey)
+        .then((entry) => {
+          if (cancelled) return;
+          if (entry?.imageBlob) {
+            const url = URL.createObjectURL(entry.imageBlob);
+            objectUrlsRef.current.push(url);
+            setImageThumbs((prev) => ({ ...prev, [task.key]: url }));
+          } else {
+            setImageThumbs((prev) => ({ ...prev, [task.key]: null }));
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setImageThumbs((prev) => ({ ...prev, [task.key]: null }));
+        });
     }
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [drawings]);
 
   useEffect(() => {
@@ -130,68 +153,82 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
     const idsSnapshot = new Set(selectedIds);
     try {
       await bulkDeleteDrawings([...idsSnapshot]);
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to bulk-delete drawings', err);
       if (mountedRef.current) alert(t('deleteFailed'));
       return;
     }
     if (!mountedRef.current) return;
-    const remaining = drawings.filter(d => d.id == null || !idsSnapshot.has(d.id));
+    const remaining = drawings.filter((d) => d.id == null || !idsSnapshot.has(d.id));
     setDrawings(remaining);
     setSelectedIds(new Set());
-    computeStorageUsage(remaining).then((u) => {
-      if (mountedRef.current) setUsage(u);
-    }).catch(() => { /* ignore */ });
+    computeStorageUsage(remaining)
+      .then((u) => {
+        if (mountedRef.current) setUsage(u);
+      })
+      .catch(() => {
+        /* ignore */
+      });
   }, [drawings, selectedIds]);
 
-  const handleLoadDrawingReference = useCallback((drawing: DrawingRecord) => {
-    const ref = drawing.reference;
-    if (!ref) return;
-    onLoadReference?.(ref);
-    onClose();
-  }, [onLoadReference, onClose]);
+  const handleLoadDrawingReference = useCallback(
+    (drawing: DrawingRecord) => {
+      const ref = drawing.reference;
+      if (!ref) return;
+      onLoadReference?.(ref);
+      onClose();
+    },
+    [onLoadReference, onClose],
+  );
 
-  const handleLoadGroupReference = useCallback((ref: ReferenceInfo | undefined) => {
-    if (!ref) return;
-    onLoadReference?.(ref);
-    onClose();
-  }, [onLoadReference, onClose]);
+  const handleLoadGroupReference = useCallback(
+    (ref: ReferenceInfo | undefined) => {
+      if (!ref) return;
+      onLoadReference?.(ref);
+      onClose();
+    },
+    [onLoadReference, onClose],
+  );
 
   const groups = useMemo(
     () => buildGroups(drawings, groupMode, t('ungroupedReferences')),
     [drawings, groupMode],
   );
 
-  const getThumbForRef = useCallback((ref: ReferenceInfo | undefined): string | null => {
-    if (!ref) return null;
-    if (ref.source === 'image') return imageThumbs[referenceKey(ref)] ?? null;
-    return syncThumbUrl(ref);
-  }, [imageThumbs]);
+  const getThumbForRef = useCallback(
+    (ref: ReferenceInfo | undefined): string | null => {
+      if (!ref) return null;
+      if (ref.source === 'image') return imageThumbs[referenceKey(ref)] ?? null;
+      return syncThumbUrl(ref);
+    },
+    [imageThumbs],
+  );
 
   const isRefMode = groupMode !== 'date';
 
   return (
-    <Box sx={{
-      position: 'fixed',
-      inset: 0,
-      bgcolor: 'rgba(0,0,0,0.5)',
-      zIndex: 1000,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-    }}
-    >
-      <Box sx={{
-        bgcolor: 'white',
-        borderRadius: 2,
-        width: '90vw',
-        maxWidth: 900,
-        maxHeight: '85vh',
+    <Box
+      sx={{
+        position: 'fixed',
+        inset: 0,
+        bgcolor: 'rgba(0,0,0,0.5)',
+        zIndex: 1000,
         display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
+        alignItems: 'center',
+        justifyContent: 'center',
       }}
+    >
+      <Box
+        sx={{
+          bgcolor: 'white',
+          borderRadius: 2,
+          width: '90vw',
+          maxWidth: 900,
+          maxHeight: '85vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
       >
         {/* Header */}
         <Box sx={{ borderBottom: '1px solid #ddd', px: 2, py: 1.5 }}>
@@ -200,11 +237,7 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
               below has to wrap. */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Typography variant="h6" sx={{ flex: 1, minWidth: 0 }}>
-              {t('galleryTitle')}
-              {' '}
-              (
-              {drawings.length}
-              )
+              {t('galleryTitle')} ({drawings.length})
             </Typography>
             <IconButton onClick={onClose} size="small">
               <X size={20} />
@@ -241,83 +274,106 @@ export function Gallery({ onClose, onLoadReference, onLoadDrawing }: GalleryProp
 
         {/* Content */}
         <Box sx={{ flex: 1, overflow: 'auto', p: 2 }}>
-          {loading && (
-            <Typography color="text.secondary">{t('loading')}</Typography>
-          )}
+          {loading && <Typography color="text.secondary">{t('loading')}</Typography>}
 
           {!loading && drawings.length === 0 && (
             <Typography color="text.secondary">{t('noDrawings')}</Typography>
           )}
 
-          {!loading && groups.map((group, gi) => {
-            const groupThumb = isRefMode ? getThumbForRef(group.reference) : null;
-            const showGroupButton = isRefMode && canLoadReference(group.reference);
-            const groupDateLabel = formatGroupDateLabel(groupMode, group.firstUsedAt, group.lastUsedAt);
+          {!loading &&
+            groups.map((group, gi) => {
+              const groupThumb = isRefMode ? getThumbForRef(group.reference) : null;
+              const showGroupButton = isRefMode && canLoadReference(group.reference);
+              const groupDateLabel = formatGroupDateLabel(
+                groupMode,
+                group.firstUsedAt,
+                group.lastUsedAt,
+              );
 
-            return (
-              <Box
-                key={group.key}
-                sx={gi > 0 ? { borderTop: '1px solid #ddd', pt: 2, mt: 2 } : undefined}
-              >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                  {isRefMode && (
-                    groupThumb
-                      ? (
-                          <img
-                            src={groupThumb}
-                            alt={t('referenceThumbnailAlt')}
-                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, background: '#fafafa', flexShrink: 0 }}
-                          />
-                        )
-                      : (
-                          <Box sx={{ width: 40, height: 40, borderRadius: 1, bgcolor: '#eee', flexShrink: 0 }} />
-                        )
-                  )}
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="subtitle2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {group.label}
-                    </Typography>
-                    {groupDateLabel && (
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                        {groupDateLabel}
+              return (
+                <Box
+                  key={group.key}
+                  sx={gi > 0 ? { borderTop: '1px solid #ddd', pt: 2, mt: 2 } : undefined}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                    {isRefMode &&
+                      (groupThumb ? (
+                        <img
+                          src={groupThumb}
+                          alt={t('referenceThumbnailAlt')}
+                          style={{
+                            width: 40,
+                            height: 40,
+                            objectFit: 'cover',
+                            borderRadius: 4,
+                            background: '#fafafa',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ) : (
+                        <Box
+                          sx={{
+                            width: 40,
+                            height: 40,
+                            borderRadius: 1,
+                            bgcolor: '#eee',
+                            flexShrink: 0,
+                          }}
+                        />
+                      ))}
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography
+                        variant="subtitle2"
+                        sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      >
+                        {group.label}
                       </Typography>
+                      {groupDateLabel && (
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block' }}
+                        >
+                          {groupDateLabel}
+                        </Typography>
+                      )}
+                    </Box>
+                    {showGroupButton && (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleLoadGroupReference(group.reference)}
+                        sx={{ flexShrink: 0 }}
+                      >
+                        {t('loadReference')}
+                      </Button>
                     )}
                   </Box>
-                  {showGroupButton && (
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleLoadGroupReference(group.reference)}
-                      sx={{ flexShrink: 0 }}
-                    >
-                      {t('loadReference')}
-                    </Button>
-                  )}
-                </Box>
 
-                <Box sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                  gap: 2,
-                }}
-                >
-                  {group.drawings.map(drawing => (
-                    <DrawingCard
-                      key={drawing.id}
-                      drawing={drawing}
-                      showReferenceLabel={!isRefMode}
-                      showReferenceButton={!isRefMode && canLoadReference(drawing.reference)}
-                      referenceThumbUrl={!isRefMode ? getThumbForRef(drawing.reference) : null}
-                      selected={drawing.id != null && selectedIds.has(drawing.id)}
-                      onToggleSelect={toggleSelected}
-                      onLoadReference={handleLoadDrawingReference}
-                      onPreview={setPreviewDrawing}
-                    />
-                  ))}
+                  <Box
+                    sx={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                      gap: 2,
+                    }}
+                  >
+                    {group.drawings.map((drawing) => (
+                      <DrawingCard
+                        key={drawing.id}
+                        drawing={drawing}
+                        showReferenceLabel={!isRefMode}
+                        showReferenceButton={!isRefMode && canLoadReference(drawing.reference)}
+                        referenceThumbUrl={!isRefMode ? getThumbForRef(drawing.reference) : null}
+                        selected={drawing.id != null && selectedIds.has(drawing.id)}
+                        onToggleSelect={toggleSelected}
+                        onLoadReference={handleLoadDrawingReference}
+                        onPreview={setPreviewDrawing}
+                      />
+                    ))}
+                  </Box>
                 </Box>
-              </Box>
-            );
-          })}
+              );
+            })}
         </Box>
       </Box>
       {previewDrawing && (
@@ -337,13 +393,17 @@ const STORAGE_USAGE_EXPANDED_KEY = 'gallery.storageUsageExpanded';
 function loadStorageUsageExpanded(): boolean {
   try {
     return localStorage.getItem(STORAGE_USAGE_EXPANDED_KEY) === '1';
+  } catch {
+    return false;
   }
-  catch { return false; }
 }
 
 function persistStorageUsageExpanded(expanded: boolean): void {
-  try { localStorage.setItem(STORAGE_USAGE_EXPANDED_KEY, expanded ? '1' : '0'); }
-  catch { /* ignore */ }
+  try {
+    localStorage.setItem(STORAGE_USAGE_EXPANDED_KEY, expanded ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
 }
 
 function StorageUsageRow({ usage }: { usage: StorageUsage }) {
@@ -356,8 +416,10 @@ function StorageUsageRow({ usage }: { usage: StorageUsage }) {
     });
   }, []);
 
-  const drawingsBytes = usage.drawings.strokes + usage.drawings.thumbnails + usage.drawings.sketchfabImages;
-  const totalLogical = drawingsBytes + usage.urlHistoryImageBytes + usage.poseAssetsBytes + usage.sessionBytes;
+  const drawingsBytes =
+    usage.drawings.strokes + usage.drawings.thumbnails + usage.drawings.sketchfabImages;
+  const totalLogical =
+    drawingsBytes + usage.urlHistoryImageBytes + usage.poseAssetsBytes + usage.sessionBytes;
   const breakdownParts = [
     `${t('storageUsageStrokes')} ${formatBytes(usage.drawings.strokes)}`,
     `${t('storageUsageThumbnails')} ${formatBytes(usage.drawings.thumbnails)}`,
@@ -385,64 +447,46 @@ function StorageUsageRow({ usage }: { usage: StorageUsage }) {
       >
         {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         <Typography variant="caption" sx={{ fontWeight: 'bold' }}>
-          {t('storageUsageTitle')}
-          :
-          {formatBytes(totalLogical)}
+          {t('storageUsageTitle')}:{formatBytes(totalLogical)}
         </Typography>
       </Box>
       {expanded && (
         <Box sx={{ mt: 0.5, pl: 2 }}>
           <Typography variant="caption" component="div">
-            {t('storageUsageDrawings')}
-            {' '}
-            {formatBytes(drawingsBytes)}
-            {' '}
-            (
-            {breakdownParts.join(', ')}
-            )
+            {t('storageUsageDrawings')} {formatBytes(drawingsBytes)} ({breakdownParts.join(', ')})
           </Typography>
           {usage.drawings.strokeCount > 0 && (
             <Typography variant="caption" component="div">
-              {t('storageUsageStrokeStats')}
-              :
-              {usage.drawings.strokeCount}
-              {' '}
+              {t('storageUsageStrokeStats')}:{usage.drawings.strokeCount}{' '}
               {t('storageUsageUnitStrokes')}
-              {usage.drawings.drawingCount > 0 && ` / ${usage.drawings.drawingCount} ${t('storageUsageUnitDrawings')}`}
+              {usage.drawings.drawingCount > 0 &&
+                ` / ${usage.drawings.drawingCount} ${t('storageUsageUnitDrawings')}`}
               {' / '}
-              {t('storageUsageAvgPrefix')}
-              {' '}
-              {(usage.drawings.pointCount / usage.drawings.strokeCount).toFixed(1)}
-              {' '}
+              {t('storageUsageAvgPrefix')}{' '}
+              {(usage.drawings.pointCount / usage.drawings.strokeCount).toFixed(1)}{' '}
               {t('storageUsageUnitPoints')}
               {t('storageUsagePerStrokeSuffix')}
               {' / '}
-              {t('storageUsageAvgPrefix')}
-              {' '}
+              {t('storageUsageAvgPrefix')}{' '}
               {formatBytes(Math.round(usage.drawings.strokes / usage.drawings.strokeCount))}
               {t('storageUsagePerStrokeSuffix')}
-              {usage.drawings.drawingCount > 0 && ` / ${t('storageUsageAvgPrefix')} ${(usage.drawings.strokeCount / usage.drawings.drawingCount).toFixed(1)} ${t('storageUsageUnitStrokes')}${t('storageUsagePerDrawingSuffix')}`}
+              {usage.drawings.drawingCount > 0 &&
+                ` / ${t('storageUsageAvgPrefix')} ${(usage.drawings.strokeCount / usage.drawings.drawingCount).toFixed(1)} ${t('storageUsageUnitStrokes')}${t('storageUsagePerDrawingSuffix')}`}
             </Typography>
           )}
           {usage.urlHistoryImageBytes > 0 && (
             <Typography variant="caption" component="div">
-              {t('storageUsageImageHistory')}
-              {' '}
-              {formatBytes(usage.urlHistoryImageBytes)}
+              {t('storageUsageImageHistory')} {formatBytes(usage.urlHistoryImageBytes)}
             </Typography>
           )}
           {usage.poseAssetsBytes > 0 && (
             <Typography variant="caption" component="div">
-              {t('storageUsagePoseAssets')}
-              {' '}
-              {formatBytes(usage.poseAssetsBytes)}
+              {t('storageUsagePoseAssets')} {formatBytes(usage.poseAssetsBytes)}
             </Typography>
           )}
           {usage.estimateUsage != null && (
             <Typography variant="caption" component="div">
-              {t('storageUsageTotal')}
-              {' '}
-              {formatBytes(usage.estimateUsage)}
+              {t('storageUsageTotal')} {formatBytes(usage.estimateUsage)}
               {usage.estimateQuota != null && ` / ${formatBytes(usage.estimateQuota)}`}
             </Typography>
           )}
@@ -488,13 +532,13 @@ function DrawingCard({
   return (
     <Box
       sx={{
-        'border': '1px solid #ddd',
-        'borderRadius': 1,
-        'overflow': 'hidden',
-        'position': 'relative',
-        'outline': selected ? '2px solid' : 'none',
-        'outlineColor': 'primary.main',
-        'outlineOffset': '-2px',
+        border: '1px solid #ddd',
+        borderRadius: 1,
+        overflow: 'hidden',
+        position: 'relative',
+        outline: selected ? '2px solid' : 'none',
+        outlineColor: 'primary.main',
+        outlineOffset: '-2px',
         '&:hover': { borderColor: 'primary.main' },
       }}
     >
@@ -504,7 +548,14 @@ function DrawingCard({
           type="button"
           onClick={() => onPreview(drawing)}
           aria-label={t('previewDrawingTitle')}
-          sx={{ display: 'block', width: '100%', p: 0, border: 'none', background: 'none', cursor: 'zoom-in' }}
+          sx={{
+            display: 'block',
+            width: '100%',
+            p: 0,
+            border: 'none',
+            background: 'none',
+            cursor: 'zoom-in',
+          }}
         >
           <img
             src={drawing.thumbnail}
@@ -528,36 +579,51 @@ function DrawingCard({
             size="small"
             checked={selected}
             onChange={() => onToggleSelect(drawingId)}
-            slotProps={{ input: { 'aria-label': selected ? t('deselectDrawing') : t('selectDrawing') } }}
+            slotProps={{
+              input: { 'aria-label': selected ? t('deselectDrawing') : t('selectDrawing') },
+            }}
           />
         </Box>
       )}
       <Box sx={{ p: 1 }}>
         <Typography variant="caption" sx={{ display: 'block', color: 'text.secondary' }}>
-          {cardDateFormatter.format(new Date(drawing.createdAt))}
-          {' '}
-          /
-          {formatTime(drawing.elapsedMs)}
+          {cardDateFormatter.format(new Date(drawing.createdAt))} /{formatTime(drawing.elapsedMs)}
         </Typography>
         {refLabel && (
-          <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <Typography
+            variant="caption"
+            sx={{
+              display: 'block',
+              fontWeight: 'bold',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
             {refLabel}
           </Typography>
         )}
         <Box sx={{ display: 'flex', gap: 0.5, mt: 0.5, alignItems: 'center' }}>
           {showReferenceButton && (
             <>
-              {referenceThumbUrl
-                ? (
-                    <img
-                      src={referenceThumbUrl}
-                      alt={t('referenceThumbnailAlt')}
-                      style={{ width: 24, height: 24, objectFit: 'cover', borderRadius: 2, flexShrink: 0, background: '#fafafa' }}
-                    />
-                  )
-                : (
-                    <Box sx={{ width: 24, height: 24, borderRadius: 0.5, bgcolor: '#eee', flexShrink: 0 }} />
-                  )}
+              {referenceThumbUrl ? (
+                <img
+                  src={referenceThumbUrl}
+                  alt={t('referenceThumbnailAlt')}
+                  style={{
+                    width: 24,
+                    height: 24,
+                    objectFit: 'cover',
+                    borderRadius: 2,
+                    flexShrink: 0,
+                    background: '#fafafa',
+                  }}
+                />
+              ) : (
+                <Box
+                  sx={{ width: 24, height: 24, borderRadius: 0.5, bgcolor: '#eee', flexShrink: 0 }}
+                />
+              )}
               <Button
                 size="small"
                 variant="outlined"
@@ -622,7 +688,7 @@ function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPrevie
       }}
     >
       <Box
-        onClick={e => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
         sx={{
           bgcolor: 'white',
           borderRadius: 2,
@@ -633,7 +699,16 @@ function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPrevie
           overflow: 'hidden',
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderBottom: '1px solid #ddd' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderBottom: '1px solid #ddd',
+          }}
+        >
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" color="text.secondary">
               {cardDateFormatter.format(new Date(drawing.createdAt))}
@@ -641,7 +716,15 @@ function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPrevie
               {formatTime(drawing.elapsedMs)}
             </Typography>
             {refLabel && (
-              <Typography variant="body2" sx={{ fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 'bold',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
                 {refLabel}
               </Typography>
             )}
@@ -650,14 +733,33 @@ function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPrevie
             <X size={20} />
           </IconButton>
         </Box>
-        <Box sx={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#fafafa', overflow: 'auto' }}>
+        <Box
+          sx={{
+            flex: 1,
+            minHeight: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: '#fafafa',
+            overflow: 'auto',
+          }}
+        >
           <img
             src={previewUrl}
             alt={t('previewDrawingTitle')}
             style={{ maxWidth: '92vw', maxHeight: 'calc(90vh - 120px)', objectFit: 'contain' }}
           />
         </Box>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1, borderTop: '1px solid #ddd' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderTop: '1px solid #ddd',
+          }}
+        >
           {onLoadDrawing && drawing.strokes.length > 0 && (
             <Button
               size="small"
@@ -682,8 +784,7 @@ function ExportMenuButton({ drawing }: { drawing: DrawingRecord }) {
     setAnchorEl(null);
     try {
       await exportDrawing(drawing, format);
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Failed to export drawing', err);
       alert(t('exportFailed'));
     }
@@ -695,7 +796,7 @@ function ExportMenuButton({ drawing }: { drawing: DrawingRecord }) {
         <span>
           <IconButton
             size="small"
-            onClick={e => setAnchorEl(e.currentTarget)}
+            onClick={(e) => setAnchorEl(e.currentTarget)}
             disabled={drawing.strokes.length === 0}
           >
             <Download size={20} />

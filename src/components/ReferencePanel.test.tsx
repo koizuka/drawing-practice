@@ -58,7 +58,9 @@ describe('resolveHistoryThumbnailSrc', () => {
       type: 'youtube',
       lastUsedAt: NOW,
     };
-    expect(resolveHistoryThumbnailSrc(entry, new Map())).toBe(buildYouTubeThumbnailUrl('dQw4w9WgXcQ'));
+    expect(resolveHistoryThumbnailSrc(entry, new Map())).toBe(
+      buildYouTubeThumbnailUrl('dQw4w9WgXcQ'),
+    );
   });
 
   it('returns null for a YouTube entry whose URL no longer parses to a video id', () => {
@@ -142,7 +144,7 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     unmount();
     // Every ObjectURL we minted must be revoked — no leaked blob references.
     expect(revokeObjectURLSpy).toHaveBeenCalledTimes(2);
-    const revokedArgs = (revokeObjectURLSpy as Mock).mock.calls.map(c => c[0]).sort();
+    const revokedArgs = (revokeObjectURLSpy as Mock).mock.calls.map((c) => c[0]).sort();
     expect(revokedArgs).toEqual(['blob:fake-1', 'blob:fake-2']);
   });
 

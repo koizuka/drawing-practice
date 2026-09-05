@@ -24,7 +24,12 @@ export async function addPexelsSearchHistory(
   await db.pexelsSearchHistory.put(entry);
 
   const all = await db.pexelsSearchHistory.toArray();
-  const toDelete = selectKeysToEvict(all, PEXELS_SEARCH_HISTORY_LIMIT, e => e.key, e => e.lastUsedAt.getTime());
+  const toDelete = selectKeysToEvict(
+    all,
+    PEXELS_SEARCH_HISTORY_LIMIT,
+    (e) => e.key,
+    (e) => e.lastUsedAt.getTime(),
+  );
   if (toDelete.length > 0) await db.pexelsSearchHistory.bulkDelete(toDelete);
 }
 

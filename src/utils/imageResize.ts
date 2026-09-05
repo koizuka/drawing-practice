@@ -31,7 +31,11 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-export function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality?: number): Promise<Blob> {
+export function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob(
       (blob) => {
@@ -67,7 +71,11 @@ export async function resizeImageForHistory(file: File): Promise<Blob> {
       // File has an empty MIME.
       return file.slice(0, file.size, file.type || 'application/octet-stream');
     }
-    const { width, height } = computeFitDimensions(img.naturalWidth, img.naturalHeight, HISTORY_IMAGE_MAX_EDGE);
+    const { width, height } = computeFitDimensions(
+      img.naturalWidth,
+      img.naturalHeight,
+      HISTORY_IMAGE_MAX_EDGE,
+    );
     const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
@@ -75,8 +83,7 @@ export async function resizeImageForHistory(file: File): Promise<Blob> {
     if (!ctx) throw new Error('canvas-2d-unavailable');
     ctx.drawImage(img, 0, 0, width, height);
     return await canvasToBlob(canvas, 'image/jpeg', HISTORY_IMAGE_JPEG_QUALITY);
-  }
-  finally {
+  } finally {
     URL.revokeObjectURL(objectUrl);
   }
 }
@@ -105,8 +112,7 @@ export async function dataUrlToJpegBlob(
     if (!ctx) return null;
     ctx.drawImage(img, 0, 0, width, height);
     return await canvasToBlob(canvas, 'image/jpeg', quality);
-  }
-  catch {
+  } catch {
     return null;
   }
 }

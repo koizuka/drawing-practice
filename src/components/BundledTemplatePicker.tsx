@@ -46,10 +46,7 @@ function TemplateThumbnail({ template }: { template: TraceTemplate }) {
   }, [template]);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ width: THUMB_SIZE, height: THUMB_SIZE, display: 'block' }}
-    />
+    <canvas ref={canvasRef} style={{ width: THUMB_SIZE, height: THUMB_SIZE, display: 'block' }} />
   );
 }
 
@@ -66,7 +63,7 @@ export function BundledTemplatePicker({ onSelect }: BundledTemplatePickerProps) 
           gap: 1,
         }}
       >
-        {BUNDLED_TEMPLATES.map(tmpl => (
+        {BUNDLED_TEMPLATES.map((tmpl) => (
           // ButtonBase (instead of a plain Box) so the card is reachable via
           // Tab and activatable via Enter/Space — MUI handles the keyboard
           // semantics and adds the proper role/aria-pressed treatment.
@@ -76,17 +73,22 @@ export function BundledTemplatePicker({ onSelect }: BundledTemplatePickerProps) 
             focusRipple
             aria-label={t(tmpl.titleKey)}
             sx={{
-              'border': '1px solid #ddd',
-              'borderRadius': 1,
-              'overflow': 'hidden',
-              'bgcolor': '#fff',
+              border: '1px solid #ddd',
+              borderRadius: 1,
+              overflow: 'hidden',
+              bgcolor: '#fff',
               '&:hover': { borderColor: 'primary.main' },
-              '&:focus-visible': { borderColor: 'primary.main', outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-              'display': 'flex',
-              'flexDirection': 'column',
-              'alignItems': 'center',
-              'p': 1,
-              'textAlign': 'center',
+              '&:focus-visible': {
+                borderColor: 'primary.main',
+                outline: '2px solid',
+                outlineColor: 'primary.main',
+                outlineOffset: 2,
+              },
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              p: 1,
+              textAlign: 'center',
             }}
           >
             <TemplateThumbnail template={tmpl} />

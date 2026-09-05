@@ -43,7 +43,8 @@ describe('ViewTransform (camera model)', () => {
 
     it('round-trips after a gesture', () => {
       vt.applyGesture(100, 200, 2.5, 30, -10, C, 1);
-      const sx = 240, sy = 180;
+      const sx = 240,
+        sy = 180;
       const w = vt.screenToCanvas(sx, sy, C, 1);
       const back = vt.canvasToScreen(w.x, w.y, C, 1);
       expect(back.x).toBeCloseTo(sx);
@@ -53,7 +54,8 @@ describe('ViewTransform (camera model)', () => {
 
   describe('applyGesture', () => {
     it('keeps the focal world point under the focal screen point', () => {
-      const focalX = 250, focalY = 150;
+      const focalX = 250,
+        focalY = 150;
       const before = vt.screenToCanvas(focalX, focalY, C, 1);
       vt.applyGesture(focalX, focalY, 2, 0, 0, C, 1);
       const after = vt.screenToCanvas(focalX, focalY, C, 1);
@@ -72,7 +74,8 @@ describe('ViewTransform (camera model)', () => {
     });
 
     it('translates by pan delta when scaleDelta is 1', () => {
-      const focalX = 100, focalY = 100;
+      const focalX = 100,
+        focalY = 100;
       vt.applyGesture(focalX, focalY, 1, 50, 30, C, 1);
       // After pan, the world point that WAS at (focalX, focalY) is now at
       // (focalX + 50, focalY + 30) — i.e. pan moves content with the gesture.
@@ -254,7 +257,9 @@ describe('ViewTransform (camera model)', () => {
   describe('subscribe intents', () => {
     it('forwards the right intent for each mutator', () => {
       const intents: (CameraIntent | null)[] = [];
-      vt.subscribe((i) => { intents.push(i); });
+      vt.subscribe((i) => {
+        intents.push(i);
+      });
 
       vt.applyGesture(0, 0, 2, 0, 0, C, 1);
       vt.userResetToHome();

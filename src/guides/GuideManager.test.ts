@@ -49,7 +49,9 @@ describe('GuideManager', () => {
       manager.recordPerspectiveMemory();
       manager.setGridMode('normal');
       manager.setGridMode('perspective');
-      expect(manager.getGrid().perspectiveMemories).toMatchObject([{ seq: 1, settings: { yaw: 30 } }]);
+      expect(manager.getGrid().perspectiveMemories).toMatchObject([
+        { seq: 1, settings: { yaw: 30 } },
+      ]);
       // Labels stay consistent after the round-trip: the next memory takes
       // the next free number, not label 1 again.
       manager.setPerspective({ yaw: 60 });
@@ -131,7 +133,9 @@ describe('GuideManager', () => {
       manager.recordPerspectiveMemory();
       // 1 2 3 → delete 2 → 1 3 → record → 1 3 2 (freed label, appended at the end).
       expect(manager.getGrid().perspectiveMemories).toMatchObject([
-        { seq: 1 }, { seq: 3 }, { seq: 2, settings: { yaw: 40 } },
+        { seq: 1 },
+        { seq: 3 },
+        { seq: 2, settings: { yaw: 40 } },
       ]);
     });
   });
@@ -234,10 +238,14 @@ describe('GuideManager', () => {
     });
 
     it('sanitizes and caps stored perspective memories', () => {
-      const memories = Array.from({ length: 12 }, (_, i) => (
-        { seq: i + 1, settings: { yaw: i * 5, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 } }
-      ));
-      memories[1] = { seq: 30, settings: { yaw: 400, pitch: Number.NaN, strength: 0.5, centerX: 0, centerY: 0 } };
+      const memories = Array.from({ length: 12 }, (_, i) => ({
+        seq: i + 1,
+        settings: { yaw: i * 5, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 },
+      }));
+      memories[1] = {
+        seq: 30,
+        settings: { yaw: 400, pitch: Number.NaN, strength: 0.5, centerX: 0, centerY: 0 },
+      };
       manager.importState({
         grid: { mode: 'perspective', perspectiveMemories: memories },
         lines: [],

@@ -10,7 +10,14 @@ export function GridIcon({ mode }: { mode: GridMode }) {
   if (mode === 'none') {
     // Empty square outline — no grid
     return (
-      <svg width={size} height={size} viewBox="0 0 20 20" fill="none" stroke={color} strokeWidth="1.5">
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+      >
         <rect x="1" y="1" width="18" height="18" rx="1" />
       </svg>
     );
@@ -54,7 +61,10 @@ export function GridIcon({ mode }: { mode: GridMode }) {
   );
 }
 
-const GRID_MODE_OPTIONS: { mode: GridMode; labelKey: 'gridModeNone' | 'gridModeNormal' | 'gridModeLarge' | 'gridModePerspective' }[] = [
+const GRID_MODE_OPTIONS: {
+  mode: GridMode;
+  labelKey: 'gridModeNone' | 'gridModeNormal' | 'gridModeLarge' | 'gridModePerspective';
+}[] = [
   { mode: 'none', labelKey: 'gridModeNone' },
   { mode: 'normal', labelKey: 'gridModeNormal' },
   { mode: 'large', labelKey: 'gridModeLarge' },
@@ -82,10 +92,10 @@ export function GridModePopoverButton({
         <IconButton
           size="small"
           aria-label={t('gridMenu')}
-          onClick={e => setAnchorEl(e.currentTarget)}
+          onClick={(e) => setAnchorEl(e.currentTarget)}
           sx={{
-            'bgcolor': active ? 'info.main' : 'transparent',
-            'color': active ? 'white' : 'inherit',
+            bgcolor: active ? 'info.main' : 'transparent',
+            color: active ? 'white' : 'inherit',
             '&:hover': { bgcolor: active ? 'info.dark' : 'action.hover' },
           }}
         >
@@ -113,9 +123,15 @@ export function GridModePopoverButton({
           sx={{ p: 0.5 }}
         >
           {GRID_MODE_OPTIONS.map(({ mode, labelKey }) => (
-            <ToggleButton key={mode} value={mode} sx={{ justifyContent: 'flex-start', gap: 1, px: 1.5, border: 'none' }}>
+            <ToggleButton
+              key={mode}
+              value={mode}
+              sx={{ justifyContent: 'flex-start', gap: 1, px: 1.5, border: 'none' }}
+            >
               <GridIcon mode={mode} />
-              <Box component="span" sx={{ textTransform: 'none' }}>{t(labelKey)}</Box>
+              <Box component="span" sx={{ textTransform: 'none' }}>
+                {t(labelKey)}
+              </Box>
             </ToggleButton>
           ))}
         </ToggleButtonGroup>

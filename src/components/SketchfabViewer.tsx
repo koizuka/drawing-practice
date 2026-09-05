@@ -1,5 +1,17 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { Alert, Box, Button, Chip, IconButton, Autocomplete, TextField, ToggleButton, ToggleButtonGroup, Typography, CircularProgress } from '@mui/material';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  IconButton,
+  Autocomplete,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+  CircularProgress,
+} from '@mui/material';
 import { Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
@@ -68,14 +80,17 @@ interface SketchfabAPI {
 }
 
 interface SketchfabClient {
-  init(uid: string, options: {
-    success: (api: SketchfabAPI) => void;
-    error: () => void;
-    autostart?: number;
-    ui_stop?: number;
-    ui_infos?: number;
-    ui_controls?: number;
-  }): void;
+  init(
+    uid: string,
+    options: {
+      success: (api: SketchfabAPI) => void;
+      error: () => void;
+      autostart?: number;
+      ui_stop?: number;
+      ui_infos?: number;
+      ui_controls?: number;
+    },
+  ): void;
 }
 
 declare global {
@@ -124,17 +139,19 @@ interface SearchResponse {
 }
 
 function categoryLabel(slug: SketchfabCategorySlug): string {
-  const cat = SKETCHFAB_CATEGORIES.find(c => c.slug === slug);
+  const cat = SKETCHFAB_CATEGORIES.find((c) => c.slug === slug);
   return cat ? t(cat.labelKey) : slug;
 }
 
 function parseSearchResults(data: SearchResponse): SearchResult[] {
-  return data.results?.map(m => ({
-    uid: m.uid,
-    name: m.name,
-    author: m.user?.displayName ?? m.user?.username ?? '',
-    thumbnailUrl: m.thumbnails?.images?.find(t => t.width >= 200)?.url ?? '',
-  })) ?? [];
+  return (
+    data.results?.map((m) => ({
+      uid: m.uid,
+      name: m.name,
+      author: m.user?.displayName ?? m.user?.username ?? '',
+      thumbnailUrl: m.thumbnails?.images?.find((t) => t.width >= 200)?.url ?? '',
+    })) ?? []
+  );
 }
 
 // Classify the unified search-box input. UID-form (32-char alphanumeric) or
@@ -170,7 +187,9 @@ export function SketchfabViewer({
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [selectedModel, setSelectedModel] = useState<SketchfabModelMeta | null>(null);
   const [timeFilter, setTimeFilter] = useState<SketchfabTimeFilter>(initialTimeFilter ?? 'all');
-  const [activeCategory, setActiveCategory] = useState<SketchfabCategorySlug | null>(initialCategory ?? null);
+  const [activeCategory, setActiveCategory] = useState<SketchfabCategorySlug | null>(
+    initialCategory ?? null,
+  );
   const [nextPageUrl, setNextPageUrl] = useState<string | null>(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
@@ -193,14 +212,22 @@ export function SketchfabViewer({
 
   const [searchHistory, setSearchHistory] = useState<SketchfabSearchHistoryEntry[]>([]);
   const reloadHistory = useCallback(() => {
-    getSketchfabSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ });
+    getSketchfabSearchHistory()
+      .then(setSearchHistory)
+      .catch(() => {
+        /* ignore */
+      });
   }, []);
-  useEffect(() => { reloadHistory(); }, [reloadHistory]);
+  useEffect(() => {
+    reloadHistory();
+  }, [reloadHistory]);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   // Focus the search input on initial mount and whenever the user returns
   // from the model viewer back to the browse UI.
-  useEffect(() => { if (!showViewer) searchInputRef.current?.focus(); }, [showViewer]);
+  useEffect(() => {
+    if (!showViewer) searchInputRef.current?.focus();
+  }, [showViewer]);
 
   // Load the Sketchfab client script. Initial scriptLoaded covers the case
   // where window.Sketchfab is already present, so the effect only handles the
@@ -259,36 +286,45 @@ export function SketchfabViewer({
     }
   }, [showViewer, scriptLoaded, initViewer]);
 
-  const loadModel = useCallback((uid: string, meta?: SketchfabModelMeta) => {
-    resetPageZoom();
-    setShowViewer(true);
-    setModelUid(uid);
-    if (meta) {
-      metaFetchUidRef.current = null;
-      setSelectedModel(meta);
-    }
-    else {
-      // External callers (URL paste, gallery "use this reference") don't fill
-      // selectedModel via the search grid, so Fix Angle would otherwise produce
-      // an empty title/author. Fetch metadata async — best-effort, no error UI.
-      // Clear stale selection first so a slow fetch can't race a later load,
-      // and gate the result on metaFetchUidRef so an earlier in-flight fetch
-      // resolving after a newer load can't overwrite the newer metadata.
-      setSelectedModel(null);
-      metaFetchUidRef.current = uid;
-      void getSketchfabModel(uid).then((fetched) => {
-        if (metaFetchUidRef.current !== uid) return;
-        setSelectedModel({ name: fetched.title, author: fetched.author, thumbnailUrl: fetched.thumbnailUrl });
-      }).catch(() => { /* metadata is best-effort */ });
-    }
-    // If iframe already mounted, init immediately; otherwise defer
-    if (iframeRef.current && window.Sketchfab) {
-      initViewer(uid);
-    }
-    else {
-      pendingLoadRef.current = uid;
-    }
-  }, [initViewer]);
+  const loadModel = useCallback(
+    (uid: string, meta?: SketchfabModelMeta) => {
+      resetPageZoom();
+      setShowViewer(true);
+      setModelUid(uid);
+      if (meta) {
+        metaFetchUidRef.current = null;
+        setSelectedModel(meta);
+      } else {
+        // External callers (URL paste, gallery "use this reference") don't fill
+        // selectedModel via the search grid, so Fix Angle would otherwise produce
+        // an empty title/author. Fetch metadata async — best-effort, no error UI.
+        // Clear stale selection first so a slow fetch can't race a later load,
+        // and gate the result on metaFetchUidRef so an earlier in-flight fetch
+        // resolving after a newer load can't overwrite the newer metadata.
+        setSelectedModel(null);
+        metaFetchUidRef.current = uid;
+        void getSketchfabModel(uid)
+          .then((fetched) => {
+            if (metaFetchUidRef.current !== uid) return;
+            setSelectedModel({
+              name: fetched.title,
+              author: fetched.author,
+              thumbnailUrl: fetched.thumbnailUrl,
+            });
+          })
+          .catch(() => {
+            /* metadata is best-effort */
+          });
+      }
+      // If iframe already mounted, init immediately; otherwise defer
+      if (iframeRef.current && window.Sketchfab) {
+        initViewer(uid);
+      } else {
+        pendingLoadRef.current = uid;
+      }
+    },
+    [initViewer],
+  );
 
   const handleFixAngle = useCallback(() => {
     const api = apiRef.current;
@@ -305,8 +341,7 @@ export function SketchfabViewer({
         if (last.type === 'search' && last.query.trim()) {
           searchContext = { query: last.query, timeFilter };
           if (last.category) searchContext.category = last.category;
-        }
-        else if (last.type === 'category') {
+        } else if (last.type === 'category') {
           searchContext = { query: '', category: last.slug, timeFilter };
         }
       }
@@ -331,106 +366,119 @@ export function SketchfabViewer({
   // keyword searches and category browses are recorded so the dropdown shows
   // the user's full Sketchfab activity. Empty-query + no-category combos
   // (which can't actually happen via the UI) are skipped.
-  const recordSearch = useCallback((ctx: SketchfabSearchContext) => {
-    setSketchfabLastSearch(ctx);
-    if (!ctx.query.trim() && !ctx.category) return;
-    void addSketchfabSearchHistory(ctx.query, ctx.timeFilter, ctx.category)
-      .then(reloadHistory)
-      .catch(() => { /* ignore */ });
-  }, [reloadHistory]);
+  const recordSearch = useCallback(
+    (ctx: SketchfabSearchContext) => {
+      setSketchfabLastSearch(ctx);
+      if (!ctx.query.trim() && !ctx.category) return;
+      void addSketchfabSearchHistory(ctx.query, ctx.timeFilter, ctx.category)
+        .then(reloadHistory)
+        .catch(() => {
+          /* ignore */
+        });
+    },
+    [reloadHistory],
+  );
 
-  const handleSearch = useCallback(async (query: string, category?: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
-    const effectiveFilter = filter ?? timeFilter;
-    // Trim once so endpoint selection, query params, lastSearchRef, and
-    // recordSearch all agree on whether the query is empty. Otherwise a
-    // whitespace-only string would hit /v3/search with a meaningless q while
-    // recordSearch (which uses query.trim()) silently skipped history.
-    const trimmedQuery = query.trim();
-    lastSearchRef.current = { type: 'search', query: trimmedQuery, category };
-    setActiveCategory(category ?? null);
-    setError(null);
-    inflightSearchRef.current?.abort();
-    const ctrl = new AbortController();
-    inflightSearchRef.current = ctrl;
-    setIsSearching(true);
-    try {
-      // /v3/search supports keyword search but ignores published_since
-      // /v3/models supports published_since but has poor keyword search
-      const useSearchEndpoint = !!trimmedQuery;
-      const params = new URLSearchParams({
-        count: '24',
-      });
-      if (useSearchEndpoint) params.set('type', 'models');
-      if (trimmedQuery) params.set('q', trimmedQuery);
-      if (category) params.set('categories', category);
-      if (!useSearchEndpoint) {
-        const publishedSince = getPublishedSince(effectiveFilter);
-        if (publishedSince) params.set('published_since', publishedSince);
-      }
+  const handleSearch = useCallback(
+    async (query: string, category?: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
+      const effectiveFilter = filter ?? timeFilter;
+      // Trim once so endpoint selection, query params, lastSearchRef, and
+      // recordSearch all agree on whether the query is empty. Otherwise a
+      // whitespace-only string would hit /v3/search with a meaningless q while
+      // recordSearch (which uses query.trim()) silently skipped history.
+      const trimmedQuery = query.trim();
+      lastSearchRef.current = { type: 'search', query: trimmedQuery, category };
+      setActiveCategory(category ?? null);
+      setError(null);
+      inflightSearchRef.current?.abort();
+      const ctrl = new AbortController();
+      inflightSearchRef.current = ctrl;
+      setIsSearching(true);
+      try {
+        // /v3/search supports keyword search but ignores published_since
+        // /v3/models supports published_since but has poor keyword search
+        const useSearchEndpoint = !!trimmedQuery;
+        const params = new URLSearchParams({
+          count: '24',
+        });
+        if (useSearchEndpoint) params.set('type', 'models');
+        if (trimmedQuery) params.set('q', trimmedQuery);
+        if (category) params.set('categories', category);
+        if (!useSearchEndpoint) {
+          const publishedSince = getPublishedSince(effectiveFilter);
+          if (publishedSince) params.set('published_since', publishedSince);
+        }
 
-      const endpoint = useSearchEndpoint
-        ? `https://api.sketchfab.com/v3/search?${params}`
-        : `https://api.sketchfab.com/v3/models?${params}`;
-      const res = await fetch(endpoint, { signal: ctrl.signal });
-      if (!res.ok) throw new Error('Search failed');
+        const endpoint = useSearchEndpoint
+          ? `https://api.sketchfab.com/v3/search?${params}`
+          : `https://api.sketchfab.com/v3/models?${params}`;
+        const res = await fetch(endpoint, { signal: ctrl.signal });
+        if (!res.ok) throw new Error('Search failed');
 
-      const data: SearchResponse = await res.json();
-      setSearchResults(parseSearchResults(data));
-      setNextPageUrl(data.next ?? null);
-      recordSearch({ query: trimmedQuery, timeFilter: effectiveFilter, ...(category ? { category } : {}) });
-    }
-    catch (e) {
-      if (e instanceof DOMException && e.name === 'AbortError') return;
-      setError(t('searchFailed'));
-    }
-    finally {
-      if (inflightSearchRef.current === ctrl) {
-        inflightSearchRef.current = null;
-        setIsSearching(false);
-      }
-    }
-  }, [timeFilter, recordSearch]);
-
-  const handleRandomFromCategory = useCallback((categorySlug: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
-    const effectiveFilter = filter ?? timeFilter;
-    lastSearchRef.current = { type: 'category', slug: categorySlug };
-    setActiveCategory(categorySlug);
-    setError(null);
-    const offset = Math.floor(Math.random() * 50);
-    const params = new URLSearchParams({
-      categories: categorySlug,
-      count: '24',
-      sort_by: '-likeCount',
-      offset: String(offset),
-    });
-    const publishedSince = getPublishedSince(effectiveFilter);
-    if (publishedSince) params.set('published_since', publishedSince);
-
-    inflightSearchRef.current?.abort();
-    const ctrl = new AbortController();
-    inflightSearchRef.current = ctrl;
-    setIsSearching(true);
-    fetch(`https://api.sketchfab.com/v3/models?${params}`, { signal: ctrl.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error('Fetch failed');
-        return r.json();
-      })
-      .then((data: SearchResponse) => {
+        const data: SearchResponse = await res.json();
         setSearchResults(parseSearchResults(data));
         setNextPageUrl(data.next ?? null);
-        recordSearch({ query: '', category: categorySlug, timeFilter: effectiveFilter });
-      })
-      .catch((e: unknown) => {
+        recordSearch({
+          query: trimmedQuery,
+          timeFilter: effectiveFilter,
+          ...(category ? { category } : {}),
+        });
+      } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
-        setError(t('failedFetchModels'));
-      })
-      .finally(() => {
+        setError(t('searchFailed'));
+      } finally {
         if (inflightSearchRef.current === ctrl) {
           inflightSearchRef.current = null;
           setIsSearching(false);
         }
+      }
+    },
+    [timeFilter, recordSearch],
+  );
+
+  const handleRandomFromCategory = useCallback(
+    (categorySlug: SketchfabCategorySlug, filter?: SketchfabTimeFilter) => {
+      const effectiveFilter = filter ?? timeFilter;
+      lastSearchRef.current = { type: 'category', slug: categorySlug };
+      setActiveCategory(categorySlug);
+      setError(null);
+      const offset = Math.floor(Math.random() * 50);
+      const params = new URLSearchParams({
+        categories: categorySlug,
+        count: '24',
+        sort_by: '-likeCount',
+        offset: String(offset),
       });
-  }, [timeFilter, recordSearch]);
+      const publishedSince = getPublishedSince(effectiveFilter);
+      if (publishedSince) params.set('published_since', publishedSince);
+
+      inflightSearchRef.current?.abort();
+      const ctrl = new AbortController();
+      inflightSearchRef.current = ctrl;
+      setIsSearching(true);
+      fetch(`https://api.sketchfab.com/v3/models?${params}`, { signal: ctrl.signal })
+        .then((r) => {
+          if (!r.ok) throw new Error('Fetch failed');
+          return r.json();
+        })
+        .then((data: SearchResponse) => {
+          setSearchResults(parseSearchResults(data));
+          setNextPageUrl(data.next ?? null);
+          recordSearch({ query: '', category: categorySlug, timeFilter: effectiveFilter });
+        })
+        .catch((e: unknown) => {
+          if (e instanceof DOMException && e.name === 'AbortError') return;
+          setError(t('failedFetchModels'));
+        })
+        .finally(() => {
+          if (inflightSearchRef.current === ctrl) {
+            inflightSearchRef.current = null;
+            setIsSearching(false);
+          }
+        });
+    },
+    [timeFilter, recordSearch],
+  );
 
   // Clear the active category and fetch the unfiltered "all works" view —
   // the only escape hatch from a sticky category once the user has clicked
@@ -450,12 +498,11 @@ export function SketchfabViewer({
     queueMicrotask(() => {
       if (hasQuery) {
         void handleSearch(initialQuery, initialCategory, initialTimeFilter ?? 'all');
-      }
-      else if (initialCategory) {
+      } else if (initialCategory) {
         handleRandomFromCategory(initialCategory, initialTimeFilter ?? 'all');
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount-only
   }, []);
 
   const handleLoadMore = useCallback(async () => {
@@ -465,20 +512,25 @@ export function SketchfabViewer({
       const res = await fetch(nextPageUrl);
       if (!res.ok) throw new Error('Load more failed');
       const data: SearchResponse = await res.json();
-      setSearchResults(prev => [...prev, ...parseSearchResults(data)]);
+      setSearchResults((prev) => [...prev, ...parseSearchResults(data)]);
       setNextPageUrl(data.next ?? null);
-    }
-    catch {
+    } catch {
       setError(t('searchFailed'));
-    }
-    finally {
+    } finally {
       setIsLoadingMore(false);
     }
   }, [nextPageUrl, isLoadingMore]);
 
-  const handleSelectModel = useCallback((model: SearchResult) => {
-    loadModel(model.uid, { name: model.name, author: model.author, thumbnailUrl: model.thumbnailUrl });
-  }, [loadModel]);
+  const handleSelectModel = useCallback(
+    (model: SearchResult) => {
+      loadModel(model.uid, {
+        name: model.name,
+        author: model.author,
+        thumbnailUrl: model.thumbnailUrl,
+      });
+    },
+    [loadModel],
+  );
 
   const handleBack = useCallback(() => {
     setShowViewer(false);
@@ -486,20 +538,29 @@ export function SketchfabViewer({
     apiRef.current = null;
   }, []);
 
-  const handleSelectHistory = useCallback((entry: SketchfabSearchHistoryEntry) => {
-    setSearchQuery(entry.query);
-    setTimeFilter(entry.timeFilter);
-    if (!entry.query.trim() && entry.category) {
-      handleRandomFromCategory(entry.category, entry.timeFilter);
-    }
-    else {
-      void handleSearch(entry.query, entry.category, entry.timeFilter);
-    }
-  }, [handleSearch, handleRandomFromCategory]);
+  const handleSelectHistory = useCallback(
+    (entry: SketchfabSearchHistoryEntry) => {
+      setSearchQuery(entry.query);
+      setTimeFilter(entry.timeFilter);
+      if (!entry.query.trim() && entry.category) {
+        handleRandomFromCategory(entry.category, entry.timeFilter);
+      } else {
+        void handleSearch(entry.query, entry.category, entry.timeFilter);
+      }
+    },
+    [handleSearch, handleRandomFromCategory],
+  );
 
-  const handleDeleteHistory = useCallback((key: string) => {
-    void deleteSketchfabSearchHistory(key).then(reloadHistory).catch(() => { /* ignore */ });
-  }, [reloadHistory]);
+  const handleDeleteHistory = useCallback(
+    (key: string) => {
+      void deleteSketchfabSearchHistory(key)
+        .then(reloadHistory)
+        .catch(() => {
+          /* ignore */
+        });
+    },
+    [reloadHistory],
+  );
 
   // Notify parent of state changes
   useEffect(() => {
@@ -529,7 +590,17 @@ export function SketchfabViewer({
             allow="autoplay; fullscreen; xr-spatial-tracking; accelerometer; gyroscope; magnetometer"
           />
           {loading && (
-            <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: 'rgba(255,255,255,0.8)', zIndex: 1 }}>
+            <Box
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: 'rgba(255,255,255,0.8)',
+                zIndex: 1,
+              }}
+            >
               <Typography>{t('loadingModel')}</Typography>
             </Box>
           )}
@@ -538,7 +609,10 @@ export function SketchfabViewer({
 
       {/* Browse/search UI */}
       {!showViewer && (
-        <Box data-allow-page-zoom="true" sx={{ flex: 1, overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}>
+        <Box
+          data-allow-page-zoom="true"
+          sx={{ flex: 1, overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}
+        >
           {/* Search row — Autocomplete shows the past-searches dropdown. */}
           <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
             <Autocomplete<SketchfabSearchHistoryEntry, false, false, true>
@@ -547,7 +621,7 @@ export function SketchfabViewer({
               sx={{ flex: 1 }}
               fullWidth
               options={searchHistory}
-              filterOptions={x => x}
+              filterOptions={(x) => x}
               getOptionLabel={(option) => {
                 if (typeof option === 'string') return option;
                 // Category-only entries have an empty query; returning '' here
@@ -560,7 +634,9 @@ export function SketchfabViewer({
                 if (!option.query.trim() && option.category) return categoryLabel(option.category);
                 return option.query;
               }}
-              isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.key === b.key}
+              isOptionEqualToValue={(a, b) =>
+                typeof a !== 'string' && typeof b !== 'string' && a.key === b.key
+              }
               inputValue={searchQuery}
               onInputChange={(_, value, reason) => {
                 if (reason === 'input' || reason === 'clear') setSearchQuery(value);
@@ -575,17 +651,34 @@ export function SketchfabViewer({
                 const hasQuery = !!option.query.trim();
                 return (
                   <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {hasQuery
-                        ? option.query
-                        : (
-                            <Typography variant="body2" component="span" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                              {option.category ? categoryLabel(option.category) : ''}
-                            </Typography>
-                          )}
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {hasQuery ? (
+                        option.query
+                      ) : (
+                        <Typography
+                          variant="body2"
+                          component="span"
+                          color="text.secondary"
+                          sx={{ fontStyle: 'italic' }}
+                        >
+                          {option.category ? categoryLabel(option.category) : ''}
+                        </Typography>
+                      )}
                     </Box>
                     {hasQuery && option.category && (
-                      <Chip size="small" variant="outlined" label={categoryLabel(option.category)} />
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label={categoryLabel(option.category)}
+                      />
                     )}
                     <ToolbarTooltip title={t('sketchfabSearchHistoryDelete')}>
                       <IconButton
@@ -593,8 +686,14 @@ export function SketchfabViewer({
                         aria-label={t('sketchfabSearchHistoryDelete')}
                         // Touch devices commit option selection on pointerdown
                         // (before click), so stop propagation there too.
-                        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                        onClick={(e) => { e.stopPropagation(); handleDeleteHistory(option.key); }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteHistory(option.key);
+                        }}
                       >
                         <Trash2 size={14} />
                       </IconButton>
@@ -602,7 +701,7 @@ export function SketchfabViewer({
                   </li>
                 );
               }}
-              renderInput={params => (
+              renderInput={(params) => (
                 <TextField
                   {...params}
                   inputRef={searchInputRef}
@@ -616,11 +715,10 @@ export function SketchfabViewer({
                     const classified = classifySketchfabQuery(searchQuery);
                     if (classified.kind === 'uid') {
                       loadModel(classified.uid);
-                    }
-                    else {
+                    } else {
                       void handleSearch(searchQuery);
                     }
-                    ;(e.target as HTMLInputElement).blur();
+                    (e.target as HTMLInputElement).blur();
                   }}
                 />
               )}
@@ -632,8 +730,7 @@ export function SketchfabViewer({
                 const classified = classifySketchfabQuery(searchQuery);
                 if (classified.kind === 'uid') {
                   loadModel(classified.uid);
-                }
-                else {
+                } else {
                   void handleSearch(searchQuery);
                 }
               }}
@@ -654,8 +751,7 @@ export function SketchfabViewer({
               if (last) {
                 if (last.type === 'search') {
                   void handleSearch(last.query, last.category, newFilter);
-                }
-                else {
+                } else {
                   handleRandomFromCategory(last.slug, newFilter);
                 }
               }
@@ -680,20 +776,31 @@ export function SketchfabViewer({
             >
               {t('allCategories')}
             </Button>
-            {SKETCHFAB_CATEGORIES.map(cat => (
+            {SKETCHFAB_CATEGORIES.map((cat) => (
               <Button
                 key={cat.slug}
                 size="small"
                 variant={activeCategory === cat.slug ? 'contained' : 'outlined'}
-                onClick={() => { setSearchQuery(''); handleRandomFromCategory(cat.slug); }}
+                onClick={() => {
+                  setSearchQuery('');
+                  handleRandomFromCategory(cat.slug);
+                }}
               >
                 {t(cat.labelKey)}
               </Button>
             ))}
           </Box>
 
-          {!scriptLoaded && <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{t('loadingApi')}</Typography>}
-          {error && <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>}
+          {!scriptLoaded && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              {t('loadingApi')}
+            </Typography>
+          )}
+          {error && (
+            <Alert severity="error" sx={{ mb: 1 }}>
+              {error}
+            </Alert>
+          )}
           {isSearching && (
             <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
               <CircularProgress size={28} />
@@ -703,16 +810,22 @@ export function SketchfabViewer({
           {/* Search results grid */}
           {searchResults.length > 0 && (
             <>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 1 }}>
-                {searchResults.map(model => (
+              <Box
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+                  gap: 1,
+                }}
+              >
+                {searchResults.map((model) => (
                   <Box
                     key={model.uid}
                     onClick={() => handleSelectModel(model)}
                     sx={{
-                      'cursor': 'pointer',
-                      'border': '1px solid #ddd',
-                      'borderRadius': 1,
-                      'overflow': 'hidden',
+                      cursor: 'pointer',
+                      border: '1px solid #ddd',
+                      borderRadius: 1,
+                      overflow: 'hidden',
                       '&:hover': { borderColor: 'primary.main' },
                     }}
                   >
@@ -723,7 +836,16 @@ export function SketchfabViewer({
                         style={{ width: '100%', height: 80, objectFit: 'cover' }}
                       />
                     )}
-                    <Typography variant="caption" sx={{ display: 'block', p: 0.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <Typography
+                      variant="caption"
+                      sx={{
+                        display: 'block',
+                        p: 0.5,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
                       {model.name}
                     </Typography>
                   </Box>

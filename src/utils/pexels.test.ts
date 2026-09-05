@@ -17,7 +17,9 @@ import {
 
 describe('parsePexelsPhotoUrl', () => {
   it('extracts id from /photo/slug-12345/', () => {
-    expect(parsePexelsPhotoUrl('https://www.pexels.com/photo/man-jogging-in-park-12345/')).toEqual({ id: 12345 });
+    expect(parsePexelsPhotoUrl('https://www.pexels.com/photo/man-jogging-in-park-12345/')).toEqual({
+      id: 12345,
+    });
   });
 
   it('extracts id from /photo/12345 without slug', () => {
@@ -25,7 +27,9 @@ describe('parsePexelsPhotoUrl', () => {
   });
 
   it('extracts id from locale-prefixed paths', () => {
-    expect(parsePexelsPhotoUrl('https://www.pexels.com/ja-jp/photo/some-slug-987654/')).toEqual({ id: 987654 });
+    expect(parsePexelsPhotoUrl('https://www.pexels.com/ja-jp/photo/some-slug-987654/')).toEqual({
+      id: 987654,
+    });
     expect(parsePexelsPhotoUrl('https://www.pexels.com/en-us/photo/42/')).toEqual({ id: 42 });
   });
 
@@ -196,9 +200,14 @@ describe('searchPhotos / getPhoto (via pexelsFetch)', () => {
   });
 
   it('sends query / page / per_page and Authorization header to /v1/search', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({
-      photos: [], page: 1, per_page: 24, total_results: 0,
-    }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        photos: [],
+        page: 1,
+        per_page: 24,
+        total_results: 0,
+      }),
+    );
 
     await searchPhotos({ query: 'dance pose', page: 2, perPage: 10 });
 
@@ -214,9 +223,14 @@ describe('searchPhotos / getPhoto (via pexelsFetch)', () => {
   });
 
   it('includes orientation when supplied', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({
-      photos: [], page: 1, per_page: 24, total_results: 0,
-    }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        photos: [],
+        page: 1,
+        per_page: 24,
+        total_results: 0,
+      }),
+    );
 
     await searchPhotos({ query: 'pose', orientation: 'portrait' });
 
@@ -225,9 +239,14 @@ describe('searchPhotos / getPhoto (via pexelsFetch)', () => {
   });
 
   it('defaults page=1 and per_page=24 when not supplied', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({
-      photos: [], page: 1, per_page: 24, total_results: 0,
-    }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        photos: [],
+        page: 1,
+        per_page: 24,
+        total_results: 0,
+      }),
+    );
 
     await searchPhotos({ query: 'pose' });
 
@@ -272,21 +291,21 @@ describe('searchPhotos / getPhoto (via pexelsFetch)', () => {
       new Response('', { status: 429, headers: { 'X-Ratelimit-Reset': String(resetTs) } }),
     );
 
-    const err = await searchPhotos({ query: 'pose' }).catch(e => e as unknown);
+    const err = await searchPhotos({ query: 'pose' }).catch((e) => e as unknown);
     expect(err).toBeInstanceOf(PexelsRateLimitError);
     expect((err as PexelsRateLimitError).resetTimestamp).toBe(resetTs);
   });
 
   it('returns null resetTimestamp on 429 when the header is missing or malformed', async () => {
     fetchMock.mockResolvedValueOnce(new Response('', { status: 429 }));
-    const missing = await searchPhotos({ query: 'pose' }).catch(e => e as unknown);
+    const missing = await searchPhotos({ query: 'pose' }).catch((e) => e as unknown);
     expect(missing).toBeInstanceOf(PexelsRateLimitError);
     expect((missing as PexelsRateLimitError).resetTimestamp).toBeNull();
 
     fetchMock.mockResolvedValueOnce(
       new Response('', { status: 429, headers: { 'X-Ratelimit-Reset': 'not-a-number' } }),
     );
-    const malformed = await searchPhotos({ query: 'pose' }).catch(e => e as unknown);
+    const malformed = await searchPhotos({ query: 'pose' }).catch((e) => e as unknown);
     expect((malformed as PexelsRateLimitError).resetTimestamp).toBeNull();
   });
 
@@ -303,15 +322,20 @@ describe('searchPhotos / getPhoto (via pexelsFetch)', () => {
   it('propagates AbortError without wrapping it in PexelsNetworkError', async () => {
     fetchMock.mockRejectedValueOnce(new DOMException('aborted', 'AbortError'));
 
-    const err = await searchPhotos({ query: 'pose' }).catch(e => e as unknown);
+    const err = await searchPhotos({ query: 'pose' }).catch((e) => e as unknown);
     expect(isAbortError(err)).toBe(true);
     expect(err).not.toBeInstanceOf(PexelsNetworkError);
   });
 
   it('passes the AbortSignal to fetch so callers can cancel requests', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({
-      photos: [], page: 1, per_page: 24, total_results: 0,
-    }));
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        photos: [],
+        page: 1,
+        per_page: 24,
+        total_results: 0,
+      }),
+    );
 
     const ctrl = new AbortController();
     await searchPhotos({ query: 'pose' }, ctrl.signal);

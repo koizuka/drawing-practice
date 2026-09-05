@@ -15,7 +15,9 @@ export class GuideManager {
   private state: GuideState;
 
   constructor(initial?: GuideState) {
-    this.state = initial ? { ...initial, lines: [...initial.lines] } : { ...DEFAULT_GUIDE_STATE, lines: [] };
+    this.state = initial
+      ? { ...initial, lines: [...initial.lines] }
+      : { ...DEFAULT_GUIDE_STATE, lines: [] };
   }
 
   getState(): GuideState {
@@ -29,9 +31,10 @@ export class GuideManager {
   setGridMode(mode: GridMode): void {
     // Keep perspective settings (and captured memories) across mode switches
     // so re-entering the perspective mode restores the previous composition.
-    const perspective = mode === 'perspective'
-      ? this.state.grid.perspective ?? DEFAULT_PERSPECTIVE
-      : this.state.grid.perspective;
+    const perspective =
+      mode === 'perspective'
+        ? (this.state.grid.perspective ?? DEFAULT_PERSPECTIVE)
+        : this.state.grid.perspective;
     const memories = this.state.grid.perspectiveMemories;
     this.state.grid = {
       mode,
@@ -58,12 +61,12 @@ export class GuideManager {
   recordPerspectiveMemory(): boolean {
     const current = this.state.grid.perspective ?? DEFAULT_PERSPECTIVE;
     const memories = this.state.grid.perspectiveMemories ?? [];
-    if (memories.some(m => perspectiveSettingsEqual(m.settings, current))) return false;
+    if (memories.some((m) => perspectiveSettingsEqual(m.settings, current))) return false;
     // Evict the oldest entry when full, then label the new one with the
     // smallest free number — surviving entries keep their labels, and reuse
     // keeps every label single-digit (see PerspectiveMemory.seq).
     const kept = memories.slice(-(MAX_PERSPECTIVE_MEMORIES - 1));
-    const seq = smallestFreeMemorySeq(new Set(kept.map(m => m.seq)));
+    const seq = smallestFreeMemorySeq(new Set(kept.map((m) => m.seq)));
     this.state.grid = {
       ...this.state.grid,
       perspectiveMemories: [...kept, { seq, settings: { ...current } }],
@@ -74,7 +77,7 @@ export class GuideManager {
   /** Delete one memory by its label number; the freed number goes back into the reuse pool. */
   removePerspectiveMemory(seq: number): boolean {
     const memories = this.state.grid.perspectiveMemories ?? [];
-    const filtered = memories.filter(m => m.seq !== seq);
+    const filtered = memories.filter((m) => m.seq !== seq);
     if (filtered.length === memories.length) return false;
     this.state.grid = { ...this.state.grid, perspectiveMemories: filtered };
     return true;
@@ -91,7 +94,7 @@ export class GuideManager {
   }
 
   removeLine(id: string): boolean {
-    const index = this.state.lines.findIndex(l => l.id === id);
+    const index = this.state.lines.findIndex((l) => l.id === id);
     if (index === -1) return false;
     this.state.lines.splice(index, 1);
     return true;
@@ -130,9 +133,12 @@ export class GuideManager {
 }
 
 export function pointToSegmentDistance(
-  px: number, py: number,
-  x1: number, y1: number,
-  x2: number, y2: number,
+  px: number,
+  py: number,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
 ): number {
   const dx = x2 - x1;
   const dy = y2 - y1;

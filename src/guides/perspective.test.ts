@@ -7,7 +7,7 @@ function settings(patch: Partial<PerspectiveSettings> = {}): PerspectiveSettings
 }
 
 function allCoords(lines: PerspectiveSegment[]): number[] {
-  return lines.flatMap(l => [l.x1, l.y1, l.x2, l.y2]);
+  return lines.flatMap((l) => [l.x1, l.y1, l.x2, l.y2]);
 }
 
 describe('computePerspectiveGridLines', () => {
@@ -24,14 +24,20 @@ describe('computePerspectiveGridLines', () => {
     // For every segment there is a mirrored counterpart under x → -x.
     const keys = new Set(
       lines.map((l) => {
-        const pts = [[l.x1, l.y1], [l.x2, l.y2]]
+        const pts = [
+          [l.x1, l.y1],
+          [l.x2, l.y2],
+        ]
           .map(([x, y]) => `${Math.round(x * 100)},${Math.round(y * 100)}`)
           .sort();
         return pts.join('|');
       }),
     );
     for (const l of lines) {
-      const mirrored = [[-l.x1, l.y1], [-l.x2, l.y2]]
+      const mirrored = [
+        [-l.x1, l.y1],
+        [-l.x2, l.y2],
+      ]
         .map(([x, y]) => `${Math.round(x * 100)},${Math.round(y * 100)}`)
         .sort()
         .join('|');
@@ -78,8 +84,7 @@ describe('computePerspectiveGridLines', () => {
       if (l.y1 > l.y2) {
         nearXs.push(l.x1);
         farXs.push(l.x2);
-      }
-      else {
+      } else {
         nearXs.push(l.x2);
         farXs.push(l.x1);
       }

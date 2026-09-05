@@ -54,9 +54,8 @@ export function GestureHUD({
 }: GestureHUDProps) {
   if (!active) return null;
 
-  const progressPct = durationMs > 0
-    ? Math.max(0, Math.min(100, (remainingMs / durationMs) * 100))
-    : 0;
+  const progressPct =
+    durationMs > 0 ? Math.max(0, Math.min(100, (remainingMs / durationMs) * 100)) : 0;
 
   const queuedHint = hasMoreInBackend ? `${queueRemaining}+` : `${queueRemaining}`;
 
@@ -92,8 +91,8 @@ export function GestureHUD({
           variant="determinate"
           value={progressPct}
           sx={{
-            'height': 8,
-            'borderRadius': 4,
+            height: 8,
+            borderRadius: 4,
             '& .MuiLinearProgress-bar': {
               bgcolor: remainingMs <= 5000 ? 'error.main' : 'primary.main',
             },
@@ -103,18 +102,9 @@ export function GestureHUD({
           variant="caption"
           sx={{ display: 'block', color: 'text.secondary', lineHeight: 1.2, mt: 0.25 }}
         >
-          {t('gestureSessionPosesLabel')}
-          {' '}
-          {currentIndex}
-          {' '}
-          (
-          {completedCount}
-          {' '}
-          ✓)
+          {t('gestureSessionPosesLabel')} {currentIndex} ({completedCount} ✓)
           {' · '}
-          {t('gestureSessionRemainingLabel')}
-          {' '}
-          {queuedHint}
+          {t('gestureSessionRemainingLabel')} {queuedHint}
           {loadingMore && ` · ${t('gestureSessionLoadingMore')}`}
         </Typography>
       </Box>

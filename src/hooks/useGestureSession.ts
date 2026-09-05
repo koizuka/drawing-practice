@@ -77,12 +77,7 @@ export interface GestureSessionActions {
   exit: () => void;
 }
 
-type Status
-  = 'idle'
-    | 'running'
-    | 'paused'
-    | 'advancing-save'
-    | 'advancing-skip';
+type Status = 'idle' | 'running' | 'paused' | 'advancing-save' | 'advancing-skip';
 
 interface InternalState extends GestureSessionState {
   status: Status;
@@ -130,7 +125,9 @@ function defaultShuffle<T>(items: readonly T[]): T[] {
  * advance work checks the id before applying its result, so a slow save
  * for an exited session can't accidentally load a photo into the next one.
  */
-export function useGestureSession(opts: UseGestureSessionOptions): GestureSessionState & GestureSessionActions {
+export function useGestureSession(
+  opts: UseGestureSessionOptions,
+): GestureSessionState & GestureSessionActions {
   const optsRef = useRef(opts);
   useEffect(() => {
     optsRef.current = opts;
@@ -202,8 +199,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
       if (isSave && state.currentPhoto) {
         try {
           await optsRef.current.onTimeUp(state.currentPhoto);
-        }
-        catch (e) {
+        } catch (e) {
           console.error('Gesture onTimeUp failed:', e);
         }
         if (isStale()) return;
@@ -216,7 +212,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
 
       let next = queueRef.current.shift();
       if (!next && hasMoreRef.current && queryRef.current) {
-        setState(s => ({ ...s, loadingMore: true }));
+        setState((s) => ({ ...s, loadingMore: true }));
         try {
           const res = await optsRef.current.fetchMore(
             queryRef.current,
@@ -230,17 +226,15 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
             pageRef.current = res.page;
             hasMoreRef.current = res.hasMore;
             next = queueRef.current.shift();
-          }
-          else {
+          } else {
             hasMoreRef.current = false;
           }
-        }
-        catch (e) {
+        } catch (e) {
           console.error('Gesture fetchMore failed:', e);
           hasMoreRef.current = false;
         }
         if (isStale()) return;
-        setState(s => ({ ...s, loadingMore: false }));
+        setState((s) => ({ ...s, loadingMore: false }));
       }
 
       if (isStale()) return;
@@ -258,7 +252,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
 
       const nextPhoto = next;
       optsRef.current.onPhotoChange(nextPhoto);
-      setState(s => ({
+      setState((s) => ({
         ...s,
         status: 'running',
         active: true,
@@ -277,17 +271,17 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
       settleTimeoutRef.current = setTimeout(() => {
         settleTimeoutRef.current = null;
         if (sessionIdRef.current !== sessionAtStart) return;
-        setState(s => (s.status === 'running' ? { ...s, transitioning: false } : s));
+        setState((s) => (s.status === 'running' ? { ...s, transitioning: false } : s));
       }, TRANSITION_SETTLE_MS);
     })();
 
     return () => {
       cancelled = true;
     };
-  // currentPhoto is intentionally omitted — its value is captured in the
-  // closure when the status transitions; recomputing the effect when the
-  // photo changes (which we do INSIDE the effect itself) would re-trigger.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // currentPhoto is intentionally omitted — its value is captured in the
+    // closure when the status transitions; recomputing the effect when the
+    // photo changes (which we do INSIDE the effect itself) would re-trigger.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [state.status]);
 
   // Cleanup on unmount: bump session id so any pending async work bails out
@@ -295,7 +289,7 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
   // clear any pending settle timeout so it can't fire after unmount.
   useEffect(() => {
     return () => {
-      sessionIdRef.current++; // eslint-disable-line react-hooks/exhaustive-deps -- intentional: latest id
+      sessionIdRef.current++; // oxlint-disable-line react-hooks/exhaustive-deps -- intentional: latest id
       if (settleTimeoutRef.current !== null) {
         clearTimeout(settleTimeoutRef.current);
         settleTimeoutRef.current = null;
@@ -303,34 +297,37 @@ export function useGestureSession(opts: UseGestureSessionOptions): GestureSessio
     };
   }, []);
 
-  const start = useCallback((config: GestureSessionStartConfig) => {
-    if (config.initialPhotos.length === 0) return;
-    sessionIdRef.current++;
-    clearSettleTimeout();
-    const shuffler = optsRef.current.shuffle ?? defaultShuffle;
-    const queue = shuffler(config.initialPhotos);
-    const first = queue.shift()!;
-    queueRef.current = queue;
-    queryRef.current = config.query;
-    orientationRef.current = config.orientation;
-    pageRef.current = config.page;
-    hasMoreRef.current = config.hasMore;
-    optsRef.current.onPhotoChange(first);
-    setState({
-      status: 'running',
-      active: true,
-      paused: false,
-      loadingMore: false,
-      durationMs: config.durationMs,
-      remainingMs: config.durationMs,
-      currentPhoto: first,
-      completedCount: 0,
-      totalShownCount: 1,
-      queueRemaining: queue.length,
-      hasMoreInBackend: queue.length > 0 || config.hasMore,
-      transitioning: false,
-    });
-  }, [clearSettleTimeout]);
+  const start = useCallback(
+    (config: GestureSessionStartConfig) => {
+      if (config.initialPhotos.length === 0) return;
+      sessionIdRef.current++;
+      clearSettleTimeout();
+      const shuffler = optsRef.current.shuffle ?? defaultShuffle;
+      const queue = shuffler(config.initialPhotos);
+      const first = queue.shift()!;
+      queueRef.current = queue;
+      queryRef.current = config.query;
+      orientationRef.current = config.orientation;
+      pageRef.current = config.page;
+      hasMoreRef.current = config.hasMore;
+      optsRef.current.onPhotoChange(first);
+      setState({
+        status: 'running',
+        active: true,
+        paused: false,
+        loadingMore: false,
+        durationMs: config.durationMs,
+        remainingMs: config.durationMs,
+        currentPhoto: first,
+        completedCount: 0,
+        totalShownCount: 1,
+        queueRemaining: queue.length,
+        hasMoreInBackend: queue.length > 0 || config.hasMore,
+        transitioning: false,
+      });
+    },
+    [clearSettleTimeout],
+  );
 
   const skip = useCallback(() => {
     setState((s) => {

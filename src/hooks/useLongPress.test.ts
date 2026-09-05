@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useLongPress } from './useLongPress';
 
-function fakePointerEvent(overrides: Partial<ReactPointerEvent<HTMLElement>> = {}): ReactPointerEvent<HTMLElement> {
+function fakePointerEvent(
+  overrides: Partial<ReactPointerEvent<HTMLElement>> = {},
+): ReactPointerEvent<HTMLElement> {
   const target = (overrides.currentTarget ?? document.createElement('button')) as HTMLElement;
   return {
     button: 0,
@@ -31,7 +33,9 @@ describe('useLongPress', () => {
     act(() => result.current.onPointerDown(fakePointerEvent({ currentTarget: target })));
     expect(onLongPress).not.toHaveBeenCalled();
 
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(onLongPress).toHaveBeenCalledTimes(1);
     expect(onLongPress).toHaveBeenCalledWith(target);
 
@@ -51,7 +55,9 @@ describe('useLongPress', () => {
     // Mimic React clearing currentTarget once dispatch completes.
     Object.defineProperty(event, 'currentTarget', { value: null });
 
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(onLongPress).toHaveBeenCalledWith(target);
   });
 
@@ -62,7 +68,9 @@ describe('useLongPress', () => {
 
     const target = document.createElement('button');
     act(() => result.current.onPointerDown(fakePointerEvent({ currentTarget: target })));
-    act(() => { vi.advanceTimersByTime(200); });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
     act(() => result.current.onPointerUp());
 
     expect(onClick).toHaveBeenCalledTimes(1);
@@ -79,7 +87,9 @@ describe('useLongPress', () => {
 
     act(() => result.current.onPointerDown(fakePointerEvent({ clientX: 0, clientY: 0 })));
     act(() => result.current.onPointerMove(fakePointerEvent({ clientX: 20, clientY: 0 })));
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     expect(onLongPress).not.toHaveBeenCalled();
 
     act(() => result.current.onPointerUp());
@@ -88,13 +98,13 @@ describe('useLongPress', () => {
 
   it('keeps the press alive for movements within the tolerance', () => {
     const onLongPress = vi.fn();
-    const { result } = renderHook(() =>
-      useLongPress({ onLongPress, ms: 500, moveTolerancePx: 8 }),
-    );
+    const { result } = renderHook(() => useLongPress({ onLongPress, ms: 500, moveTolerancePx: 8 }));
 
     act(() => result.current.onPointerDown(fakePointerEvent({ clientX: 0, clientY: 0 })));
     act(() => result.current.onPointerMove(fakePointerEvent({ clientX: 5, clientY: 5 })));
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
 
     expect(onLongPress).toHaveBeenCalledTimes(1);
   });
@@ -106,7 +116,9 @@ describe('useLongPress', () => {
 
     act(() => result.current.onPointerDown(fakePointerEvent()));
     act(() => result.current.onPointerCancel());
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
 
     expect(onLongPress).not.toHaveBeenCalled();
     act(() => result.current.onPointerUp());
@@ -129,7 +141,9 @@ describe('useLongPress', () => {
     const { result } = renderHook(() => useLongPress({ onLongPress, onClick }));
 
     act(() => result.current.onPointerDown(fakePointerEvent({ button: 2 })));
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     act(() => result.current.onPointerUp());
 
     expect(onLongPress).not.toHaveBeenCalled();
@@ -142,7 +156,9 @@ describe('useLongPress', () => {
     const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
 
     act(() => result.current.onPointerDown(fakePointerEvent()));
-    act(() => { vi.advanceTimersByTime(500); });
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
     act(() => result.current.onPointerUp());
 
     expect(onLongPress).toHaveBeenCalledTimes(1);

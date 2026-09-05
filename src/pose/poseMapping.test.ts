@@ -8,14 +8,25 @@ const DEG = Math.PI / 180;
 function makeRig() {
   const bones = new Map<PoseBoneName, Object3D>();
   const names: PoseBoneName[] = [
-    'hips', 'spine', 'chest', 'head',
-    'leftUpperArm', 'leftLowerArm', 'rightUpperArm', 'rightLowerArm',
-    'leftHand', 'rightHand',
-    'leftUpperLeg', 'leftLowerLeg', 'rightUpperLeg', 'rightLowerLeg',
-    'leftFoot', 'rightFoot',
+    'hips',
+    'spine',
+    'chest',
+    'head',
+    'leftUpperArm',
+    'leftLowerArm',
+    'rightUpperArm',
+    'rightLowerArm',
+    'leftHand',
+    'rightHand',
+    'leftUpperLeg',
+    'leftLowerLeg',
+    'rightUpperLeg',
+    'rightLowerLeg',
+    'leftFoot',
+    'rightFoot',
   ];
   for (const name of names) bones.set(name, new Object3D());
-  const resolve: BoneResolver = name => bones.get(name) ?? null;
+  const resolve: BoneResolver = (name) => bones.get(name) ?? null;
   const resetPose = vi.fn(() => {
     for (const bone of bones.values()) {
       bone.rotation.set(0, 0, 0);
@@ -82,15 +93,18 @@ describe('applyPose', () => {
     ['back', 'left', { y: -90 * DEG, z: 0 }],
     ['down', 'left', { y: 0, z: -90 * DEG }],
     ['up', 'left', { y: 0, z: 90 * DEG }],
-  ] as const)('elbowDirection %s (%s arm) rotates the forearm on the expected axis', (direction, side, expected) => {
-    const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      [`${side}Arm`]: { elbowBend: 90, elbowDirection: direction },
-    });
-    const lower = bones.get(`${side}LowerArm`)!;
-    expect(lower.rotation.y).toBeCloseTo(expected.y);
-    expect(lower.rotation.z).toBeCloseTo(expected.z);
-  });
+  ] as const)(
+    'elbowDirection %s (%s arm) rotates the forearm on the expected axis',
+    (direction, side, expected) => {
+      const { bones, resolve, resetPose } = makeRig();
+      applyPose(resolve, resetPose, {
+        [`${side}Arm`]: { elbowBend: 90, elbowDirection: direction },
+      });
+      const lower = bones.get(`${side}LowerArm`)!;
+      expect(lower.rotation.y).toBeCloseTo(expected.y);
+      expect(lower.rotation.z).toBeCloseTo(expected.z);
+    },
+  );
 
   it('never reverses the elbow on a rear-swung arm, even when the pose asks for "back"', () => {
     // Running rear arm: models used to emit elbowDirection 'back' here, whose
@@ -136,8 +150,12 @@ describe('applyPose', () => {
     // Arm swung diagonally forward — the shortest-arc-era local axes would
     // fold somewhere else here; the world-direction semantics must hold.
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, { leftArm: { raise: 90, forward: 45, elbowBend: 90, elbowDirection: 'down' } });
-    const worldQuat = bones.get('leftUpperArm')!.quaternion.clone()
+    applyPose(resolve, resetPose, {
+      leftArm: { raise: 90, forward: 45, elbowBend: 90, elbowDirection: 'down' },
+    });
+    const worldQuat = bones
+      .get('leftUpperArm')!
+      .quaternion.clone()
       .multiply(bones.get('leftLowerArm')!.quaternion);
     const forearmDir = new Vector3(1, 0, 0).applyQuaternion(worldQuat);
     expect(forearmDir.y).toBeCloseTo(-1, 5);
@@ -172,7 +190,10 @@ describe('applyPose', () => {
     applyPose(resolve, resetPose, { leftArm: { raise: 180 }, rightArm: { raise: 180 } });
     // World palm normal = upper ∘ lower ∘ hand applied to the -Y rest normal
     // (lower is identity here — the elbow is straight).
-    for (const [side, medialX] of [['left', -1], ['right', 1]] as const) {
+    for (const [side, medialX] of [
+      ['left', -1],
+      ['right', 1],
+    ] as const) {
       const palm = new Vector3(0, -1, 0)
         .applyQuaternion(bones.get(`${side}Hand`)!.quaternion)
         .applyQuaternion(bones.get(`${side}UpperArm`)!.quaternion);
@@ -213,20 +234,23 @@ describe('applyPose', () => {
   describe('touch presets ride the posed body part (IK path)', () => {
     // Synthetic rest rig of a nominal 1.6m figure (targetScale = 1).
     const REST_RIG: PoseRig = {
-      hips: { x: 0, y: 0.80, z: 0 },
+      hips: { x: 0, y: 0.8, z: 0 },
       spine: { x: 0, y: 0.95, z: 0 },
-      chest: { x: 0, y: 1.10, z: 0 },
+      chest: { x: 0, y: 1.1, z: 0 },
       head: { x: 0, y: 1.48, z: 0 },
-      leftUpperArm: { x: 0.13, y: 1.30, z: 0 },
-      leftLowerArm: { x: 0.38, y: 1.30, z: 0 },
-      leftHand: { x: 0.62, y: 1.30, z: 0 },
-      rightUpperArm: { x: -0.13, y: 1.30, z: 0 },
-      rightLowerArm: { x: -0.38, y: 1.30, z: 0 },
-      rightHand: { x: -0.62, y: 1.30, z: 0 },
+      leftUpperArm: { x: 0.13, y: 1.3, z: 0 },
+      leftLowerArm: { x: 0.38, y: 1.3, z: 0 },
+      leftHand: { x: 0.62, y: 1.3, z: 0 },
+      rightUpperArm: { x: -0.13, y: 1.3, z: 0 },
+      rightLowerArm: { x: -0.38, y: 1.3, z: 0 },
+      rightHand: { x: -0.62, y: 1.3, z: 0 },
     };
 
     /** FK the elbow + wrist world positions through hips→spine→chest→arm chain. */
-    function fkArm(bones: Map<PoseBoneName, Object3D>, side: 'left' | 'right'): { elbow: Vector3; wrist: Vector3 } {
+    function fkArm(
+      bones: Map<PoseBoneName, Object3D>,
+      side: 'left' | 'right',
+    ): { elbow: Vector3; wrist: Vector3 } {
       const q = (name: PoseBoneName) => bones.get(name)!.quaternion;
       const p = (name: PoseBoneName) => {
         const r = REST_RIG[name]!;
@@ -240,9 +264,19 @@ describe('applyPose', () => {
       const hipsPos = p('hips').add(bones.get('hips')!.position);
       const spinePos = hipsPos.clone().add(p('spine').sub(p('hips')).applyQuaternion(hipsQ));
       const chestPos = spinePos.clone().add(p('chest').sub(p('spine')).applyQuaternion(spineQ));
-      const uaPos = chestPos.clone().add(p(`${side}UpperArm`).sub(p('chest')).applyQuaternion(chestQ));
-      const laPos = uaPos.clone().add(p(`${side}LowerArm`).sub(p(`${side}UpperArm`)).applyQuaternion(uaQ));
-      const wrist = laPos.clone().add(p(`${side}Hand`).sub(p(`${side}LowerArm`)).applyQuaternion(laQ));
+      const uaPos = chestPos
+        .clone()
+        .add(p(`${side}UpperArm`).sub(p('chest')).applyQuaternion(chestQ));
+      const laPos = uaPos.clone().add(
+        p(`${side}LowerArm`)
+          .sub(p(`${side}UpperArm`))
+          .applyQuaternion(uaQ),
+      );
+      const wrist = laPos.clone().add(
+        p(`${side}Hand`)
+          .sub(p(`${side}LowerArm`))
+          .applyQuaternion(laQ),
+      );
       return { elbow: laPos, wrist };
     }
 
@@ -250,14 +284,14 @@ describe('applyPose', () => {
       const { bones, resolve, resetPose } = makeRig();
       applyPose(resolve, resetPose, { leftArm: { touch: 'head' } }, REST_RIG);
       const { elbow, wrist } = fkArm(bones, 'left');
-      expect(wrist.distanceTo(new Vector3(0.10, 1.53, 0.02))).toBeLessThan(0.02);
+      expect(wrist.distanceTo(new Vector3(0.1, 1.53, 0.02))).toBeLessThan(0.02);
       // Head-clutch pole: the elbow points down-front and slightly out —
       // forward of the body, on its OWN side (not flared sideways, which
       // over-bends the wrist; not across the midline, which reads as hands
       // clasped in front of the face).
-      expect(elbow.z).toBeGreaterThan(0.10);
+      expect(elbow.z).toBeGreaterThan(0.1);
       expect(elbow.x).toBeGreaterThan(0.03);
-      expect(elbow.x).toBeLessThan(0.30);
+      expect(elbow.x).toBeLessThan(0.3);
     });
 
     it('touch:head follows a leaning, nodding head (not the upright head position)', () => {
@@ -265,16 +299,21 @@ describe('applyPose', () => {
       // hand must land on the MOVED head, not clasp behind the neck where
       // the head used to be (the reported "頭を抱える" failure).
       const { bones, resolve, resetPose } = makeRig();
-      applyPose(resolve, resetPose, {
-        body: { leanForward: 22 },
-        head: { nod: 30 },
-        leftArm: { touch: 'head' },
-      }, REST_RIG);
+      applyPose(
+        resolve,
+        resetPose,
+        {
+          body: { leanForward: 22 },
+          head: { nod: 30 },
+          leftArm: { touch: 'head' },
+        },
+        REST_RIG,
+      );
       const { wrist } = fkArm(bones, 'left');
       expect(wrist.z).toBeGreaterThan(0.15);
-      expect(wrist.y).toBeLessThan(1.50);
-      expect(wrist.y).toBeGreaterThan(1.40);
-      expect(Math.abs(wrist.x - 0.10)).toBeLessThan(0.05);
+      expect(wrist.y).toBeLessThan(1.5);
+      expect(wrist.y).toBeGreaterThan(1.4);
+      expect(Math.abs(wrist.x - 0.1)).toBeLessThan(0.05);
     });
   });
 
@@ -283,8 +322,9 @@ describe('applyPose', () => {
     const withTouch = makeRig();
     applyPose(resolve, resetPose, { leftArm: TOUCH_PRESETS.hip });
     applyPose(withTouch.resolve, withTouch.resetPose, { leftArm: { touch: 'hip', raise: 180 } });
-    expect(withTouch.bones.get('leftUpperArm')!.quaternion.toArray())
-      .toEqual(bones.get('leftUpperArm')!.quaternion.toArray());
+    expect(withTouch.bones.get('leftUpperArm')!.quaternion.toArray()).toEqual(
+      bones.get('leftUpperArm')!.quaternion.toArray(),
+    );
   });
 
   it('elbowDirection "in" folds the forearm toward the midline on both sides', () => {
@@ -294,9 +334,10 @@ describe('applyPose', () => {
     // World forearm direction = upper ∘ lower applied to the forearm rest
     // direction (side, 0, 0). Medial means -X for the left arm, +X for the
     // right (model's left is +X).
-    const forearmWorld = (side: 'left' | 'right', sign: number) => new Vector3(sign, 0, 0)
-      .applyQuaternion(bones.get(`${side}LowerArm` as const)!.quaternion)
-      .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
+    const forearmWorld = (side: 'left' | 'right', sign: number) =>
+      new Vector3(sign, 0, 0)
+        .applyQuaternion(bones.get(`${side}LowerArm` as const)!.quaternion)
+        .applyQuaternion(bones.get(`${side}UpperArm` as const)!.quaternion);
     expect(forearmWorld('left', 1).x).toBeLessThan(-0.3);
     expect(forearmWorld('right', -1).x).toBeGreaterThan(0.3);
   });
@@ -489,16 +530,22 @@ describe('applyPose', () => {
 
 const v = (x: number, y: number, z: number) => ({ x, y, z });
 const REST: PoseRig = {
-  hips: v(0, 0.80, 0),
-  spine: v(0, 0.90, 0),
+  hips: v(0, 0.8, 0),
+  spine: v(0, 0.9, 0),
   chest: v(0, 1.05, 0),
   head: v(0, 1.48, 0),
-  leftUpperArm: v(0.13, 1.30, 0), rightUpperArm: v(-0.13, 1.30, 0),
-  leftLowerArm: v(0.41, 1.30, 0), rightLowerArm: v(-0.41, 1.30, 0), // upper arm 0.28
-  leftHand: v(0.66, 1.30, 0), rightHand: v(-0.66, 1.30, 0), // forearm 0.25
-  leftUpperLeg: v(0.09, 0.75, 0), rightUpperLeg: v(-0.09, 0.75, 0),
-  leftLowerLeg: v(0.09, 0.38, 0), rightLowerLeg: v(-0.09, 0.38, 0), // thigh 0.37
-  leftFoot: v(0.09, 0.07, 0), rightFoot: v(-0.09, 0.07, 0), // shin 0.31
+  leftUpperArm: v(0.13, 1.3, 0),
+  rightUpperArm: v(-0.13, 1.3, 0),
+  leftLowerArm: v(0.41, 1.3, 0),
+  rightLowerArm: v(-0.41, 1.3, 0), // upper arm 0.28
+  leftHand: v(0.66, 1.3, 0),
+  rightHand: v(-0.66, 1.3, 0), // forearm 0.25
+  leftUpperLeg: v(0.09, 0.75, 0),
+  rightUpperLeg: v(-0.09, 0.75, 0),
+  leftLowerLeg: v(0.09, 0.38, 0),
+  rightLowerLeg: v(-0.09, 0.38, 0), // thigh 0.37
+  leftFoot: v(0.09, 0.07, 0),
+  rightFoot: v(-0.09, 0.07, 0), // shin 0.31
 };
 const CROUCH_DROP = 0.35;
 
@@ -507,7 +554,7 @@ type Bones = Map<PoseBoneName, Object3D>;
 /** FK matching the production chain assumptions (hips → limbs, torso identity unless leaned). */
 function leftAnkleWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 {
   const qHips = bones.get('hips')!.quaternion;
-  const hipsPos = new Vector3(0, hipsHeight ?? 0.80 - crouch * CROUCH_DROP, 0);
+  const hipsPos = new Vector3(0, hipsHeight ?? 0.8 - crouch * CROUCH_DROP, 0);
   const hipJoint = hipsPos.clone().add(new Vector3(0.09, -0.05, 0).applyQuaternion(qHips));
   const qThigh = qHips.clone().multiply(bones.get('leftUpperLeg')!.quaternion);
   const knee = hipJoint.clone().add(new Vector3(0, -0.37, 0).applyQuaternion(qThigh));
@@ -517,8 +564,8 @@ function leftAnkleWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 
 
 function leftWristWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 {
   const qHips = bones.get('hips')!.quaternion;
-  const hipsPos = new Vector3(0, hipsHeight ?? 0.80 - crouch * CROUCH_DROP, 0);
-  const shoulder = hipsPos.clone().add(new Vector3(0.13, 0.50, 0).applyQuaternion(qHips));
+  const hipsPos = new Vector3(0, hipsHeight ?? 0.8 - crouch * CROUCH_DROP, 0);
+  const shoulder = hipsPos.clone().add(new Vector3(0.13, 0.5, 0).applyQuaternion(qHips));
   const qUpper = qHips.clone().multiply(bones.get('leftUpperArm')!.quaternion);
   const elbow = shoulder.clone().add(new Vector3(0.28, 0, 0).applyQuaternion(qUpper));
   const qLower = qUpper.clone().multiply(bones.get('leftLowerArm')!.quaternion);
@@ -528,10 +575,15 @@ function leftWristWorld(bones: Bones, crouch = 0, hipsHeight?: number): Vector3 
 describe('applyPose placement targets', () => {
   it('footAt places the ankle at the target (planted y snaps to the sole height)', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { crouch: 0.3 },
-      leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { crouch: 0.3 },
+        leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
+      },
+      REST,
+    );
     const ankle = leftAnkleWorld(bones, 0.3);
     expect(ankle.x).toBeCloseTo(0.09, 3);
     expect(ankle.y).toBeCloseTo(0.07, 3); // rest sole offset, not 0
@@ -540,11 +592,18 @@ describe('applyPose placement targets', () => {
 
   it('a planted foot lands sole-flat, toes forward', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { crouch: 0.3 },
-      leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
-    }, REST);
-    const footWorld = bones.get('hips')!.quaternion.clone()
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { crouch: 0.3 },
+        leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
+      },
+      REST,
+    );
+    const footWorld = bones
+      .get('hips')!
+      .quaternion.clone()
       .multiply(bones.get('leftUpperLeg')!.quaternion)
       .multiply(bones.get('leftLowerLeg')!.quaternion)
       .multiply(bones.get('leftFoot')!.quaternion);
@@ -554,13 +613,18 @@ describe('applyPose placement targets', () => {
 
   it('keeps a planted ankle on target when kneeAt distances do not match the rig', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { hipsHeight: 0.45 },
-      leftLeg: {
-        kneeAt: { x: 0.15, y: 0.43, z: 0.32 },
-        footAt: { x: 0.15, y: 0, z: 0.32 },
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { hipsHeight: 0.45 },
+        leftLeg: {
+          kneeAt: { x: 0.15, y: 0.43, z: 0.32 },
+          footAt: { x: 0.15, y: 0, z: 0.32 },
+        },
       },
-    }, REST);
+      REST,
+    );
     const ankle = leftAnkleWorld(bones, 0, 0.45);
     expect(ankle.x).toBeCloseTo(0.15, 3);
     expect(ankle.y).toBeCloseTo(0.07, 3);
@@ -569,24 +633,44 @@ describe('applyPose placement targets', () => {
 
   it('the knee bulges toward the figure front by default', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { crouch: 0.5 },
-      leftLeg: { footAt: { x: 0.09, y: 0, z: 0 } },
-    }, REST);
-    const qThigh = bones.get('hips')!.quaternion.clone().multiply(bones.get('leftUpperLeg')!.quaternion);
-    const knee = new Vector3(0.09, 0.75 - 0.5 * CROUCH_DROP, 0)
-      .add(new Vector3(0, -0.37, 0).applyQuaternion(qThigh));
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { crouch: 0.5 },
+        leftLeg: { footAt: { x: 0.09, y: 0, z: 0 } },
+      },
+      REST,
+    );
+    const qThigh = bones
+      .get('hips')!
+      .quaternion.clone()
+      .multiply(bones.get('leftUpperLeg')!.quaternion);
+    const knee = new Vector3(0.09, 0.75 - 0.5 * CROUCH_DROP, 0).add(
+      new Vector3(0, -0.37, 0).applyQuaternion(qThigh),
+    );
     expect(knee.z).toBeGreaterThan(0.05);
   });
 
   it('kneeAt + footAt pin a folded leg (kneeling): knee toward its target, ankle behind', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { crouch: 1 },
-      leftLeg: { kneeAt: { x: 0.09, y: 0.05, z: 0.1 }, footAt: { x: 0.09, y: 0.04, z: -0.2 }, ankle: -50 },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { crouch: 1 },
+        leftLeg: {
+          kneeAt: { x: 0.09, y: 0.05, z: 0.1 },
+          footAt: { x: 0.09, y: 0.04, z: -0.2 },
+          ankle: -50,
+        },
+      },
+      REST,
+    );
     const qHips = bones.get('hips')!.quaternion;
-    const hipJoint = new Vector3(0, 0.45, 0).add(new Vector3(0.09, -0.05, 0).applyQuaternion(qHips));
+    const hipJoint = new Vector3(0, 0.45, 0).add(
+      new Vector3(0.09, -0.05, 0).applyQuaternion(qHips),
+    );
     const qThigh = qHips.clone().multiply(bones.get('leftUpperLeg')!.quaternion);
     const knee = hipJoint.clone().add(new Vector3(0, -0.37, 0).applyQuaternion(qThigh));
     // Knee on the clamped ray toward its target.
@@ -600,10 +684,15 @@ describe('applyPose placement targets', () => {
 
   it('handAt reaches the target with the body pitched forward (all-fours arm)', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { bend: 80, crouch: 1 },
-      leftArm: { handAt: { x: 0.15, y: 0, z: 0.49 } },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { bend: 80, crouch: 1 },
+        leftArm: { handAt: { x: 0.15, y: 0, z: 0.49 } },
+      },
+      REST,
+    );
     const wrist = leftWristWorld(bones, 1);
     expect(wrist.x).toBeCloseTo(0.15, 2);
     expect(wrist.y).toBeCloseTo(0.03, 2); // planted wrist floor offset
@@ -612,11 +701,18 @@ describe('applyPose placement targets', () => {
 
   it('a planted palm lies flat with the fingers aimed forward', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { bend: 80, crouch: 1 },
-      leftArm: { handAt: { x: 0.15, y: 0, z: 0.49 } },
-    }, REST);
-    const handWorld = bones.get('hips')!.quaternion.clone()
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { bend: 80, crouch: 1 },
+        leftArm: { handAt: { x: 0.15, y: 0, z: 0.49 } },
+      },
+      REST,
+    );
+    const handWorld = bones
+      .get('hips')!
+      .quaternion.clone()
       .multiply(bones.get('leftUpperArm')!.quaternion)
       .multiply(bones.get('leftLowerArm')!.quaternion)
       .multiply(bones.get('leftHand')!.quaternion);
@@ -633,14 +729,19 @@ describe('applyPose placement targets', () => {
     // volume (z ≈ -0.04); the IK target pins it on the front surface.
     expect(wrist.z).toBeGreaterThan(0.08);
     expect(Math.abs(wrist.x)).toBeLessThan(0.12);
-    expect(wrist.y).toBeCloseTo(1.20, 1);
+    expect(wrist.y).toBeCloseTo(1.2, 1);
   });
 
   it('pushes a handAt target EXACTLY on the torso centerline out sideways', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      leftArm: { handAt: { x: 0, y: 0.90, z: 0 } }, // zero radial direction
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        leftArm: { handAt: { x: 0, y: 0.9, z: 0 } }, // zero radial direction
+      },
+      REST,
+    );
     const wrist = leftWristWorld(bones);
     const radial = Math.sqrt(wrist.x * wrist.x + wrist.z * wrist.z);
     expect(radial).toBeGreaterThan(0.12);
@@ -650,9 +751,14 @@ describe('applyPose placement targets', () => {
   it('pushes a handAt target out of the torso volume (body is an obstacle)', () => {
     const { bones, resolve, resetPose } = makeRig();
     // Target ON the torso centerline — inside the flesh.
-    applyPose(resolve, resetPose, {
-      leftArm: { handAt: { x: 0, y: 0.90, z: 0.02 } },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        leftArm: { handAt: { x: 0, y: 0.9, z: 0.02 } },
+      },
+      REST,
+    );
     const wrist = leftWristWorld(bones);
     const radial = Math.sqrt(wrist.x * wrist.x + wrist.z * wrist.z);
     expect(radial).toBeGreaterThan(0.12);
@@ -660,10 +766,17 @@ describe('applyPose placement targets', () => {
 
   it('lays the palm against the torso for a self-touch handAt (covering the crotch)', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.10 }, elbowDirection: 'in' },
-    }, REST);
-    const handWorld = bones.get('hips')!.quaternion.clone()
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.1 }, elbowDirection: 'in' },
+      },
+      REST,
+    );
+    const handWorld = bones
+      .get('hips')!
+      .quaternion.clone()
       .multiply(bones.get('rightUpperArm')!.quaternion)
       .multiply(bones.get('rightLowerArm')!.quaternion)
       .multiply(bones.get('rightHand')!.quaternion);
@@ -676,15 +789,22 @@ describe('applyPose placement targets', () => {
     const { bones, resolve, resetPose } = makeRig();
     const handAt = new Vector3(0.17, 0.58, 0.33);
     const kneeAt = new Vector3(0.15, 0.55, 0.32);
-    applyPose(resolve, resetPose, {
-      body: { hipsHeight: 0.45 },
-      leftArm: { handAt: { x: handAt.x, y: handAt.y, z: handAt.z }, elbowDirection: 'front' },
-      leftLeg: {
-        kneeAt: { x: kneeAt.x, y: kneeAt.y, z: kneeAt.z },
-        footAt: { x: 0.15, y: 0, z: 0.32 },
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { hipsHeight: 0.45 },
+        leftArm: { handAt: { x: handAt.x, y: handAt.y, z: handAt.z }, elbowDirection: 'front' },
+        leftLeg: {
+          kneeAt: { x: kneeAt.x, y: kneeAt.y, z: kneeAt.z },
+          footAt: { x: 0.15, y: 0, z: 0.32 },
+        },
       },
-    }, REST);
-    const handWorld = bones.get('hips')!.quaternion.clone()
+      REST,
+    );
+    const handWorld = bones
+      .get('hips')!
+      .quaternion.clone()
       .multiply(bones.get('leftUpperArm')!.quaternion)
       .multiply(bones.get('leftLowerArm')!.quaternion)
       .multiply(bones.get('leftHand')!.quaternion);
@@ -699,19 +819,29 @@ describe('applyPose placement targets', () => {
 
   it('an explicit wrist/forearmTwist overrides the palm-on-body auto-orientation', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.10 }, forearmTwist: 0, wrist: 0 },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        rightArm: { handAt: { x: -0.03, y: 0.72, z: 0.1 }, forearmTwist: 0, wrist: 0 },
+      },
+      REST,
+    );
     expect(bones.get('rightHand')!.rotation.x).toBeCloseTo(0);
     expect(bones.get('rightHand')!.rotation.z).toBeCloseTo(0);
   });
 
   it('targets follow body.turn (figure frame, not viewer frame)', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      body: { turn: 90, crouch: 0.3 },
-      leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        body: { turn: 90, crouch: 0.3 },
+        leftLeg: { footAt: { x: 0.09, y: 0, z: 0.25 } },
+      },
+      REST,
+    );
     // Figure front (+z_fig) is world -X when facing viewer-left.
     const ankle = leftAnkleWorld(bones, 0.3);
     expect(ankle.x).toBeCloseTo(-0.25, 3);
@@ -746,18 +876,27 @@ describe('applyPose placement targets', () => {
 
   it('a rig without targets leaves the angle path untouched', () => {
     const plain = makeRig();
-    applyPose(plain.resolve, plain.resetPose, { leftArm: { raise: 60, forward: 70, elbowBend: 40 } });
+    applyPose(plain.resolve, plain.resetPose, {
+      leftArm: { raise: 60, forward: 70, elbowBend: 40 },
+    });
     const withRig = makeRig();
-    applyPose(withRig.resolve, withRig.resetPose, { leftArm: { raise: 60, forward: 70, elbowBend: 40 } }, REST);
-    expect(withRig.bones.get('leftUpperArm')!.quaternion.angleTo(
-      plain.bones.get('leftUpperArm')!.quaternion,
-    )).toBeCloseTo(0, 6);
+    applyPose(
+      withRig.resolve,
+      withRig.resetPose,
+      { leftArm: { raise: 60, forward: 70, elbowBend: 40 } },
+      REST,
+    );
+    expect(
+      withRig.bones
+        .get('leftUpperArm')!
+        .quaternion.angleTo(plain.bones.get('leftUpperArm')!.quaternion),
+    ).toBeCloseTo(0, 6);
   });
 
   it('hipsHeight pins the hips at an absolute floor height (overriding crouch)', () => {
     const { bones, resolve, resetPose } = makeRig();
     applyPose(resolve, resetPose, { body: { hipsHeight: 0.15, crouch: 1 } }, REST);
-    expect(bones.get('hips')!.position.y).toBeCloseTo(0.15 - 0.80, 6);
+    expect(bones.get('hips')!.position.y).toBeCloseTo(0.15 - 0.8, 6);
   });
 
   it('crouch keeps its fixed drop when hipsHeight is absent (with a rig)', () => {
@@ -774,9 +913,14 @@ describe('applyPose placement targets', () => {
 
   it('an out-of-reach target is clamped, not NaN', () => {
     const { bones, resolve, resetPose } = makeRig();
-    applyPose(resolve, resetPose, {
-      leftArm: { handAt: { x: 1.4, y: 1.3, z: 0.5 } },
-    }, REST);
+    applyPose(
+      resolve,
+      resetPose,
+      {
+        leftArm: { handAt: { x: 1.4, y: 1.3, z: 0.5 } },
+      },
+      REST,
+    );
     const q = bones.get('leftUpperArm')!.quaternion;
     expect([q.x, q.y, q.z, q.w].some(Number.isNaN)).toBe(false);
     const wrist = leftWristWorld(bones);

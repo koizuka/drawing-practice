@@ -26,7 +26,8 @@ const messages = {
     sketchfab: 'Sketchfab',
     image: 'Image File',
     localImage: 'Local image',
-    imageReferenceEvicted: 'This image is no longer in history. Please open the file again to use it.',
+    imageReferenceEvicted:
+      'This image is no longer in history. Please open the file again to use it.',
     changeAngle: 'Change Angle',
     addGuideLine: 'Add guide line',
     deleteGuideLine: 'Delete guide line',
@@ -118,7 +119,8 @@ const messages = {
     loadUrl: 'Load',
     urlLoadFailed: 'Failed to load image from URL.',
     urlHistoryDelete: 'Remove from history',
-    autosaveDisabled: 'Autosave is disabled because another tab is active. Changes in this tab will not be saved automatically.',
+    autosaveDisabled:
+      'Autosave is disabled because another tab is active. Changes in this tab will not be saved automatically.',
     storageUsageTitle: 'Storage',
     storageUsageDrawings: 'Drawings',
     storageUsageStrokes: 'strokes',
@@ -145,7 +147,7 @@ const messages = {
     pexelsKeyRequired: 'A Pexels API key is required to search. Click to set it up.',
     pexelsKeyInvalid: 'Pexels API key is invalid. Check your settings.',
     pexelsRateLimit: 'Pexels rate limit reached. Please try again later.',
-    pexelsNetworkError: 'Couldn\'t reach Pexels. Check your connection.',
+    pexelsNetworkError: "Couldn't reach Pexels. Check your connection.",
     pexelsApiKeyTitle: 'Pexels API key',
     pexelsApiKeyDescription: 'Get a free API key from',
     pexelsApiKeyInput: 'API key',
@@ -197,20 +199,24 @@ const messages = {
     poseVrmLoadFailed: 'Failed to load the VRM model.',
     poseVrmTooLarge: 'VRM file is too large (max 50MB).',
     poseVrmUserMissing: 'No saved VRM found — using the bundled mannequin.',
-    poseVrmPersistFailed: 'Couldn\'t save the VRM to this device — it will be used for this session only.',
-    posePoseParseError: 'Could not read a pose from the response. Try again or adjust the sketch/hint.',
+    poseVrmPersistFailed:
+      "Couldn't save the VRM to this device — it will be used for this session only.",
+    posePoseParseError:
+      'Could not read a pose from the response. Try again or adjust the sketch/hint.',
     poseRetry: 'Retry',
     poseHistory: 'History',
     poseHistoryEmpty: 'No generated poses yet.',
     poseHistoryDelete: 'Delete from history',
     anthropicApiKeyTitle: 'Anthropic API key',
-    anthropicApiKeyDescription: 'Pose generation calls the Claude API directly from your browser with your own key (stored only on this device). Get a key from',
+    anthropicApiKeyDescription:
+      'Pose generation calls the Claude API directly from your browser with your own key (stored only on this device). Get a key from',
     anthropicKeyRequired: 'An Anthropic API key is required to generate poses.',
     anthropicKeyInvalid: 'Anthropic API key is invalid. Check your settings.',
     anthropicRateLimit: 'Claude rate limit reached. Please try again later.',
     anthropicOverloaded: 'Claude is temporarily overloaded. Please try again shortly.',
-    anthropicNetworkError: 'Couldn\'t reach the Claude API. Check your connection.',
-    anthropicTruncated: 'The reply was cut off before the pose data (token limit reached). Try again with a shorter hint or a simpler sketch.',
+    anthropicNetworkError: "Couldn't reach the Claude API. Check your connection.",
+    anthropicTruncated:
+      'The reply was cut off before the pose data (token limit reached). Try again with a shorter hint or a simpler sketch.',
 
     // Lazy chunk load failure (e.g. transient network error or stale tab
     // referencing chunks that were removed by a redeploy)
@@ -336,7 +342,8 @@ const messages = {
     loadUrl: '読込',
     urlLoadFailed: 'URLからの画像の読み込みに失敗しました。',
     urlHistoryDelete: '履歴から削除',
-    autosaveDisabled: '別のタブが開いているため、オートセーブが無効です。このタブの変更は自動保存されません。',
+    autosaveDisabled:
+      '別のタブが開いているため、オートセーブが無効です。このタブの変更は自動保存されません。',
     storageUsageTitle: 'ストレージ使用量',
     storageUsageDrawings: '作品',
     storageUsageStrokes: 'ストローク',
@@ -416,22 +423,26 @@ const messages = {
     poseVrmTooLarge: 'VRMファイルが大きすぎます(最大50MB)。',
     poseVrmUserMissing: '保存されたVRMが見つからないため、同梱モデルを使用します。',
     poseVrmPersistFailed: 'VRMを端末に保存できなかったため、このセッションでのみ使用されます。',
-    posePoseParseError: '応答からポーズを読み取れませんでした。もう一度試すか、スケッチやヒントを調整してください。',
+    posePoseParseError:
+      '応答からポーズを読み取れませんでした。もう一度試すか、スケッチやヒントを調整してください。',
     poseRetry: '再試行',
     poseHistory: '履歴',
     poseHistoryEmpty: '生成したポーズはまだありません。',
     poseHistoryDelete: '履歴から削除',
     anthropicApiKeyTitle: 'Anthropic APIキー',
-    anthropicApiKeyDescription: 'ポーズ生成はあなた自身のAPIキーでブラウザから直接Claude APIを呼び出します(キーはこの端末にのみ保存されます)。キーの取得は',
+    anthropicApiKeyDescription:
+      'ポーズ生成はあなた自身のAPIキーでブラウザから直接Claude APIを呼び出します(キーはこの端末にのみ保存されます)。キーの取得は',
     anthropicKeyRequired: 'ポーズ生成にはAnthropic APIキーが必要です。',
     anthropicKeyInvalid: 'Anthropic APIキーが無効です。設定を確認してください。',
     anthropicRateLimit: 'Claudeのレート制限に達しました。しばらくしてから再試行してください。',
     anthropicOverloaded: 'Claudeが一時的に混雑しています。少し待って再試行してください。',
     anthropicNetworkError: 'Claude APIに接続できませんでした。通信環境を確認してください。',
-    anthropicTruncated: '応答がトークン上限で途切れ、ポーズデータを受け取れませんでした。もう一度試すか、ヒントやスケッチを簡潔にしてください。',
+    anthropicTruncated:
+      '応答がトークン上限で途切れ、ポーズデータを受け取れませんでした。もう一度試すか、ヒントやスケッチを簡潔にしてください。',
 
     // Lazy chunk load failure
-    lazyChunkLoadFailed: 'この機能の読み込みに失敗しました。ページを再読み込みすると通常は解決します。',
+    lazyChunkLoadFailed:
+      'この機能の読み込みに失敗しました。ページを再読み込みすると通常は解決します。',
     reload: '再読み込み',
   },
 } as const;

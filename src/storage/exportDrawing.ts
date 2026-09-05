@@ -27,7 +27,10 @@ interface BoundingBox {
 }
 
 export function computeStrokesBoundingBox(strokes: readonly Stroke[]): BoundingBox {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const stroke of strokes) {
     for (const p of stroke.points) {
       if (p.x < minX) minX = p.x;
@@ -47,7 +50,13 @@ export function computeStrokesBoundingBox(strokes: readonly Stroke[]): BoundingB
   };
 }
 
-export function paddedBox(box: BoundingBox): { x: number; y: number; width: number; height: number; padding: number } {
+export function paddedBox(box: BoundingBox): {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  padding: number;
+} {
   const padding = Math.max(PADDING_MIN, Math.max(box.width, box.height) * PADDING_RATIO);
   return {
     x: box.minX - padding,
@@ -131,12 +140,12 @@ export function exportDrawingAsSvg(drawing: DrawingRecord): Blob {
     const d = pointsToPathData(s);
     if (d.length > 0) paths += `<path d="${d}"/>`;
   }
-  const svg
-    = `<?xml version="1.0" encoding="UTF-8"?>`
-      + `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${formatNum(box.width)}" height="${formatNum(box.height)}">`
-      + `<rect x="${formatNum(box.x)}" y="${formatNum(box.y)}" width="${formatNum(box.width)}" height="${formatNum(box.height)}" fill="#ffffff"/>`
-      + `<g fill="none" stroke="#000000" stroke-width="${STROKE_WIDTH}" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`
-      + `</svg>`;
+  const svg =
+    `<?xml version="1.0" encoding="UTF-8"?>` +
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" width="${formatNum(box.width)}" height="${formatNum(box.height)}">` +
+    `<rect x="${formatNum(box.x)}" y="${formatNum(box.y)}" width="${formatNum(box.width)}" height="${formatNum(box.height)}" fill="#ffffff"/>` +
+    `<g fill="none" stroke="#000000" stroke-width="${STROKE_WIDTH}" stroke-linecap="round" stroke-linejoin="round">${paths}</g>` +
+    `</svg>`;
   return new Blob([svg], { type: 'image/svg+xml' });
 }
 
@@ -180,8 +189,7 @@ export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement
     ctx.moveTo(pts[0].x, pts[0].y);
     if (pts.length === 1) {
       ctx.lineTo(pts[0].x, pts[0].y);
-    }
-    else {
+    } else {
       for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
     }
     ctx.stroke();

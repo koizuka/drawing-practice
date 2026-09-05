@@ -3,7 +3,10 @@ import { computeFitDimensions, sha256Hex, HISTORY_IMAGE_MAX_EDGE } from './image
 
 describe('computeFitDimensions', () => {
   it('returns source dimensions unchanged when already within bounds', () => {
-    expect(computeFitDimensions(1024, 768, HISTORY_IMAGE_MAX_EDGE)).toEqual({ width: 1024, height: 768 });
+    expect(computeFitDimensions(1024, 768, HISTORY_IMAGE_MAX_EDGE)).toEqual({
+      width: 1024,
+      height: 768,
+    });
   });
 
   it('scales down to fit the longest side when width is longer', () => {

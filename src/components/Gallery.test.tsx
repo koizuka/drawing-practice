@@ -11,14 +11,15 @@ const getUrlHistoryEntryMock = vi.fn<(url: string) => Promise<UrlHistoryEntry | 
 vi.mock('../storage', () => ({
   getAllDrawings: () => getAllDrawingsMock(),
   bulkDeleteDrawings: (ids: readonly number[]) => bulkDeleteDrawingsMock(ids),
-  computeStorageUsage: () => Promise.resolve({
-    drawings: { strokes: 0, thumbnails: 0, sketchfabImages: 0 },
-    urlHistoryImageBytes: 0,
-    poseAssetsBytes: 0,
-    sessionBytes: 0,
-    estimateUsage: null,
-    estimateQuota: null,
-  }),
+  computeStorageUsage: () =>
+    Promise.resolve({
+      drawings: { strokes: 0, thumbnails: 0, sketchfabImages: 0 },
+      urlHistoryImageBytes: 0,
+      poseAssetsBytes: 0,
+      sessionBytes: 0,
+      estimateUsage: null,
+      estimateQuota: null,
+    }),
   formatBytes: (n: number) => `${n} B`,
 }));
 vi.mock('../storage/urlHistoryStore', () => ({
@@ -63,7 +64,10 @@ function makeDrawing(createdAt: string, reference?: ReferenceInfo): DrawingRecor
 
 beforeAll(() => {
   if (typeof URL.createObjectURL === 'undefined') {
-    Object.defineProperty(URL, 'createObjectURL', { value: vi.fn(() => 'blob:test'), writable: true });
+    Object.defineProperty(URL, 'createObjectURL', {
+      value: vi.fn(() => 'blob:test'),
+      writable: true,
+    });
   }
   if (typeof URL.revokeObjectURL === 'undefined') {
     Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true });
@@ -90,8 +94,14 @@ describe('Gallery', () => {
 
     await waitFor(() => expect(screen.getByText('Gallery (2)')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'By date' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'By reference (first used)' })).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getByRole('button', { name: 'By reference (recently used)' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'By reference (first used)' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    expect(screen.getByRole('button', { name: 'By reference (recently used)' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('shows per-card "Use this reference" buttons in date mode', async () => {
@@ -125,9 +135,7 @@ describe('Gallery', () => {
   });
 
   it('persists the selected mode to localStorage', async () => {
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', sketchfabRef)]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
 
@@ -140,21 +148,19 @@ describe('Gallery', () => {
 
   it('restores the persisted mode on next mount', async () => {
     localStorage.setItem(GROUP_MODE_STORAGE_KEY, 'ref-first');
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', sketchfabRef)]);
     render(<Gallery onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'By reference (first used)' }))
-        .toHaveAttribute('aria-pressed', 'true'),
+      expect(screen.getByRole('button', { name: 'By reference (first used)' })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      ),
     );
   });
 
   it('calls onLoadReference and onClose when the group-label load button is clicked', async () => {
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', sketchfabRef)]);
     const onLoadReference = vi.fn();
     const onClose = vi.fn();
     render(<Gallery onClose={onClose} onLoadReference={onLoadReference} />);
@@ -206,9 +212,7 @@ describe('Gallery', () => {
   });
 
   it('toggles selection off when the checkbox is clicked again', async () => {
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', sketchfabRef)]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
 
@@ -219,16 +223,21 @@ describe('Gallery', () => {
     const deselectBox = screen.getByRole('checkbox', { name: 'Deselect this drawing' });
     fireEvent.click(deselectBox);
 
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole('button', { name: /^Delete \(/ })).toBeNull());
     expect(bulkDeleteDrawingsMock).not.toHaveBeenCalled();
   });
 
   it('renders an "Other" group for legacy drawings without a structured reference in ref modes', async () => {
     getAllDrawingsMock.mockResolvedValue([
       // Legacy: no structured reference field.
-      { id: nextId++, strokes: [], thumbnail: '', referenceInfo: 'old text', createdAt: new Date('2026-04-10T00:00:00Z'), elapsedMs: 0 },
+      {
+        id: nextId++,
+        strokes: [],
+        thumbnail: '',
+        referenceInfo: 'old text',
+        createdAt: new Date('2026-04-10T00:00:00Z'),
+        elapsedMs: 0,
+      },
     ]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
@@ -247,9 +256,7 @@ describe('Gallery', () => {
       title: 'cat.jpg',
       author: '',
     };
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', imageRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', imageRef)]);
     getUrlHistoryEntryMock.mockResolvedValue({
       url: 'local:abc',
       type: 'image',
@@ -266,9 +273,7 @@ describe('Gallery', () => {
   });
 
   it('opens the enlarged preview on thumbnail tap and closes it again', async () => {
-    getAllDrawingsMock.mockResolvedValue([
-      makeDrawing('2026-04-15T10:00:00Z', sketchfabRef),
-    ]);
+    getAllDrawingsMock.mockResolvedValue([makeDrawing('2026-04-15T10:00:00Z', sketchfabRef)]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
 
@@ -277,14 +282,20 @@ describe('Gallery', () => {
     expect(previewImg).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('img', { name: 'Drawing preview' })).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByRole('img', { name: 'Drawing preview' })).toBeNull());
   });
 
   it('renders the preview from the vector strokes (high-res blob), not the stored thumbnail', async () => {
     const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
-    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    drawing.strokes = [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1,
+      },
+    ];
     getAllDrawingsMock.mockResolvedValue([drawing]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());
@@ -298,7 +309,15 @@ describe('Gallery', () => {
 
   it('shows "Continue this drawing" only when onLoadDrawing is provided and forwards the record', async () => {
     const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
-    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    drawing.strokes = [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1,
+      },
+    ];
     getAllDrawingsMock.mockResolvedValue([drawing]);
     const onLoadDrawing = vi.fn();
     render(<Gallery onClose={() => {}} onLoadDrawing={onLoadDrawing} />);
@@ -311,7 +330,15 @@ describe('Gallery', () => {
 
   it('hides "Continue this drawing" when onLoadDrawing is not provided', async () => {
     const drawing = makeDrawing('2026-04-15T10:00:00Z', sketchfabRef);
-    drawing.strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1 }];
+    drawing.strokes = [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1,
+      },
+    ];
     getAllDrawingsMock.mockResolvedValue([drawing]);
     render(<Gallery onClose={() => {}} />);
     await waitFor(() => expect(screen.getByText('Gallery (1)')).toBeInTheDocument());

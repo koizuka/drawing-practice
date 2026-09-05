@@ -90,27 +90,34 @@ describe.skipIf(!API_KEY)('headless pose LLM loop (manual, memoized)', () => {
     localStorage.removeItem('anthropicApiKey');
   });
 
-  it.each(SCENARIOS)('$hint — final pose has no floor penetration', { timeout: 300_000 }, async ({ hint }) => {
-    const harness = makeMannequinHarness();
-    const initial = await generatePose(null, hint);
-    const rounds: string[] = [];
-    const result = await refinePoseUntilValid<PoseGeneration>(initial, {
-      measure: pose => harness.applyAndMeasure(pose),
-      refine: (prior, feedback) => refinePose(prior, feedback),
-      onRefineStart: (round, feedback) => {
-        rounds.push(feedback);
-        console.debug(`[pose-loop] refine round ${round}`);
-      },
-    });
-    const problems = harness.diagnose(result.pose);
-    console.debug(`[pose-loop] ${hint}: ${rounds.length} refine rounds, residual problems:`, problems);
-    console.debug('[pose-loop] final pose:', JSON.stringify(result.pose));
-    // Hard invariant: nothing ends up below the floor. (Other diagnostics may
-    // legitimately remain — the loop is bounded and best-effort — but floor
-    // penetration is exactly what the planted-footAt guarantee + retuned
-    // recipes are supposed to make unreachable.)
-    expect(problems.filter(p => p.includes('BELOW the floor'))).toEqual([]);
-  });
+  it.each(SCENARIOS)(
+    '$hint — final pose has no floor penetration',
+    { timeout: 300_000 },
+    async ({ hint }) => {
+      const harness = makeMannequinHarness();
+      const initial = await generatePose(null, hint);
+      const rounds: string[] = [];
+      const result = await refinePoseUntilValid<PoseGeneration>(initial, {
+        measure: (pose) => harness.applyAndMeasure(pose),
+        refine: (prior, feedback) => refinePose(prior, feedback),
+        onRefineStart: (round, feedback) => {
+          rounds.push(feedback);
+          console.debug(`[pose-loop] refine round ${round}`);
+        },
+      });
+      const problems = harness.diagnose(result.pose);
+      console.debug(
+        `[pose-loop] ${hint}: ${rounds.length} refine rounds, residual problems:`,
+        problems,
+      );
+      console.debug('[pose-loop] final pose:', JSON.stringify(result.pose));
+      // Hard invariant: nothing ends up below the floor. (Other diagnostics may
+      // legitimately remain — the loop is bounded and best-effort — but floor
+      // penetration is exactly what the planted-footAt guarantee + retuned
+      // recipes are supposed to make unreachable.)
+      expect(problems.filter((p) => p.includes('BELOW the floor'))).toEqual([]);
+    },
+  );
 });
 
 // Keep vitest happy when the whole suite is skipped (no API key).

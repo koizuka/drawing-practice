@@ -72,7 +72,7 @@ export function rotateClosedPolyline(
   const m = ring.length;
   if (m < 2) throw new Error('rotateClosedPolyline: degenerate ring');
 
-  const segLens: number[] = new Array(m);
+  const segLens: number[] = Array.from({ length: m });
   let total = 0;
   for (let i = 0; i < m; i++) {
     const a = ring[i];
@@ -118,8 +118,7 @@ export function rotateClosedPolyline(
     }
     // Closing point: back to start
     walk.push({ x: a.x + (b.x - a.x) * startT, y: a.y + (b.y - a.y) * startT });
-  }
-  else {
+  } else {
     // Reverse traversal: start at same projected point, go backward.
     const a = ring[startSeg];
     const b = ring[(startSeg + 1) % m];

@@ -17,10 +17,12 @@ export function shouldFullscreenReferenceBrowse(
 ): boolean {
   if (isLandscape || referenceMode !== 'browse') return false;
 
-  return (source === 'sketchfab' && !sketchfabViewerActive)
-    || source === 'pexels'
-    || source === 'pose'
-    || source === 'trace-template';
+  return (
+    (source === 'sketchfab' && !sketchfabViewerActive) ||
+    source === 'pexels' ||
+    source === 'pose' ||
+    source === 'trace-template'
+  );
 }
 
 /**
@@ -37,7 +39,15 @@ export function shouldFullscreenReferenceBrowse(
  */
 export function computeFitLeader(source: ReferenceSource, referenceMode: ReferenceMode): FitLeader {
   if (source === 'youtube') return 'reference';
-  if (referenceMode === 'fixed' && (source === 'image' || source === 'url' || source === 'pexels' || source === 'sketchfab' || source === 'trace-template' || source === 'pose')) {
+  if (
+    referenceMode === 'fixed' &&
+    (source === 'image' ||
+      source === 'url' ||
+      source === 'pexels' ||
+      source === 'sketchfab' ||
+      source === 'trace-template' ||
+      source === 'pose')
+  ) {
     return 'reference';
   }
   return 'drawing';

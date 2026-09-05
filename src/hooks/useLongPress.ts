@@ -60,38 +60,44 @@ export function useLongPress({
 
   useEffect(() => () => clearTimer(), [clearTimer]);
 
-  const onPointerDown = useCallback((e: ReactPointerEvent<HTMLElement>) => {
-    // Only handle the primary button on mouse; touch/pen always have button=0.
-    // Track the ignore so the matching pointerup does not fall through to
-    // onClick (which would otherwise treat e.g. a right-click as a tap).
-    if (e.button !== 0) {
-      ignoredRef.current = true;
-      return;
-    }
-    ignoredRef.current = false;
-    firedRef.current = false;
-    cancelledRef.current = false;
-    startXRef.current = e.clientX;
-    startYRef.current = e.clientY;
-    targetRef.current = e.currentTarget;
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      timerRef.current = null;
-      firedRef.current = true;
-      const target = targetRef.current;
-      if (target) onLongPress(target);
-    }, ms);
-  }, [clearTimer, ms, onLongPress]);
-
-  const onPointerMove = useCallback((e: ReactPointerEvent<HTMLElement>) => {
-    if (timerRef.current === null && !firedRef.current) return;
-    const dx = e.clientX - startXRef.current;
-    const dy = e.clientY - startYRef.current;
-    if (dx * dx + dy * dy > moveTolerancePx * moveTolerancePx) {
-      cancelledRef.current = true;
+  const onPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      // Only handle the primary button on mouse; touch/pen always have button=0.
+      // Track the ignore so the matching pointerup does not fall through to
+      // onClick (which would otherwise treat e.g. a right-click as a tap).
+      if (e.button !== 0) {
+        ignoredRef.current = true;
+        return;
+      }
+      ignoredRef.current = false;
+      firedRef.current = false;
+      cancelledRef.current = false;
+      startXRef.current = e.clientX;
+      startYRef.current = e.clientY;
+      targetRef.current = e.currentTarget;
       clearTimer();
-    }
-  }, [clearTimer, moveTolerancePx]);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        firedRef.current = true;
+        const target = targetRef.current;
+        if (target) onLongPress(target);
+      }, ms);
+    },
+    [clearTimer, ms, onLongPress],
+  );
+
+  const onPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLElement>) => {
+      if (timerRef.current === null && !firedRef.current) return;
+      const dx = e.clientX - startXRef.current;
+      const dy = e.clientY - startYRef.current;
+      if (dx * dx + dy * dy > moveTolerancePx * moveTolerancePx) {
+        cancelledRef.current = true;
+        clearTimer();
+      }
+    },
+    [clearTimer, moveTolerancePx],
+  );
 
   const onPointerUp = useCallback(() => {
     if (ignoredRef.current) {

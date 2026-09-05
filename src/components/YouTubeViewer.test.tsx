@@ -76,7 +76,9 @@ describe('YouTubeViewer wheel zoom', () => {
   it('skips wheel zoom when in guideMode', () => {
     const vt = new ViewTransform();
     const applyGesture = vi.spyOn(vt, 'applyGesture');
-    const { container } = render(<YouTubeViewer {...baseProps} guideMode="add" viewTransform={vt} />);
+    const { container } = render(
+      <YouTubeViewer {...baseProps} guideMode="add" viewTransform={vt} />,
+    );
     const canvas = container.querySelector('canvas')!;
 
     fireEvent.wheel(canvas, { clientX: 110, clientY: 100, deltaY: -50, ctrlKey: true });
@@ -185,7 +187,11 @@ describe('YouTubeViewer tap → video interact', () => {
   it('does not call onRequestVideoInteract after a 2-finger pinch release', () => {
     const onRequestVideoInteract = vi.fn();
     const { container } = render(
-      <YouTubeViewer {...baseProps} viewTransform={new ViewTransform()} onRequestVideoInteract={onRequestVideoInteract} />,
+      <YouTubeViewer
+        {...baseProps}
+        viewTransform={new ViewTransform()}
+        onRequestVideoInteract={onRequestVideoInteract}
+      />,
     );
     const canvas = container.querySelector('canvas')!;
 
@@ -199,7 +205,11 @@ describe('YouTubeViewer tap → video interact', () => {
   it('does not call onRequestVideoInteract in guideMode', () => {
     const onRequestVideoInteract = vi.fn();
     const { container } = render(
-      <YouTubeViewer {...baseProps} guideMode="add" onRequestVideoInteract={onRequestVideoInteract} />,
+      <YouTubeViewer
+        {...baseProps}
+        guideMode="add"
+        onRequestVideoInteract={onRequestVideoInteract}
+      />,
     );
     const canvas = container.querySelector('canvas')!;
 
@@ -230,7 +240,11 @@ describe('YouTubeViewer videoInteractMode', () => {
   it('detaches mouse/touch handlers when videoInteractMode=true so tap does not fire onRequestVideoInteract', () => {
     const onRequestVideoInteract = vi.fn();
     const { container } = render(
-      <YouTubeViewer {...baseProps} videoInteractMode onRequestVideoInteract={onRequestVideoInteract} />,
+      <YouTubeViewer
+        {...baseProps}
+        videoInteractMode
+        onRequestVideoInteract={onRequestVideoInteract}
+      />,
     );
     const canvas = container.querySelector('canvas')!;
 
@@ -241,9 +255,7 @@ describe('YouTubeViewer videoInteractMode', () => {
   });
 
   it('sets pointer-events:none on canvas when videoInteractMode=true', () => {
-    const { container } = render(
-      <YouTubeViewer {...baseProps} videoInteractMode />,
-    );
+    const { container } = render(<YouTubeViewer {...baseProps} videoInteractMode />);
     const canvas = container.querySelector('canvas')!;
     expect(canvas.style.pointerEvents).toBe('none');
     expect(canvas.style.touchAction).toBe('auto');
@@ -294,6 +306,9 @@ describe('YouTubeViewer IFrame API handle', () => {
     });
 
     expect(postMessage).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(postMessage.mock.calls[0][0])).toMatchObject({ event: 'command', func: 'pauseVideo' });
+    expect(JSON.parse(postMessage.mock.calls[0][0])).toMatchObject({
+      event: 'command',
+      func: 'pauseVideo',
+    });
   });
 });

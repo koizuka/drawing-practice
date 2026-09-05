@@ -59,7 +59,7 @@ export function makeMannequinHarness(): PoseHarness {
     bones.get(name)!.position.set(...localOffset(name));
   }
 
-  const resolve: BoneResolver = name => bones.get(name) ?? null;
+  const resolve: BoneResolver = (name) => bones.get(name) ?? null;
   const resetPose = () => {
     for (const [name, bone] of bones) {
       bone.rotation.set(0, 0, 0);
@@ -100,7 +100,20 @@ export function makeMannequinHarness(): PoseHarness {
 
 /** Names of bones applyPose actually drives — exported for harness tests. */
 export const HARNESS_BONE_NAMES: readonly PoseBoneName[] = [
-  'hips', 'spine', 'chest', 'head',
-  'leftUpperArm', 'leftLowerArm', 'leftHand', 'rightUpperArm', 'rightLowerArm', 'rightHand',
-  'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'rightUpperLeg', 'rightLowerLeg', 'rightFoot',
+  'hips',
+  'spine',
+  'chest',
+  'head',
+  'leftUpperArm',
+  'leftLowerArm',
+  'leftHand',
+  'rightUpperArm',
+  'rightLowerArm',
+  'rightHand',
+  'leftUpperLeg',
+  'leftLowerLeg',
+  'leftFoot',
+  'rightUpperLeg',
+  'rightLowerLeg',
+  'rightFoot',
 ];

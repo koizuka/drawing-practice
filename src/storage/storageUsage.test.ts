@@ -11,7 +11,10 @@ vi.mock('./db', () => ({
 import { computeStorageUsage } from './storageUsage';
 import type { DrawingRecord } from './db';
 
-function makeDrawing(strokes: { points: number; timestamp?: number }[], opts: Partial<DrawingRecord> = {}): DrawingRecord {
+function makeDrawing(
+  strokes: { points: number; timestamp?: number }[],
+  opts: Partial<DrawingRecord> = {},
+): DrawingRecord {
   return {
     strokes: strokes.map((s, i) => ({
       points: Array.from({ length: s.points }, (_, k) => ({ x: k, y: k })),

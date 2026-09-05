@@ -16,7 +16,11 @@ import {
 const LEGACY_LABEL = 'Other';
 
 let nextId = 1;
-function makeDrawing(createdAt: string, reference?: ReferenceInfo, referenceInfoString = ''): DrawingRecord {
+function makeDrawing(
+  createdAt: string,
+  reference?: ReferenceInfo,
+  referenceInfoString = '',
+): DrawingRecord {
   return {
     id: nextId++,
     strokes: [],
@@ -123,7 +127,9 @@ describe('refLabelOf', () => {
 });
 
 describe('buildGroups', () => {
-  beforeEach(() => { nextId = 1; });
+  beforeEach(() => {
+    nextId = 1;
+  });
 
   it('returns [] for empty input', () => {
     expect(buildGroups([], 'date', LEGACY_LABEL)).toEqual([]);
@@ -140,10 +146,10 @@ describe('buildGroups', () => {
       ];
       const groups = buildGroups(drawings, 'date', LEGACY_LABEL);
 
-      expect(groups.map(g => g.key)).toEqual(['2026-04', '2026-03', '2025-12']);
-      expect(groups[0].drawings.map(d => d.id)).toEqual([1, 2]);
-      expect(groups[1].drawings.map(d => d.id)).toEqual([3]);
-      expect(groups[2].drawings.map(d => d.id)).toEqual([4]);
+      expect(groups.map((g) => g.key)).toEqual(['2026-04', '2026-03', '2025-12']);
+      expect(groups[0].drawings.map((d) => d.id)).toEqual([1, 2]);
+      expect(groups[1].drawings.map((d) => d.id)).toEqual([3]);
+      expect(groups[2].drawings.map((d) => d.id)).toEqual([4]);
     });
 
     it('does not depend on input order', () => {
@@ -151,8 +157,8 @@ describe('buildGroups', () => {
       const b = makeDrawing('2025-01-15T00:00:00Z', sketchfabRef);
       const c = makeDrawing('2026-04-30T23:59:59Z', sketchfabRef);
       const groups = buildGroups([b, c, a], 'date', LEGACY_LABEL);
-      expect(groups.map(g => g.key)).toEqual(['2026-04', '2025-01']);
-      expect(groups[0].drawings.map(d => d.id)).toEqual([c.id, a.id]);
+      expect(groups.map((g) => g.key)).toEqual(['2026-04', '2025-01']);
+      expect(groups[0].drawings.map((d) => d.id)).toEqual([c.id, a.id]);
     });
   });
 
@@ -168,11 +174,11 @@ describe('buildGroups', () => {
       const groups = buildGroups(drawings, 'ref-first', LEGACY_LABEL);
 
       // ref-first: descending by firstUsedAt → youtube (2026-03) before sketchfab (2026-01)
-      expect(groups.map(g => g.reference?.source)).toEqual(['youtube', 'sketchfab']);
+      expect(groups.map((g) => g.reference?.source)).toEqual(['youtube', 'sketchfab']);
       expect(groups[1].firstUsedAt.toISOString()).toBe('2026-01-05T00:00:00.000Z');
       expect(groups[1].lastUsedAt.toISOString()).toBe('2026-04-10T00:00:00.000Z');
       // Drawings inside a group are still newest-first
-      expect(groups[1].drawings.map(d => d.id)).toEqual([1, 2]);
+      expect(groups[1].drawings.map((d) => d.id)).toEqual([1, 2]);
     });
 
     it('keeps all drawings of the same referenceKey together', () => {
@@ -183,17 +189,18 @@ describe('buildGroups', () => {
       ];
       const groups = buildGroups(drawings, 'ref-first', LEGACY_LABEL);
       expect(groups).toHaveLength(2);
-      const sketchfabGroup = groups.find(g => g.reference?.source === 'sketchfab')!;
-      expect(sketchfabGroup.drawings.map(d => d.id)).toEqual([1, 3]);
+      const sketchfabGroup = groups.find((g) => g.reference?.source === 'sketchfab')!;
+      expect(sketchfabGroup.drawings.map((d) => d.id)).toEqual([1, 3]);
     });
 
     it('treats different sketchfab uids as different groups', () => {
       const refA: ReferenceInfo = { ...sketchfabRef, sketchfabUid: 'a' };
       const refB: ReferenceInfo = { ...sketchfabRef, sketchfabUid: 'b' };
-      const groups = buildGroups([
-        makeDrawing('2026-04-10T00:00:00Z', refA),
-        makeDrawing('2026-04-10T00:00:00Z', refB),
-      ], 'ref-first', LEGACY_LABEL);
+      const groups = buildGroups(
+        [makeDrawing('2026-04-10T00:00:00Z', refA), makeDrawing('2026-04-10T00:00:00Z', refB)],
+        'ref-first',
+        LEGACY_LABEL,
+      );
       expect(groups).toHaveLength(2);
     });
   });
@@ -206,7 +213,7 @@ describe('buildGroups', () => {
         makeDrawing('2026-03-20T00:00:00Z', youtubeRef), // youtube most-recent: 2026-03
       ];
       const groups = buildGroups(drawings, 'ref-recent', LEGACY_LABEL);
-      expect(groups.map(g => g.reference?.source)).toEqual(['sketchfab', 'youtube']);
+      expect(groups.map((g) => g.reference?.source)).toEqual(['sketchfab', 'youtube']);
     });
   });
 
@@ -218,7 +225,7 @@ describe('buildGroups', () => {
         makeDrawing('2026-02-10T00:00:00Z', sketchfabRef),
       ];
       const groups = buildGroups(drawings, 'ref-first', LEGACY_LABEL);
-      const legacy = groups.find(g => g.key === LEGACY_GROUP_KEY);
+      const legacy = groups.find((g) => g.key === LEGACY_GROUP_KEY);
       expect(legacy).toBeDefined();
       expect(legacy!.drawings).toHaveLength(2);
       expect(legacy!.label).toBe(LEGACY_LABEL);
@@ -232,7 +239,7 @@ describe('buildGroups', () => {
       ];
       const groups = buildGroups(drawings, 'date', LEGACY_LABEL);
       expect(groups).toHaveLength(2);
-      expect(groups.every(g => g.key !== LEGACY_GROUP_KEY)).toBe(true);
+      expect(groups.every((g) => g.key !== LEGACY_GROUP_KEY)).toBe(true);
     });
   });
 });

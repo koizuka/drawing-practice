@@ -13,7 +13,9 @@ function harness() {
   let api: ReturnType<typeof useTraceScoring> = null!;
   function Probe() {
     api = useTraceScoring();
-    useEffect(() => { /* keep stable */ });
+    useEffect(() => {
+      /* keep stable */
+    });
     return null;
   }
   render(
@@ -23,9 +25,13 @@ function harness() {
   );
   return {
     sm,
-    get state() { return api; },
+    get state() {
+      return api;
+    },
     setTemplate(strokes: readonly TraceStroke[] | null) {
-      act(() => { api.setTemplate(strokes); });
+      act(() => {
+        api.setTemplate(strokes);
+      });
     },
     finalize(stroke: Stroke) {
       // The test simulates the DrawingCanvas flow: the stroke is already in
@@ -34,7 +40,9 @@ function harness() {
       for (let i = 1; i < stroke.points.length; i++) sm.appendStroke(stroke.points[i]);
       const committed = sm.endStroke();
       if (!committed) throw new Error('endStroke produced nothing');
-      act(() => { api.handleStrokeFinalized(committed, sm); });
+      act(() => {
+        api.handleStrokeFinalized(committed, sm);
+      });
       return committed;
     },
   };
@@ -90,7 +98,10 @@ describe('TraceScoringContext', () => {
 
     // A short far-away line — no endpoint near the ring, fails closure too.
     h.finalize({
-      points: [{ x: 500, y: 500 }, { x: 510, y: 510 }],
+      points: [
+        { x: 500, y: 500 },
+        { x: 510, y: 510 },
+      ],
       timestamp: Date.now(),
     });
 
@@ -136,7 +147,9 @@ describe('TraceScoringContext', () => {
     h.finalize(ringTrace(80, 96));
     expect(h.sm.getStrokes()).toHaveLength(1);
 
-    act(() => { h.state.resetScores(h.sm); });
+    act(() => {
+      h.state.resetScores(h.sm);
+    });
 
     expect(h.state.totalCovered).toBe(0);
     expect(h.state.latestFeedback).toBeNull();
@@ -154,7 +167,9 @@ describe('TraceScoringContext', () => {
     h.finalize(ringTrace(80, 96));
     expect(h.sm.getStrokes()).toHaveLength(1);
 
-    act(() => { h.state.resetScores(h.sm); });
+    act(() => {
+      h.state.resetScores(h.sm);
+    });
     expect(h.sm.getStrokes()).toHaveLength(0);
     // No undoable entry was pushed by the reset itself. (Reference-change
     // entries may still exist from earlier setTemplate, but no stroke
@@ -172,7 +187,10 @@ describe('TraceScoringContext', () => {
 
     // Draw far from the template — fails both endpoint and length checks.
     h.finalize({
-      points: [{ x: 500, y: 500 }, { x: 600, y: 600 }],
+      points: [
+        { x: 500, y: 500 },
+        { x: 600, y: 600 },
+      ],
       timestamp: 0,
     });
     expect(h.sm.getStrokes()).toHaveLength(0);
@@ -190,7 +208,10 @@ describe('TraceScoringContext', () => {
     expect(h.state.scores[0].attempts).toBe(2);
 
     // Undo the replacement's delete entry → previous stroke reappears.
-    act(() => { h.sm.undo(); h.state.syncAttempts(h.sm); });
+    act(() => {
+      h.sm.undo();
+      h.state.syncAttempts(h.sm);
+    });
     expect(h.sm.getStrokes()).toHaveLength(2);
     // Lifetime attempts is unchanged (the events happened, regardless of which
     // strokes are currently on canvas).
@@ -199,7 +220,11 @@ describe('TraceScoringContext', () => {
     // Undo away both attempts → the score entry disappears (no live stroke
     // backs it). Lifetime stats are preserved internally so a redo would
     // restore the displayed score.
-    act(() => { h.sm.undo(); h.sm.undo(); h.state.syncAttempts(h.sm); });
+    act(() => {
+      h.sm.undo();
+      h.sm.undo();
+      h.state.syncAttempts(h.sm);
+    });
     expect(h.sm.getStrokes()).toHaveLength(0);
     expect(h.state.totalCovered).toBe(0);
   });
@@ -207,7 +232,10 @@ describe('TraceScoringContext', () => {
   it('rejects pathologically-long user strokes whose endpoints happen to land near the template', () => {
     const h = harness();
     // 100px straight line template.
-    const tpl = polyline([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+    const tpl = polyline([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ]);
     h.setTemplate([tpl]);
 
     // Wild scribble whose start/end pass endpoint tolerance but whose total
@@ -228,19 +256,30 @@ describe('TraceScoringContext', () => {
   it('keeps best when a worse retrace lands on the same template stroke', () => {
     const h = harness();
     // Open template so we can craft a worse attempt easily by perturbing endpoints.
-    const seg = polyline([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+    const seg = polyline([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ]);
     h.setTemplate([seg]);
 
     // Perfect trace
     h.finalize({
-      points: [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 100, y: 0 }],
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 0 },
+        { x: 100, y: 0 },
+      ],
       timestamp: Date.now(),
     });
     const firstBest = h.state.scores[0].bestErrorPct;
 
     // Slightly bowed retrace (still within endpoint tol)
     h.finalize({
-      points: [{ x: 0, y: 0 }, { x: 50, y: 2 }, { x: 100, y: 0 }],
+      points: [
+        { x: 0, y: 0 },
+        { x: 50, y: 2 },
+        { x: 100, y: 0 },
+      ],
       timestamp: Date.now() + 1,
     });
 
@@ -271,11 +310,17 @@ describe('TraceScoringContext', () => {
       const a = h.finalize(ringTrace(80, 96));
       expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(true);
 
-      act(() => { h.sm.undo(); h.state.syncAttempts(h.sm); });
+      act(() => {
+        h.sm.undo();
+        h.state.syncAttempts(h.sm);
+      });
       expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(false);
       expect(h.state.attemptedStrokeTimestamps.size).toBe(0);
 
-      act(() => { h.sm.redo(); h.state.syncAttempts(h.sm); });
+      act(() => {
+        h.sm.redo();
+        h.state.syncAttempts(h.sm);
+      });
       expect(h.state.attemptedStrokeTimestamps.has(a.timestamp)).toBe(true);
     });
 
@@ -310,7 +355,9 @@ describe('TraceScoringContext', () => {
       const prevScores = h.state.scores;
       const prevStrokeCount = h.sm.getStrokes().length;
 
-      act(() => { h.state.clearLatestFeedback(); });
+      act(() => {
+        h.state.clearLatestFeedback();
+      });
 
       expect(h.state.latestFeedback).toBeNull();
       // Scores + strokes unaffected; only the deviation overlay state is cleared.

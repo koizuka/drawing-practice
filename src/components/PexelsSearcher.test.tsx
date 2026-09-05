@@ -43,9 +43,7 @@ afterEach(() => {
 
 describe('PexelsSearcher history dropdown', () => {
   it('does not open the dropdown on focus alone (no openOnFocus)', async () => {
-    getPexelsSearchHistoryMock.mockResolvedValue([
-      makeEntry({ key: 'pose', query: 'pose' }),
-    ]);
+    getPexelsSearchHistoryMock.mockResolvedValue([makeEntry({ key: 'pose', query: 'pose' })]);
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
 
@@ -104,9 +102,11 @@ describe('PexelsSearcher search error feedback', () => {
   });
 
   it('does not run a search on an IME composition Enter', async () => {
-    const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
+      );
 
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
@@ -123,9 +123,11 @@ describe('PexelsSearcher search error feedback', () => {
   });
 
   it('does not surface an Alert when fetch succeeds', async () => {
-    const fetchSpy = vi.spyOn(window, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ photos: [], next_page: null }), { status: 200 }),
+      );
 
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
@@ -177,11 +179,7 @@ describe('PexelsSearcher API key recovery notification', () => {
   it('fires onApiKeyMissing when apiKeyVersion bumps and the key is now empty', async () => {
     const onRecover = vi.fn();
     const { rerender } = render(
-      <PexelsSearcher
-        onSelectPhoto={vi.fn()}
-        onApiKeyMissing={onRecover}
-        apiKeyVersion={0}
-      />,
+      <PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={onRecover} apiKeyVersion={0} />,
     );
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
     expect(onRecover).not.toHaveBeenCalled();
@@ -190,11 +188,7 @@ describe('PexelsSearcher API key recovery notification', () => {
     // clearing the key — parent bumps apiKeyVersion to signal re-evaluation.
     localStorage.removeItem('pexelsApiKey');
     rerender(
-      <PexelsSearcher
-        onSelectPhoto={vi.fn()}
-        onApiKeyMissing={onRecover}
-        apiKeyVersion={1}
-      />,
+      <PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={onRecover} apiKeyVersion={1} />,
     );
 
     await waitFor(() => expect(onRecover).toHaveBeenCalled());
@@ -207,13 +201,7 @@ describe('PexelsSearcher API key recovery notification', () => {
     // the CDN URL works without the API key.
     localStorage.removeItem('pexelsApiKey');
     const onRecover = vi.fn();
-    render(
-      <PexelsSearcher
-        onSelectPhoto={vi.fn()}
-        onApiKeyMissing={onRecover}
-        active={false}
-      />,
-    );
+    render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={onRecover} active={false} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
     expect(onRecover).not.toHaveBeenCalled();
   });
@@ -248,19 +236,24 @@ describe('PexelsSearcher gesture-session start UI', () => {
     localStorage.removeItem(PEXELS_SESSION_DURATION_STORAGE_KEY);
   });
 
-  async function renderAndSearch(onStartSession: ReturnType<typeof vi.fn<(config: PexelsGestureSessionConfig) => void>>) {
+  async function renderAndSearch(
+    onStartSession: ReturnType<typeof vi.fn<(config: PexelsGestureSessionConfig) => void>>,
+  ) {
     // Use mockImplementation so each call gets a fresh Response — the same
     // Response object can only have its body read once.
-    vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(
-      JSON.stringify({
-        photos: [makePhotoJson(1, 'Alice'), makePhotoJson(2, 'Bob')],
-        page: 1,
-        per_page: 24,
-        total_results: 2,
-        next_page: 'https://api.pexels.com/v1/search?page=2',
-      }),
-      { status: 200 },
-    ));
+    vi.spyOn(window, 'fetch').mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            photos: [makePhotoJson(1, 'Alice'), makePhotoJson(2, 'Bob')],
+            page: 1,
+            per_page: 24,
+            total_results: 2,
+            next_page: 'https://api.pexels.com/v1/search?page=2',
+          }),
+          { status: 200 },
+        ),
+    );
     render(
       <PexelsSearcher
         onSelectPhoto={vi.fn()}
@@ -277,16 +270,19 @@ describe('PexelsSearcher gesture-session start UI', () => {
   }
 
   it('does not show the Start session control when onStartSession is omitted', async () => {
-    vi.spyOn(window, 'fetch').mockImplementation(async () => new Response(
-      JSON.stringify({
-        photos: [makePhotoJson(1, 'Alice')],
-        page: 1,
-        per_page: 24,
-        total_results: 1,
-        next_page: null,
-      }),
-      { status: 200 },
-    ));
+    vi.spyOn(window, 'fetch').mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            photos: [makePhotoJson(1, 'Alice')],
+            page: 1,
+            per_page: 24,
+            total_results: 1,
+            next_page: null,
+          }),
+          { status: 200 },
+        ),
+    );
     render(<PexelsSearcher onSelectPhoto={vi.fn()} onApiKeyMissing={vi.fn()} />);
     await waitFor(() => expect(getPexelsSearchHistoryMock).toHaveBeenCalled());
     const input = screen.getByRole('combobox');
@@ -320,7 +316,7 @@ describe('PexelsSearcher gesture-session start UI', () => {
     const arg = onStartSession.mock.calls[0][0];
     expect(arg.query).toBe('pose');
     expect(arg.orientation).toBe('all');
-    expect(arg.initialPhotos.map(p => p.id)).toEqual([1, 2]);
+    expect(arg.initialPhotos.map((p) => p.id)).toEqual([1, 2]);
     expect(arg.page).toBe(1);
     expect(arg.hasMore).toBe(true);
     // Default duration is 30 seconds.

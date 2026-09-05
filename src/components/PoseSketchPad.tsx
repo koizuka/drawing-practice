@@ -76,72 +76,86 @@ export function PoseSketchPad({ ref, displaySize }: PoseSketchPadProps) {
     };
   }, []);
 
-  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    const isPen = e.pointerType === 'pen';
-    if (isPen) hasPenRef.current = true;
-    // Pencil-priority palm rejection: after the pen has been seen once,
-    // finger/palm touches never start strokes.
-    if (!isPen && hasPenRef.current) return;
-    if (activePointerRef.current !== null) {
-      // A pen touching down while a finger/palm stroke is in progress wins:
-      // discard the touch stroke and let the pen draw. Anything else (second
-      // finger, duplicate pen pointer) is ignored.
-      if (!isPen || activePointerRef.current.isPen) return;
-      strokeManager.cancelStroke();
-    }
-    activePointerRef.current = { id: e.pointerId, isPen };
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    }
-    catch { /* synthetic events / older browsers — capture is best-effort */ }
-    strokeManager.startStroke(toLogicalPoint(e));
-    redraw();
-  }, [strokeManager, toLogicalPoint, redraw]);
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      const isPen = e.pointerType === 'pen';
+      if (isPen) hasPenRef.current = true;
+      // Pencil-priority palm rejection: after the pen has been seen once,
+      // finger/palm touches never start strokes.
+      if (!isPen && hasPenRef.current) return;
+      if (activePointerRef.current !== null) {
+        // A pen touching down while a finger/palm stroke is in progress wins:
+        // discard the touch stroke and let the pen draw. Anything else (second
+        // finger, duplicate pen pointer) is ignored.
+        if (!isPen || activePointerRef.current.isPen) return;
+        strokeManager.cancelStroke();
+      }
+      activePointerRef.current = { id: e.pointerId, isPen };
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* synthetic events / older browsers — capture is best-effort */
+      }
+      strokeManager.startStroke(toLogicalPoint(e));
+      redraw();
+    },
+    [strokeManager, toLogicalPoint, redraw],
+  );
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerId !== activePointerRef.current?.id) return;
-    if (strokeManager.appendStroke(toLogicalPoint(e))) redraw();
-  }, [strokeManager, toLogicalPoint, redraw]);
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerId !== activePointerRef.current?.id) return;
+      if (strokeManager.appendStroke(toLogicalPoint(e))) redraw();
+    },
+    [strokeManager, toLogicalPoint, redraw],
+  );
 
-  const endStroke = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerId !== activePointerRef.current?.id) return;
-    activePointerRef.current = null;
-    strokeManager.endStroke();
-    setStrokeVersion(v => v + 1);
-    redraw();
-  }, [strokeManager, redraw]);
+  const endStroke = useCallback(
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
+      if (e.pointerId !== activePointerRef.current?.id) return;
+      activePointerRef.current = null;
+      strokeManager.endStroke();
+      setStrokeVersion((v) => v + 1);
+      redraw();
+    },
+    [strokeManager, redraw],
+  );
 
   const handleUndo = useCallback(() => {
     strokeManager.undo();
-    setStrokeVersion(v => v + 1);
+    setStrokeVersion((v) => v + 1);
     redraw();
   }, [strokeManager, redraw]);
 
   const handleClear = useCallback(() => {
     strokeManager.clear();
-    setStrokeVersion(v => v + 1);
+    setStrokeVersion((v) => v + 1);
     redraw();
   }, [strokeManager, redraw]);
 
-  useImperativeHandle(ref, () => ({
-    exportPng: () => {
-      if (strokeManager.getStrokes().length === 0) return null;
-      // Export from a fresh offscreen canvas at logical resolution so the
-      // output is DPR-independent (same pattern as generateThumbnail).
-      const offscreen = document.createElement('canvas');
-      offscreen.width = SKETCH_SIZE;
-      offscreen.height = SKETCH_SIZE;
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) return null;
-      const renderer = new CanvasRenderer(ctx, { strokeWidth: SKETCH_STROKE_WIDTH });
-      renderer.clear();
-      renderer.drawStrokes(strokeManager.getStrokes());
-      const dataUrl = offscreen.toDataURL('image/png');
-      const comma = dataUrl.indexOf(',');
-      return comma >= 0 ? dataUrl.slice(comma + 1) : null;
-    },
-    isEmpty: () => strokeManager.getStrokes().length === 0,
-  }), [strokeManager]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      exportPng: () => {
+        if (strokeManager.getStrokes().length === 0) return null;
+        // Export from a fresh offscreen canvas at logical resolution so the
+        // output is DPR-independent (same pattern as generateThumbnail).
+        const offscreen = document.createElement('canvas');
+        offscreen.width = SKETCH_SIZE;
+        offscreen.height = SKETCH_SIZE;
+        const ctx = offscreen.getContext('2d');
+        if (!ctx) return null;
+        const renderer = new CanvasRenderer(ctx, { strokeWidth: SKETCH_STROKE_WIDTH });
+        renderer.clear();
+        renderer.drawStrokes(strokeManager.getStrokes());
+        const dataUrl = offscreen.toDataURL('image/png');
+        const comma = dataUrl.indexOf(',');
+        return comma >= 0 ? dataUrl.slice(comma + 1) : null;
+      },
+      isEmpty: () => strokeManager.getStrokes().length === 0,
+    }),
+    [strokeManager],
+  );
 
   const hasStrokes = strokeManager.getStrokes().length > 0;
 
@@ -173,7 +187,12 @@ export function PoseSketchPad({ ref, displaySize }: PoseSketchPadProps) {
         </ToolbarTooltip>
         <ToolbarTooltip title={t('poseSketchClear')}>
           <span>
-            <IconButton size="small" onClick={handleClear} disabled={!hasStrokes} sx={{ color: 'error.main' }}>
+            <IconButton
+              size="small"
+              onClick={handleClear}
+              disabled={!hasStrokes}
+              sx={{ color: 'error.main' }}
+            >
               <Trash2 size={18} />
             </IconButton>
           </span>

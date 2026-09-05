@@ -14,9 +14,7 @@ export const BUNDLED_TEMPLATES: readonly TraceTemplate[] = [
   blobTemplate,
 ];
 
-const TEMPLATE_INDEX = new Map<string, TraceTemplate>(
-  BUNDLED_TEMPLATES.map(t => [t.id, t]),
-);
+const TEMPLATE_INDEX = new Map<string, TraceTemplate>(BUNDLED_TEMPLATES.map((t) => [t.id, t]));
 
 /** Resolve a templateId (e.g. 'bundle:concentric') to its TraceTemplate. */
 export function getBundledTemplate(id: string): TraceTemplate | undefined {

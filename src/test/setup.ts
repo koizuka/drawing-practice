@@ -9,10 +9,13 @@ globalThis.ResizeObserver = class ResizeObserver {
 
 // jsdom doesn't implement Canvas 2D — return a no-op context so call sites
 // (generateThumbnail, imageResize) don't spam "Not implemented" warnings.
-const noopCtx = new Proxy({}, {
-  get: () => () => {},
-  set: () => true,
-});
+const noopCtx = new Proxy(
+  {},
+  {
+    get: () => () => {},
+    set: () => true,
+  },
+);
 HTMLCanvasElement.prototype.getContext = function getContext(type: string) {
   return type === '2d' ? noopCtx : null;
 } as HTMLCanvasElement['getContext'];

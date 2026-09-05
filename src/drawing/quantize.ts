@@ -10,7 +10,7 @@ const QUANTIZE_FACTOR = 10;
  */
 function quantize(v: number): number {
   const sign = v < 0 ? -1 : 1;
-  return sign * Math.round(Math.abs(v) * QUANTIZE_FACTOR) / QUANTIZE_FACTOR;
+  return (sign * Math.round(Math.abs(v) * QUANTIZE_FACTOR)) / QUANTIZE_FACTOR;
 }
 
 export function quantizePoint(p: Point): Point {

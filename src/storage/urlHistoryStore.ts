@@ -67,14 +67,14 @@ export async function addUrlHistory(
   // Sketchfab entries also persist a Blob (the Fix-Angle screenshot used for
   // dropdown thumbnail and fixed-mode restoration), so a partial re-touch
   // (lastUsedAt bump) must not lose the Blob.
-  const needsBlobLookup = (type === 'sketchfab' && !finalBlob);
+  const needsBlobLookup = type === 'sketchfab' && !finalBlob;
   if (
-    !finalTitle
-    || needsThumbnailLookup
-    || needsPexelsSearchContextLookup
-    || needsSketchfabSearchContextLookup
-    || needsBlobLookup
-    || (type === 'image' && (!finalFileName || !finalBlob))
+    !finalTitle ||
+    needsThumbnailLookup ||
+    needsPexelsSearchContextLookup ||
+    needsSketchfabSearchContextLookup ||
+    needsBlobLookup ||
+    (type === 'image' && (!finalFileName || !finalBlob))
   ) {
     const existing = await db.urlHistory.get(key);
     if (!finalTitle) finalTitle = existing?.title;
@@ -82,7 +82,8 @@ export async function addUrlHistory(
     if (!finalBlob) finalBlob = existing?.imageBlob;
     if (!finalThumbnailUrl) finalThumbnailUrl = existing?.thumbnailUrl;
     if (!finalPexelsSearchContext) finalPexelsSearchContext = existing?.pexelsSearchContext;
-    if (!finalSketchfabSearchContext) finalSketchfabSearchContext = existing?.sketchfabSearchContext;
+    if (!finalSketchfabSearchContext)
+      finalSketchfabSearchContext = existing?.sketchfabSearchContext;
   }
 
   const entry: UrlHistoryEntry = { url: key, type, lastUsedAt: new Date() };
@@ -97,8 +98,8 @@ export async function addUrlHistory(
   // Image entries have a smaller cap so a burst of image opens can't evict
   // url/youtube/pexels history. Each bucket evicts independently.
   const all = await db.urlHistory.toArray();
-  const images = all.filter(e => e.type === 'image');
-  const others = all.filter(e => e.type !== 'image');
+  const images = all.filter((e) => e.type === 'image');
+  const others = all.filter((e) => e.type !== 'image');
   const getKey = (e: UrlHistoryEntry) => e.url;
   const getTime = (e: UrlHistoryEntry) => e.lastUsedAt.getTime();
   const toDelete = [

@@ -106,7 +106,7 @@ describe('StrokeManager', () => {
     it('quantizes appended points and skips duplicates that collapse onto the previous point', () => {
       manager.startStroke({ x: 12.34, y: 23.45 });
       manager.appendStroke({ x: 12.32, y: 23.46 }); // → (12.3, 23.5) duplicate, skipped
-      manager.appendStroke({ x: 12.30, y: 23.49 }); // → (12.3, 23.5) duplicate, skipped
+      manager.appendStroke({ x: 12.3, y: 23.49 }); // → (12.3, 23.5) duplicate, skipped
       manager.appendStroke({ x: 80, y: 80 });
 
       const points = manager.getCurrentStroke()!.points;
@@ -308,13 +308,13 @@ describe('StrokeManager', () => {
       // strokes[0]=B with addPositions[0]=add(A.ts), corrupting subsequent
       // undo behavior.
       manager.deleteStroke(0);
-      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp, c.timestamp]);
+      expect(manager.getStrokes().map((s) => s.timestamp)).toEqual([b.timestamp, c.timestamp]);
 
       // Discard B by timestamp. add(B.ts) must be the one that's removed,
       // not add(A.ts).
       const removed = manager.discardStrokes(new Set([b.timestamp]));
       expect(removed).toBe(1);
-      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([c.timestamp]);
+      expect(manager.getStrokes().map((s) => s.timestamp)).toEqual([c.timestamp]);
     });
 
     it('drops delete entries that reference discarded strokes so Undo cannot resurrect them', () => {
@@ -328,7 +328,7 @@ describe('StrokeManager', () => {
       manager.appendStroke({ x: 11, y: 11 });
       const b = manager.endStroke()!;
       manager.deleteStroke(0); // A removed, delete-entry remembers A
-      expect(manager.getStrokes().map(s => s.timestamp)).toEqual([b.timestamp]);
+      expect(manager.getStrokes().map((s) => s.timestamp)).toEqual([b.timestamp]);
 
       // Discard both A and B (A is not in strokes anymore but is in history).
       manager.discardStrokes(new Set([a.timestamp, b.timestamp]));
@@ -607,7 +607,7 @@ describe('StrokeManager', () => {
       addStroke(0, 0);
       addStroke(20, 20);
       addStroke(40, 40);
-      const before = manager.getStrokes().map(s => ({ ...s }));
+      const before = manager.getStrokes().map((s) => ({ ...s }));
 
       manager.lassoDelete([0, 2]);
       manager.undo();
@@ -616,7 +616,7 @@ describe('StrokeManager', () => {
 
       const after = manager.getStrokes();
       expect(after).toHaveLength(3);
-      expect(after.map(s => s.points[0])).toEqual(before.map(s => s.points[0]));
+      expect(after.map((s) => s.points[0])).toEqual(before.map((s) => s.points[0]));
     });
 
     it('clears the redo stack on a fresh lasso delete', () => {
@@ -677,11 +677,29 @@ describe('StrokeManager', () => {
   describe('loadState', () => {
     it('restores strokes and redo stack', () => {
       const strokes = [
-        { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 },
-        { points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 },
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 10 },
+          ],
+          timestamp: 1000,
+        },
+        {
+          points: [
+            { x: 20, y: 20 },
+            { x: 30, y: 30 },
+          ],
+          timestamp: 2000,
+        },
       ];
       const redoStack = [
-        { points: [{ x: 40, y: 40 }, { x: 50, y: 50 }], timestamp: 3000 },
+        {
+          points: [
+            { x: 40, y: 40 },
+            { x: 50, y: 50 },
+          ],
+          timestamp: 3000,
+        },
       ];
 
       manager.loadState(strokes, redoStack);
@@ -701,19 +719,46 @@ describe('StrokeManager', () => {
     });
 
     it('creates independent copies of input arrays', () => {
-      const strokes = [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 }];
+      const strokes = [
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 10 },
+          ],
+          timestamp: 1000,
+        },
+      ];
       manager.loadState(strokes, []);
 
-      strokes.push({ points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 });
+      strokes.push({
+        points: [
+          { x: 20, y: 20 },
+          { x: 30, y: 30 },
+        ],
+        timestamp: 2000,
+      });
       expect(manager.getStrokes()).toHaveLength(1);
     });
 
     it('quantizes loaded strokes and redo stack', () => {
       const strokes = [
-        { points: [{ x: 12.34, y: 23.45 }, { x: 12.32, y: 23.46 }, { x: 80, y: 80 }], timestamp: 1 },
+        {
+          points: [
+            { x: 12.34, y: 23.45 },
+            { x: 12.32, y: 23.46 },
+            { x: 80, y: 80 },
+          ],
+          timestamp: 1,
+        },
       ];
       const redoStack = [
-        { points: [{ x: 1.111, y: 2.222 }, { x: 5.555, y: 6.666 }], timestamp: 2 },
+        {
+          points: [
+            { x: 1.111, y: 2.222 },
+            { x: 5.555, y: 6.666 },
+          ],
+          timestamp: 2,
+        },
       ];
       manager.loadState(strokes, redoStack);
 
@@ -866,7 +911,18 @@ describe('StrokeManager', () => {
       manager.tentativeClear();
       expect(manager.isTentativeClearActive()).toBe(true);
 
-      manager.loadState([{ points: [{ x: 0, y: 0 }, { x: 5, y: 5 }], timestamp: 1 }], []);
+      manager.loadState(
+        [
+          {
+            points: [
+              { x: 0, y: 0 },
+              { x: 5, y: 5 },
+            ],
+            timestamp: 1,
+          },
+        ],
+        [],
+      );
       expect(manager.isTentativeClearActive()).toBe(false);
       expect(manager.getStrokes()).toHaveLength(1);
     });
@@ -926,7 +982,13 @@ describe('StrokeManager', () => {
       // the live array — the same effect a future refactor that preserves
       // redoStack across an add would have.
       const live = manager.getStrokes() as Stroke[];
-      live.push({ points: [{ x: 999, y: 999 }, { x: 1000, y: 1000 }], timestamp: 99_999 });
+      live.push({
+        points: [
+          { x: 999, y: 999 },
+          { x: 1000, y: 1000 },
+        ],
+        timestamp: 99_999,
+      });
       expect(manager.getStrokes()).toHaveLength(2);
 
       // Redo of clear must re-enter tentative with the ORIGINAL saved set
@@ -941,7 +1003,7 @@ describe('StrokeManager', () => {
       expect(restored[0].timestamp).toBe(sentinelTimestamp);
       // The injected sentinel (timestamp 99_999) must NOT appear — it was
       // never part of the saved set, so independent-array storage drops it.
-      expect(restored.find(s => s.timestamp === 99_999)).toBeUndefined();
+      expect(restored.find((s) => s.timestamp === 99_999)).toBeUndefined();
     });
   });
 
@@ -960,7 +1022,11 @@ describe('StrokeManager', () => {
       const prev = snap({ source: 'none' });
       manager.recordReferenceChange(prev);
 
-      const current = snap({ source: 'sketchfab', referenceMode: 'fixed', fixedImageUrl: 'data:current' });
+      const current = snap({
+        source: 'sketchfab',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'data:current',
+      });
       const result = manager.undo(() => current);
 
       expect(result).toEqual({ kind: 'reference' });
@@ -979,7 +1045,11 @@ describe('StrokeManager', () => {
       manager.setReferenceRestorer(restorer);
 
       const prev = snap({ source: 'none' });
-      const current = snap({ source: 'sketchfab', referenceMode: 'fixed', fixedImageUrl: 'data:A' });
+      const current = snap({
+        source: 'sketchfab',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'data:A',
+      });
       manager.recordReferenceChange(prev);
 
       manager.undo(() => current);
@@ -1019,7 +1089,11 @@ describe('StrokeManager', () => {
       const noneSnap = snap({ source: 'none' });
       manager.recordReferenceChange(noneSnap);
 
-      const afterLoad = snap({ source: 'image', referenceMode: 'fixed', localImageUrl: 'data:img' });
+      const afterLoad = snap({
+        source: 'image',
+        referenceMode: 'fixed',
+        localImageUrl: 'data:img',
+      });
       manager.undo(() => afterLoad);
 
       expect(restorer).toHaveBeenCalledWith(noneSnap);
@@ -1180,7 +1254,13 @@ describe('StrokeManager', () => {
     it('loadState() does not populate reference history', () => {
       const restorer = vi.fn();
       const strokes = [
-        { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 },
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 10 },
+          ],
+          timestamp: 1000,
+        },
       ];
       manager.loadState(strokes, []);
       manager.setReferenceRestorer(restorer);

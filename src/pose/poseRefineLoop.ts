@@ -63,8 +63,7 @@ export async function refinePoseUntilValid<G extends { pose: PoseJson }>(
     let refined: G;
     try {
       refined = await options.refine(current, feedback);
-    }
-    catch (e) {
+    } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') throw e;
       console.warn('[pose] refinement request failed, keeping the unrefined pose:', e);
       options.onRefineError?.(e, round);

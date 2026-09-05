@@ -19,7 +19,10 @@ import { PoseParseError } from '../pose/poseTypes';
 const fetchMock = vi.fn();
 
 function textResponse(text: string, status = 200): Response {
-  return new Response(JSON.stringify({ content: [{ type: 'text', text }], stop_reason: 'end_turn' }), { status });
+  return new Response(
+    JSON.stringify({ content: [{ type: 'text', text }], stop_reason: 'end_turn' }),
+    { status },
+  );
 }
 
 beforeEach(() => {
@@ -108,7 +111,10 @@ describe('generatePose', () => {
     // refinePose can continue in-context.
     expect(result.messages).toHaveLength(2);
     expect(result.messages[0].role).toBe('user');
-    expect(result.messages[1]).toEqual({ role: 'assistant', content: '```json\n{"body":{"turn":-90},"junk":1}\n```' });
+    expect(result.messages[1]).toEqual({
+      role: 'assistant',
+      content: '```json\n{"body":{"turn":-90},"junk":1}\n```',
+    });
   });
 
   it.each([
@@ -144,10 +150,15 @@ describe('generatePose', () => {
 
   it('surfaces the API error message as detail on HTTP errors', async () => {
     setAnthropicApiKey('sk-test');
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: 'max_tokens: must be positive' } }),
-      { status: 400 },
-    ));
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          type: 'error',
+          error: { type: 'invalid_request_error', message: 'max_tokens: must be positive' },
+        }),
+        { status: 400 },
+      ),
+    );
     const err = await generatePose('AAAA', '').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AnthropicNetworkError);
     expect(anthropicErrorDetail(err)).toBe('max_tokens: must be positive');
@@ -155,27 +166,38 @@ describe('generatePose', () => {
 
   it('returns the pose when max_tokens hit AFTER a complete pose JSON', async () => {
     setAnthropicApiKey('sk-test');
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        content: [{ type: 'text', text: 'Analysis…\n{"leftArm":{"raise":90}}' }],
-        stop_reason: 'max_tokens',
-      }),
-      { status: 200 },
-    ));
-    await expect(generatePose('AAAA', '').then(r => r.pose)).resolves.toEqual({ leftArm: { raise: 90 } });
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          content: [{ type: 'text', text: 'Analysis…\n{"leftArm":{"raise":90}}' }],
+          stop_reason: 'max_tokens',
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(generatePose('AAAA', '').then((r) => r.pose)).resolves.toEqual({
+      leftArm: { raise: 90 },
+    });
   });
 
   it('treats an empty parsed pose under max_tokens as truncation', async () => {
     setAnthropicApiKey('sk-test');
     // The reply was cut mid-JSON but the prose contained a stray complete
     // object — parsing "succeeds" with an empty pose, which must not pass.
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify({
-        content: [{ type: 'text', text: 'The figure {as drawn} sits…\n{"body":{"crouch":1},"leftLeg":{"forw' }],
-        stop_reason: 'max_tokens',
-      }),
-      { status: 200 },
-    ));
+    fetchMock.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          content: [
+            {
+              type: 'text',
+              text: 'The figure {as drawn} sits…\n{"body":{"crouch":1},"leftLeg":{"forw',
+            },
+          ],
+          stop_reason: 'max_tokens',
+        }),
+        { status: 200 },
+      ),
+    );
     const err = await generatePose('AAAA', '').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AnthropicTruncatedError);
   });
@@ -183,10 +205,9 @@ describe('generatePose', () => {
   it('throws AnthropicTruncatedError when stop_reason is max_tokens (instead of a parse error)', async () => {
     setAnthropicApiKey('sk-test');
     // Thinking consumed the whole budget: HTTP 200 but no usable text block.
-    fetchMock.mockResolvedValueOnce(new Response(
-      JSON.stringify({ content: [], stop_reason: 'max_tokens' }),
-      { status: 200 },
-    ));
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ content: [], stop_reason: 'max_tokens' }), { status: 200 }),
+    );
     const err = await generatePose('AAAA', '').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AnthropicTruncatedError);
     expect(anthropicErrorDetail(err)).toContain('max_tokens');
@@ -207,13 +228,18 @@ describe('refinePose', () => {
     expect(body.messages).toHaveLength(3);
     expect(body.messages[0].role).toBe('user');
     expect(body.messages[1].role).toBe('assistant');
-    expect(body.messages[2]).toEqual({ role: 'user', content: 'the left hand is 10cm below the floor.' });
+    expect(body.messages[2]).toEqual({
+      role: 'user',
+      content: 'the left hand is 10cm below the floor.',
+    });
     expect(refined.pose).toEqual({ leftArm: { raise: 80 } });
     expect(refined.messages).toHaveLength(4);
   });
 
   it('throws AnthropicKeyMissingError without a key and does not fetch', async () => {
-    await expect(refinePose({ pose: {}, messages: [] }, 'x')).rejects.toBeInstanceOf(AnthropicKeyMissingError);
+    await expect(refinePose({ pose: {}, messages: [] }, 'x')).rejects.toBeInstanceOf(
+      AnthropicKeyMissingError,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

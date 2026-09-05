@@ -85,7 +85,9 @@ describe('buildExportFilename', () => {
     const drawing = makeDrawing([], {
       reference: { source: 'sketchfab', title: 'My Cool Model', author: 'a', sketchfabUid: 'uid' },
     });
-    expect(buildExportFilename(drawing, 'svg')).toBe('drawing-practice-20260427-132700-My-Cool-Model.svg');
+    expect(buildExportFilename(drawing, 'svg')).toBe(
+      'drawing-practice-20260427-132700-My-Cool-Model.svg',
+    );
   });
 
   it('omits title segment when no reference', () => {
@@ -100,7 +102,12 @@ describe('buildExportFilename', () => {
 
   it('survives titles with unsafe characters', () => {
     const drawing = makeDrawing([], {
-      reference: { source: 'url', title: 'photo: of "cat" / dog', author: '', imageUrl: 'http://x' },
+      reference: {
+        source: 'url',
+        title: 'photo: of "cat" / dog',
+        author: '',
+        imageUrl: 'http://x',
+      },
     });
     const name = buildExportFilename(drawing, 'svg');
     expect(name).toBe('drawing-practice-20260427-132700-photo-of-cat-dog.svg');
@@ -108,9 +115,17 @@ describe('buildExportFilename', () => {
 
   it('handles Japanese reference titles', () => {
     const drawing = makeDrawing([], {
-      reference: { source: 'pexels', title: '猫のポーズ', author: '', pexelsPhotoId: 1, pexelsImageUrl: '' },
+      reference: {
+        source: 'pexels',
+        title: '猫のポーズ',
+        author: '',
+        pexelsPhotoId: 1,
+        pexelsImageUrl: '',
+      },
     });
-    expect(buildExportFilename(drawing, 'svg')).toBe('drawing-practice-20260427-132700-猫のポーズ.svg');
+    expect(buildExportFilename(drawing, 'svg')).toBe(
+      'drawing-practice-20260427-132700-猫のポーズ.svg',
+    );
   });
 
   it('truncates very long reference titles in the filename', () => {
@@ -173,7 +188,13 @@ describe('computeStrokesBoundingBox', () => {
 
   it('encloses all points across multiple strokes', () => {
     const box = computeStrokesBoundingBox([
-      { points: [{ x: 10, y: 20 }, { x: 30, y: 40 }], timestamp: 0 },
+      {
+        points: [
+          { x: 10, y: 20 },
+          { x: 30, y: 40 },
+        ],
+        timestamp: 0,
+      },
       { points: [{ x: -5, y: 100 }], timestamp: 1 },
     ]);
     expect(box.minX).toBe(-5);
@@ -199,7 +220,14 @@ describe('paddedBox', () => {
 
 describe('pointsToPathData', () => {
   it('produces M then L commands for a multi-point stroke', () => {
-    const d = pointsToPathData({ points: [{ x: 1, y: 2 }, { x: 3, y: 4 }, { x: 5, y: 6 }], timestamp: 0 });
+    const d = pointsToPathData({
+      points: [
+        { x: 1, y: 2 },
+        { x: 3, y: 4 },
+        { x: 5, y: 6 },
+      ],
+      timestamp: 0,
+    });
     expect(d).toBe('M1 2 L3 4 L5 6');
   });
 
@@ -222,8 +250,20 @@ describe('exportDrawingAsSvg', () => {
 
   it('emits viewBox, white background rect, and one path per stroke', async () => {
     const drawing = makeDrawing([
-      { points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], timestamp: 0 },
-      { points: [{ x: 0, y: 10 }, { x: 10, y: 10 }], timestamp: 1 },
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 0 },
+        ],
+        timestamp: 0,
+      },
+      {
+        points: [
+          { x: 0, y: 10 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1,
+      },
     ]);
     const text = await blobToText(exportDrawingAsSvg(drawing));
     expect(text).toContain('<?xml');
@@ -238,7 +278,13 @@ describe('exportDrawingAsSvg', () => {
 
   it('skips empty strokes in the path output', async () => {
     const drawing = makeDrawing([
-      { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 0 },
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 0,
+      },
       { points: [], timestamp: 1 },
     ]);
     const text = await blobToText(exportDrawingAsSvg(drawing));

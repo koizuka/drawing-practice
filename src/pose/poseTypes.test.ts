@@ -19,10 +19,12 @@ describe('parsePoseJson', () => {
   });
 
   it('drops unknown keys, invalid enums, and non-numeric values', () => {
-    const pose = parsePoseJson(JSON.stringify({
-      leftArm: { raise: 'high', elbowDirection: 'sideways', elbowBend: 30, wiggle: 1 },
-      tail: { curl: 90 },
-    }));
+    const pose = parsePoseJson(
+      JSON.stringify({
+        leftArm: { raise: 'high', elbowDirection: 'sideways', elbowBend: 30, wiggle: 1 },
+        tail: { curl: 90 },
+      }),
+    );
     expect(pose.leftArm).toEqual({ elbowBend: 30 });
     expect(Object.keys(pose)).toEqual(['leftArm']);
   });
@@ -75,7 +77,9 @@ describe('parsePoseJson', () => {
   });
 
   it('accepts the in/out elbow directions', () => {
-    const pose = parsePoseJson('{"leftArm":{"elbowBend":90,"elbowDirection":"in"},"rightArm":{"elbowBend":90,"elbowDirection":"out"}}');
+    const pose = parsePoseJson(
+      '{"leftArm":{"elbowBend":90,"elbowDirection":"in"},"rightArm":{"elbowBend":90,"elbowDirection":"out"}}',
+    );
     expect(pose.leftArm?.elbowDirection).toBe('in');
     expect(pose.rightArm?.elbowDirection).toBe('out');
   });
@@ -92,12 +96,14 @@ describe('parsePoseJson', () => {
   });
 
   it('extracts the JSON even when the leading prose contains braces', () => {
-    const raw = 'The figure {as drawn} faces left, arms in a T shape.\n\n{"body":{"turn":90},"leftArm":{"raise":90}}';
+    const raw =
+      'The figure {as drawn} faces left, arms in a T shape.\n\n{"body":{"turn":90},"leftArm":{"raise":90}}';
     expect(parsePoseJson(raw)).toEqual({ body: { turn: 90 }, leftArm: { raise: 90 } });
   });
 
   it('picks the LAST JSON object, not a valid example embedded in the prose', () => {
-    const raw = 'A raised arm would be {"raise": 90} in this schema.\nFinal pose:\n{"body":{"turn":-90},"rightArm":{"raise":45}}';
+    const raw =
+      'A raised arm would be {"raise": 90} in this schema.\nFinal pose:\n{"body":{"turn":-90},"rightArm":{"raise":45}}';
     expect(parsePoseJson(raw)).toEqual({ body: { turn: -90 }, rightArm: { raise: 45 } });
   });
 

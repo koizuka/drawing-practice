@@ -7,12 +7,24 @@ describe('coordMigration', () => {
   describe('shiftStrokes', () => {
     it('shifts every point by (dx, dy) and preserves stroke timestamps', () => {
       const strokes: Stroke[] = [
-        { points: [{ x: 100, y: 50 }, { x: 110, y: 60 }], timestamp: 1000 },
+        {
+          points: [
+            { x: 100, y: 50 },
+            { x: 110, y: 60 },
+          ],
+          timestamp: 1000,
+        },
         { points: [{ x: 0, y: 0 }], timestamp: 2000 },
       ];
       const out = shiftStrokes(strokes, -50, -25);
       expect(out).toEqual([
-        { points: [{ x: 50, y: 25 }, { x: 60, y: 35 }], timestamp: 1000 },
+        {
+          points: [
+            { x: 50, y: 25 },
+            { x: 60, y: 35 },
+          ],
+          timestamp: 1000,
+        },
         { points: [{ x: -50, y: -25 }], timestamp: 2000 },
       ]);
     });
@@ -27,10 +39,19 @@ describe('coordMigration', () => {
       // convention. Equivalent: a stroke at the legacy image center (W/2, H/2)
       // should land at the new world origin (0, 0).
       const strokes: Stroke[] = [
-        { points: [{ x: 0, y: 0 }, { x: 800, y: 600 }], timestamp: 1 },
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 800, y: 600 },
+          ],
+          timestamp: 1,
+        },
       ];
       const out = shiftStrokes(strokes, -400, -300);
-      expect(out[0].points).toEqual([{ x: -400, y: -300 }, { x: 400, y: 300 }]);
+      expect(out[0].points).toEqual([
+        { x: -400, y: -300 },
+        { x: 400, y: 300 },
+      ]);
     });
   });
 
@@ -60,7 +81,13 @@ describe('coordMigration', () => {
         lines: [],
       };
       const out = shiftGuideState(state, -50, -100);
-      expect(out.grid.perspective).toEqual({ yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100 });
+      expect(out.grid.perspective).toEqual({
+        yaw: 30,
+        pitch: 10,
+        strength: 0.7,
+        centerX: 50,
+        centerY: 100,
+      });
     });
 
     it('shifts every perspective memory anchor too', () => {

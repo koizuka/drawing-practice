@@ -58,8 +58,7 @@ export function useTimer() {
           cancelAnimationFrame(rafIdRef.current);
           setIsRunning(false);
         }
-      }
-      else {
+      } else {
         if (shouldRunRef.current && startTimeRef.current === null) {
           startTimeRef.current = Date.now();
           setIsRunning(true);

@@ -1,7 +1,41 @@
-import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo, lazy, Suspense } from 'react';
-import { Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, IconButton, Typography } from '@mui/material';
+import {
+  useRef,
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  lazy,
+  Suspense,
+} from 'react';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  IconButton,
+  Typography,
+} from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { Pen, Eraser, Undo2, Redo2, Trash2, LocateFixed, Save, Check, Images, X, PanelLeftClose, PanelLeftOpen, PanelTopClose, PanelTopOpen, RotateCcw } from 'lucide-react';
+import {
+  Pen,
+  Eraser,
+  Undo2,
+  Redo2,
+  Trash2,
+  LocateFixed,
+  Save,
+  Check,
+  Images,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelTopClose,
+  PanelTopOpen,
+  RotateCcw,
+} from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
@@ -21,7 +55,7 @@ import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 
 // Gallery is a modal opened on demand via the "Gallery" toolbar button —
 // keep it out of the initial bundle.
-const Gallery = lazy(() => import('./Gallery').then(m => ({ default: m.Gallery })));
+const Gallery = lazy(() => import('./Gallery').then((m) => ({ default: m.Gallery })));
 
 const FLIP_TRANSITION = 'transform 250ms ease-out';
 const FLIP_TRANSLATE_EPSILON = 0.5;
@@ -110,7 +144,26 @@ interface DrawingPanelProps {
 }
 
 export function DrawingPanel({
-  referenceSize, referenceInfo, strokeManager, onStrokesChanged, onGallerySaved, onOverlayClear, onLoadReference, onLoadDrawing, onCurrentStrokeChange, captureReferenceSnapshot, timer, restoreVersion, historySyncVersion, isFlipped, viewTransform, orientation = 'landscape', referenceCollapsed = false, onToggleReferenceCollapsed, collapseLocked = false, inputFrozen = false,
+  referenceSize,
+  referenceInfo,
+  strokeManager,
+  onStrokesChanged,
+  onGallerySaved,
+  onOverlayClear,
+  onLoadReference,
+  onLoadDrawing,
+  onCurrentStrokeChange,
+  captureReferenceSnapshot,
+  timer,
+  restoreVersion,
+  historySyncVersion,
+  isFlipped,
+  viewTransform,
+  orientation = 'landscape',
+  referenceCollapsed = false,
+  onToggleReferenceCollapsed,
+  collapseLocked = false,
+  inputFrozen = false,
   templateStrokes = null,
   traceFeedback = null,
   onStrokeFinalized,
@@ -160,13 +213,21 @@ export function DrawingPanel({
   const toolbarCoverRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
-  const { grid, lines, version: guideVersion, setGridMode, placingCenter, placePerspectiveCenter, recordPerspectiveMemory } = useGuides();
+  const {
+    grid,
+    lines,
+    version: guideVersion,
+    setGridMode,
+    placingCenter,
+    placePerspectiveCenter,
+    recordPerspectiveMemory,
+  } = useGuides();
 
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
   useEffect(() => {
     if (!viewTransform) return;
-    return viewTransform.subscribe(() => setViewTick(t => t + 1));
+    return viewTransform.subscribe(() => setViewTick((t) => t + 1));
   }, [viewTransform]);
 
   const resetDisabled = viewTransform ? !viewTransform.isDirty() : false;
@@ -178,7 +239,7 @@ export function DrawingPanel({
   if (prevRestoreVersion !== (restoreVersion ?? 0)) {
     setPrevRestoreVersion(restoreVersion ?? 0);
     if (restoreVersion && restoreVersion > 0) {
-      setRedrawVersion(v => v + 1);
+      setRedrawVersion((v) => v + 1);
     }
   }
 
@@ -196,14 +257,17 @@ export function DrawingPanel({
   // (undo / redo / clear / delete-highlighted) pass `{ flush: true }` so the
   // result persists immediately, matching flip / grid / collapse. Plain redraws
   // (none currently) would fall through to the 2s debounce.
-  const triggerRedraw = useCallback((opts?: { flush?: boolean }) => {
-    onStrokesChanged?.(opts);
-    setRedrawVersion(v => v + 1);
-    // Discrete stroke edit (undo/redo/clear/delete all funnel through here, and
-    // only they do — freehand commits bump redrawVersion via
-    // handleStrokeCountChange instead). Signals the freeze-hint streak reset.
-    setStrokeEditVersion(v => v + 1);
-  }, [onStrokesChanged]);
+  const triggerRedraw = useCallback(
+    (opts?: { flush?: boolean }) => {
+      onStrokesChanged?.(opts);
+      setRedrawVersion((v) => v + 1);
+      // Discrete stroke edit (undo/redo/clear/delete all funnel through here, and
+      // only they do — freehand commits bump redrawVersion via
+      // handleStrokeCountChange instead). Signals the freeze-hint streak reset.
+      setStrokeEditVersion((v) => v + 1);
+    },
+    [onStrokesChanged],
+  );
 
   const handleUndo = useCallback(() => {
     strokeManager.undo(captureReferenceSnapshot);
@@ -257,7 +321,7 @@ export function DrawingPanel({
     // Clearing the canvas also returns the camera home: a blank canvas panned
     // off to some corner at 3x zoom is disorienting, and the user's next stroke
     // should start from the same view a fresh session would.
-    setViewResetVersion(v => v + 1);
+    setViewResetVersion((v) => v + 1);
     triggerRedraw({ flush: true });
     onOverlayClear?.();
   }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
@@ -275,41 +339,49 @@ export function DrawingPanel({
     setHighlightedStrokeIndex(null);
   }, []);
 
-  const handleStrokeCountChange = useCallback((info: { flush?: boolean } = {}) => {
-    setRedrawVersion(v => v + 1);
-    // Lasso-delete and other discrete erases arrive with `flush` so they
-    // persist immediately; a freehand stroke commit omits it and rides the 2s
-    // debounce (continuous input, batched for perf).
-    onStrokesChanged?.(info.flush ? { flush: true } : undefined);
-    // Lasso-delete from DrawingCanvas reaches us via this path (NOT through
-    // handleStrokeFinalized), so resync trace scoring here too. The add-path
-    // also lands here just before handleStrokeFinalized records its history
-    // entry — that intermediate sync is harmless (syncAttempts is idempotent
-    // and reads the latest StrokeManager state).
-    onTraceSyncAttempts?.();
-    // Timer start/reset now happens at stroke START (handleStrokeStart), so by
-    // the time a pen commit lands here the timer is already running. This guard
-    // stays as a safety net for non-pen commit paths (e.g. lasso-delete) that
-    // never fire onStrokeStart.
-    if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
-      timer.start();
-    }
-  }, [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts]);
+  const handleStrokeCountChange = useCallback(
+    (info: { flush?: boolean } = {}) => {
+      setRedrawVersion((v) => v + 1);
+      // Lasso-delete and other discrete erases arrive with `flush` so they
+      // persist immediately; a freehand stroke commit omits it and rides the 2s
+      // debounce (continuous input, batched for perf).
+      onStrokesChanged?.(info.flush ? { flush: true } : undefined);
+      // Lasso-delete from DrawingCanvas reaches us via this path (NOT through
+      // handleStrokeFinalized), so resync trace scoring here too. The add-path
+      // also lands here just before handleStrokeFinalized records its history
+      // entry — that intermediate sync is harmless (syncAttempts is idempotent
+      // and reads the latest StrokeManager state).
+      onTraceSyncAttempts?.();
+      // Timer start/reset now happens at stroke START (handleStrokeStart), so by
+      // the time a pen commit lands here the timer is already running. This guard
+      // stays as a safety net for non-pen commit paths (e.g. lasso-delete) that
+      // never fire onStrokeStart.
+      if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
+        timer.start();
+      }
+    },
+    [strokeManager, onStrokesChanged, timer, onTraceSyncAttempts],
+  );
 
-  const handleStrokeFinalized = useCallback((stroke: Stroke) => {
-    // Scoring first: trace-template scoring may reject an out-of-range stroke
-    // and discard it from the manager (see TraceScoringContext).
-    onStrokeFinalized?.(stroke);
-    // A stroke that survived scoring under the perspective grid means the user
-    // actually sketched at this angle — snapshot it so they can flip back
-    // later from the controller's recall buttons. Timestamps are unique per
-    // stroke (see StrokeManager.nextTimestamp), so presence-by-timestamp is a
-    // reliable "was it kept" check.
-    if (grid.mode === 'perspective'
-      && strokeManager.getStrokes().some(s => s.timestamp === stroke.timestamp)) {
-      recordPerspectiveMemory();
-    }
-  }, [grid.mode, recordPerspectiveMemory, onStrokeFinalized, strokeManager]);
+  const handleStrokeFinalized = useCallback(
+    (stroke: Stroke) => {
+      // Scoring first: trace-template scoring may reject an out-of-range stroke
+      // and discard it from the manager (see TraceScoringContext).
+      onStrokeFinalized?.(stroke);
+      // A stroke that survived scoring under the perspective grid means the user
+      // actually sketched at this angle — snapshot it so they can flip back
+      // later from the controller's recall buttons. Timestamps are unique per
+      // stroke (see StrokeManager.nextTimestamp), so presence-by-timestamp is a
+      // reliable "was it kept" check.
+      if (
+        grid.mode === 'perspective' &&
+        strokeManager.getStrokes().some((s) => s.timestamp === stroke.timestamp)
+      ) {
+        recordPerspectiveMemory();
+      }
+    },
+    [grid.mode, recordPerspectiveMemory, onStrokeFinalized, strokeManager],
+  );
 
   const handleStrokeStart = useCallback(() => {
     // Clear the previous attempt's red deviation feedback in the same React
@@ -360,43 +432,47 @@ export function DrawingPanel({
       timer.pause();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Gallery save failed:', err);
-    }
-    finally {
+    } finally {
       savingRef.current = false;
       setSaving(false);
     }
   }, [strokeManager, referenceInfo, timer, onGallerySaved]);
 
-  const executeLoadDrawing = useCallback((drawing: DrawingRecord) => {
-    setPendingLoadDrawing(null);
-    setShowGallery(false);
-    setHighlightedStrokeIndex(null);
-    setMode('pen');
-    // The transient save-success indicator belongs to the replaced canvas —
-    // showing "Saved" over a freshly loaded drawing would be misleading.
-    setSaved(false);
-    // Trace scoring is NOT part of the record: leftover scores/attemptMap
-    // would reference wiped strokes and block re-trace replacement. Reset
-    // before the load so an active template starts a fresh attempt.
-    onTraceResetScores?.();
-    onLoadDrawing?.(drawing);
-  }, [onLoadDrawing, onTraceResetScores]);
+  const executeLoadDrawing = useCallback(
+    (drawing: DrawingRecord) => {
+      setPendingLoadDrawing(null);
+      setShowGallery(false);
+      setHighlightedStrokeIndex(null);
+      setMode('pen');
+      // The transient save-success indicator belongs to the replaced canvas —
+      // showing "Saved" over a freshly loaded drawing would be misleading.
+      setSaved(false);
+      // Trace scoring is NOT part of the record: leftover scores/attemptMap
+      // would reference wiped strokes and block re-trace replacement. Reset
+      // before the load so an active template starts a fresh attempt.
+      onTraceResetScores?.();
+      onLoadDrawing?.(drawing);
+    },
+    [onLoadDrawing, onTraceResetScores],
+  );
 
   // Gallery "continue this drawing": replacing an unsaved canvas is the one
   // destructive step in the flow, so gate it behind a confirmation. Already-
   // saved (or empty) canvases load immediately.
-  const handleGalleryLoadDrawing = useCallback((drawing: DrawingRecord) => {
-    const hasUnsavedStrokes
-      = strokeManager.getStrokes().length > 0 && strokeManager.isDirtySinceGallerySave();
-    if (hasUnsavedStrokes) {
-      setPendingLoadDrawing(drawing);
-      return;
-    }
-    executeLoadDrawing(drawing);
-  }, [strokeManager, executeLoadDrawing]);
+  const handleGalleryLoadDrawing = useCallback(
+    (drawing: DrawingRecord) => {
+      const hasUnsavedStrokes =
+        strokeManager.getStrokes().length > 0 && strokeManager.isDirtySinceGallerySave();
+      if (hasUnsavedStrokes) {
+        setPendingLoadDrawing(drawing);
+        return;
+      }
+      executeLoadDrawing(drawing);
+    },
+    [strokeManager, executeLoadDrawing],
+  );
 
   const handlePenTool = useCallback(() => {
     setMode('pen');
@@ -415,19 +491,22 @@ export function DrawingPanel({
 
   useKeyboardShortcuts({
     disabled: showGallery,
-    actions: useMemo(() => ({
-      onUndo: handleUndo,
-      onRedo: handleRedo,
-      onPenTool: handlePenTool,
-      onEraseTool: handleEraseTool,
-      onSave: handleSave,
-      onResetZoom: () => setViewResetVersion(v => v + 1),
-    }), [handleUndo, handleRedo, handlePenTool, handleEraseTool, handleSave]),
+    actions: useMemo(
+      () => ({
+        onUndo: handleUndo,
+        onRedo: handleRedo,
+        onPenTool: handlePenTool,
+        onEraseTool: handleEraseTool,
+        onSave: handleSave,
+        onResetZoom: () => setViewResetVersion((v) => v + 1),
+      }),
+      [handleUndo, handleRedo, handlePenTool, handleEraseTool, handleSave],
+    ),
   });
 
   const eraseSx = (active: boolean) => ({
-    'bgcolor': active ? 'error.main' : 'transparent',
-    'color': active ? 'white' : 'inherit',
+    bgcolor: active ? 'error.main' : 'transparent',
+    color: active ? 'white' : 'inherit',
     '&:hover': { bgcolor: active ? 'error.dark' : 'action.hover' },
   });
 
@@ -435,7 +514,7 @@ export function DrawingPanel({
     const toolbar = toolbarRef.current;
     if (!toolbar) return null;
     const cover = toolbarCoverRef.current;
-    const children = (Array.from(toolbar.children) as HTMLElement[]).filter(c => c !== cover);
+    const children = (Array.from(toolbar.children) as HTMLElement[]).filter((c) => c !== cover);
     return { toolbar, cover, children };
   }, []);
 
@@ -493,11 +572,11 @@ export function DrawingPanel({
       const ty = pending.box.top - postBox.top;
       const sx = pending.box.width / postBox.width;
       const sy = pending.box.height / postBox.height;
-      const significant
-        = Math.abs(tx) > FLIP_TRANSLATE_EPSILON
-          || Math.abs(ty) > FLIP_TRANSLATE_EPSILON
-          || Math.abs(sx - 1) > FLIP_SCALE_EPSILON
-          || Math.abs(sy - 1) > FLIP_SCALE_EPSILON;
+      const significant =
+        Math.abs(tx) > FLIP_TRANSLATE_EPSILON ||
+        Math.abs(ty) > FLIP_TRANSLATE_EPSILON ||
+        Math.abs(sx - 1) > FLIP_SCALE_EPSILON ||
+        Math.abs(sy - 1) > FLIP_SCALE_EPSILON;
       if (significant) {
         cover.style.transform = `translate(${tx}px, ${ty}px) scale(${sx}, ${sy})`;
         animatedAny = true;
@@ -518,15 +597,18 @@ export function DrawingPanel({
         el.style.transform = identity;
       };
       if (cover) animateBack(cover, '');
-      children.forEach(child => animateBack(child, 'translate(0, 0)'));
+      children.forEach((child) => animateBack(child, 'translate(0, 0)'));
     });
   }, [referenceCollapsed, collectFlipTargets]);
 
   // Cancel in-flight rAF on unmount so the callback doesn't touch a
   // detached DOM node.
-  useEffect(() => () => {
-    if (flipRafIdRef.current !== null) cancelAnimationFrame(flipRafIdRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (flipRafIdRef.current !== null) cancelAnimationFrame(flipRafIdRef.current);
+    },
+    [],
+  );
 
   return (
     <Box sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -573,32 +655,43 @@ export function DrawingPanel({
             of the right view group) so it sits next to the reference/drawing
             boundary in landscape mode and stays in a fixed spot across
             orientations. See .claude/rules/ui-design-principles.md §1. */}
-        {onToggleReferenceCollapsed && (() => {
-          const icons = orientation === 'portrait'
-            ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
-            : { collapsed: PanelLeftOpen, expanded: PanelLeftClose };
-          const Icon = referenceCollapsed ? icons.collapsed : icons.expanded;
-          const tooltip = collapseLocked
-            ? t('collapseLockedSketchfabBrowse')
-            : referenceCollapsed ? t('expandReference') : t('collapseReference');
-          const button = (
-            <IconButton size="small" onClick={handleCollapseToggleClick} disabled={collapseLocked} aria-label={tooltip}>
-              <Icon size={20} />
-            </IconButton>
-          );
-          return (
-            <>
-              <ToolbarTooltip title={tooltip}>
-                {collapseLocked ? <span>{button}</span> : button}
-              </ToolbarTooltip>
-              {/* Grid controls live on the reference toolbar (ui-design-principles
+        {onToggleReferenceCollapsed &&
+          (() => {
+            const icons =
+              orientation === 'portrait'
+                ? { collapsed: PanelTopOpen, expanded: PanelTopClose }
+                : { collapsed: PanelLeftOpen, expanded: PanelLeftClose };
+            const Icon = referenceCollapsed ? icons.collapsed : icons.expanded;
+            const tooltip = collapseLocked
+              ? t('collapseLockedSketchfabBrowse')
+              : referenceCollapsed
+                ? t('expandReference')
+                : t('collapseReference');
+            const button = (
+              <IconButton
+                size="small"
+                onClick={handleCollapseToggleClick}
+                disabled={collapseLocked}
+                aria-label={tooltip}
+              >
+                <Icon size={20} />
+              </IconButton>
+            );
+            return (
+              <>
+                <ToolbarTooltip title={tooltip}>
+                  {collapseLocked ? <span>{button}</span> : button}
+                </ToolbarTooltip>
+                {/* Grid controls live on the reference toolbar (ui-design-principles
                   §8), but that toolbar is unreachable while the reference panel is
                   collapsed — the drawing side stands in for it only then. */}
-              {referenceCollapsed && <GridModePopoverButton grid={grid} onSetGridMode={setGridMode} />}
-              <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            </>
-          );
-        })()}
+                {referenceCollapsed && (
+                  <GridModePopoverButton grid={grid} onSetGridMode={setGridMode} />
+                )}
+                <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+              </>
+            );
+          })()}
 
         {/* Drawing tools */}
         <ToolbarTooltip title={`${t('pen')} (P)`}>
@@ -606,8 +699,8 @@ export function DrawingPanel({
             size="small"
             onClick={handlePenTool}
             sx={{
-              'bgcolor': mode === 'pen' ? 'primary.main' : 'transparent',
-              'color': mode === 'pen' ? 'white' : 'inherit',
+              bgcolor: mode === 'pen' ? 'primary.main' : 'transparent',
+              color: mode === 'pen' ? 'white' : 'inherit',
               '&:hover': { bgcolor: mode === 'pen' ? 'primary.dark' : 'action.hover' },
             }}
           >
@@ -619,7 +712,12 @@ export function DrawingPanel({
             enclose as a lasso. One button — the lasso is gesture-driven, so it
             isn't surfaced separately. */}
         <ToolbarTooltip title={`${t('erase')} (E)`}>
-          <IconButton size="small" onClick={handleEraseTool} aria-label={t('erase')} sx={eraseSx(mode === 'erase')}>
+          <IconButton
+            size="small"
+            onClick={handleEraseTool}
+            aria-label={t('erase')}
+            sx={eraseSx(mode === 'erase')}
+          >
             <Eraser size={20} />
           </IconButton>
         </ToolbarTooltip>
@@ -658,7 +756,7 @@ export function DrawingPanel({
           <span>
             <IconButton
               size="small"
-              onClick={() => setViewResetVersion(v => v + 1)}
+              onClick={() => setViewResetVersion((v) => v + 1)}
               disabled={resetDisabled}
             >
               <LocateFixed size={20} />
@@ -691,10 +789,10 @@ export function DrawingPanel({
                   onClick={handleSave}
                   disabled={strokeCount === 0 || saving || !strokeManager.isDirtySinceGallerySave()}
                   sx={{
-                    'bgcolor': saved ? 'success.main' : 'transparent',
-                    'color': saved ? 'white' : 'inherit',
+                    bgcolor: saved ? 'success.main' : 'transparent',
+                    color: saved ? 'white' : 'inherit',
                     '&:hover': { bgcolor: saved ? 'success.dark' : 'action.hover' },
-                    'transition': 'background-color 0.3s, color 0.3s',
+                    transition: 'background-color 0.3s, color 0.3s',
                   }}
                 >
                   {saved ? <Check size={20} /> : <Save size={20} />}
@@ -703,7 +801,13 @@ export function DrawingPanel({
             </ToolbarTooltip>
 
             <ToolbarTooltip title={t('gallery')}>
-              <IconButton size="small" onClick={() => { timer.pause(); setShowGallery(true); }}>
+              <IconButton
+                size="small"
+                onClick={() => {
+                  timer.pause();
+                  setShowGallery(true);
+                }}
+              >
                 <Images size={20} />
               </IconButton>
             </ToolbarTooltip>
@@ -718,8 +822,8 @@ export function DrawingPanel({
                 size="small"
                 onClick={handleDeleteHighlighted}
                 sx={{
-                  'bgcolor': 'error.main',
-                  'color': 'white',
+                  bgcolor: 'error.main',
+                  color: 'white',
                   '&:hover': { bgcolor: 'error.dark' },
                 }}
               >
@@ -764,18 +868,11 @@ export function DrawingPanel({
               sx={{ fontFamily: 'monospace', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
               aria-label={t('traceScoreLabel')}
             >
-              {t('traceScoreLabel')}
-              {' '}
-              {traceTotalCovered}
-              /
-              {traceTotalStrokes}
+              {t('traceScoreLabel')} {traceTotalCovered}/{traceTotalStrokes}
               {traceOverallBestPct !== null && (
                 <>
                   {' · '}
-                  {t('traceScoreBest')}
-                  {' '}
-                  {traceOverallBestPct.toFixed(1)}
-                  %
+                  {t('traceScoreBest')} {traceOverallBestPct.toFixed(1)}%
                 </>
               )}
             </Typography>
@@ -787,8 +884,8 @@ export function DrawingPanel({
                     onClick={onTraceResetScores}
                     disabled={traceTotalCovered === 0}
                     sx={{
-                      'color': 'white',
-                      'p': 0.25,
+                      color: 'white',
+                      p: 0.25,
                       '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
                       '&.Mui-disabled': { color: 'rgba(255,255,255,0.35)' },
                     }}
@@ -801,7 +898,9 @@ export function DrawingPanel({
           </Box>
         )}
         {grid.mode === 'perspective' && <PerspectiveController />}
-        <Box sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}>
+        <Box
+          sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}
+        >
           <DrawingCanvas
             mode={mode}
             highlightedStrokeIndex={highlightedStrokeIndex}
@@ -834,20 +933,21 @@ export function DrawingPanel({
       {showGallery && (
         <LazyErrorBoundary>
           <Suspense
-            fallback={(
-              <Box sx={{
-                position: 'fixed',
-                inset: 0,
-                bgcolor: 'rgba(0,0,0,0.4)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                zIndex: 1000,
-              }}
+            fallback={
+              <Box
+                sx={{
+                  position: 'fixed',
+                  inset: 0,
+                  bgcolor: 'rgba(0,0,0,0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1000,
+                }}
               >
                 <CircularProgress />
               </Box>
-            )}
+            }
           >
             <Gallery
               onClose={() => setShowGallery(false)}
@@ -873,9 +973,7 @@ export function DrawingPanel({
         aria-label={t('continueConfirmMessage')}
       >
         <DialogContent>
-          <Typography variant="body2">
-            {t('continueConfirmMessage')}
-          </Typography>
+          <Typography variant="body2">{t('continueConfirmMessage')}</Typography>
         </DialogContent>
         <DialogActions>
           <Button size="small" onClick={() => setPendingLoadDrawing(null)}>

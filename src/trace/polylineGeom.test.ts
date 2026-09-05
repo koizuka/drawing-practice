@@ -15,7 +15,10 @@ function makeRing(r: number, n: number): TraceStroke {
 
 describe('closestPointOnPolyline', () => {
   it('returns the perp-foot on a horizontal segment', () => {
-    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }];
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ];
     const r = closestPointOnPolyline({ x: 5, y: 3 }, pts);
     expect(r.point.x).toBeCloseTo(5);
     expect(r.point.y).toBeCloseTo(0);
@@ -24,14 +27,21 @@ describe('closestPointOnPolyline', () => {
   });
 
   it('clamps to the nearest endpoint when projection is outside', () => {
-    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }];
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+    ];
     const r = closestPointOnPolyline({ x: -5, y: 0 }, pts);
     expect(r.point.x).toBeCloseTo(0);
     expect(r.arcLen).toBeCloseTo(0);
   });
 
   it('finds the closest of multiple segments', () => {
-    const pts = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }];
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 10, y: 0 },
+      { x: 10, y: 10 },
+    ];
     const r = closestPointOnPolyline({ x: 11, y: 5 }, pts);
     expect(r.point.x).toBeCloseTo(10);
     expect(r.point.y).toBeCloseTo(5);

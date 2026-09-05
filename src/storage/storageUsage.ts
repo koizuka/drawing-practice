@@ -76,8 +76,7 @@ async function getStorageEstimate(): Promise<{ usage: number | null; quota: numb
   try {
     const est = await navigator.storage.estimate();
     return { usage: est.usage ?? null, quota: est.quota ?? null };
-  }
-  catch {
+  } catch {
     return { usage: null, quota: null };
   }
 }
@@ -87,7 +86,9 @@ async function getStorageEstimate(): Promise<{ usage: number | null; quota: numb
  * IndexedDB stores strings as UTF-16, but the relative breakdown is what
  * users want to see.
  */
-export async function computeStorageUsage(drawings: readonly DrawingRecord[]): Promise<StorageUsage> {
+export async function computeStorageUsage(
+  drawings: readonly DrawingRecord[],
+): Promise<StorageUsage> {
   const [urlHistoryImageBytes, poseAssetsBytes, sessionBytes, estimate] = await Promise.all([
     sumUrlHistoryImageBytes(),
     sumPoseAssetsBytes(),

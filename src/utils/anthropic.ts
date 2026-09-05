@@ -72,10 +72,10 @@ export function anthropicErrorDetail(e: unknown): string | undefined {
 
 export function getAnthropicApiKey(): string {
   try {
-    const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(API_KEY_STORAGE_KEY) : null;
+    const stored =
+      typeof localStorage !== 'undefined' ? localStorage.getItem(API_KEY_STORAGE_KEY) : null;
     if (stored && stored.length > 0) return stored;
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
   return '';
@@ -85,12 +85,10 @@ export function setAnthropicApiKey(key: string): void {
   try {
     if (key === '') {
       localStorage.removeItem(API_KEY_STORAGE_KEY);
-    }
-    else {
+    } else {
       localStorage.setItem(API_KEY_STORAGE_KEY, key);
     }
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
 }
@@ -105,7 +103,9 @@ export function isAnthropicAuthError(e: unknown): boolean {
  * PoseParseError is not mapped here — the caller distinguishes it because the
  * recovery advice differs (retry generation vs. check key/network).
  */
-export function mapAnthropicErrorKey(e: unknown):
+export function mapAnthropicErrorKey(
+  e: unknown,
+):
   | 'anthropicKeyRequired'
   | 'anthropicKeyInvalid'
   | 'anthropicRateLimit'
@@ -151,11 +151,10 @@ interface AnthropicMessagesResponse {
  */
 async function readErrorDetail(res: Response): Promise<string | undefined> {
   try {
-    const data = await res.json() as { error?: { type?: string; message?: string } };
+    const data = (await res.json()) as { error?: { type?: string; message?: string } };
     const msg = data.error?.message;
     return typeof msg === 'string' && msg.length > 0 ? msg : undefined;
-  }
-  catch {
+  } catch {
     return undefined;
   }
 }
@@ -169,17 +168,22 @@ async function readErrorDetail(res: Response): Promise<string | undefined> {
  *   null to generate from the hint text alone (hint must be non-empty then).
  * @throws PoseParseError when the model's reply contains no usable JSON.
  */
-export async function generatePose(pngBase64: string | null, hint: string, signal?: AbortSignal): Promise<PoseGeneration> {
+export async function generatePose(
+  pngBase64: string | null,
+  hint: string,
+  signal?: AbortSignal,
+): Promise<PoseGeneration> {
   if (pngBase64 === null && hint.trim() === '') {
     throw new Error('generatePose requires a sketch or a non-empty hint');
   }
 
-  const content: unknown[] = pngBase64 !== null
-    ? [
-        { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngBase64 } },
-        { type: 'text', text: buildPosePrompt(hint) },
-      ]
-    : [{ type: 'text', text: buildTextPosePrompt(hint) }];
+  const content: unknown[] =
+    pngBase64 !== null
+      ? [
+          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: pngBase64 } },
+          { type: 'text', text: buildPosePrompt(hint) },
+        ]
+      : [{ type: 'text', text: buildTextPosePrompt(hint) }];
 
   return requestPose([{ role: 'user', content }], signal);
 }
@@ -188,11 +192,18 @@ export async function generatePose(pngBase64: string | null, hint: string, signa
  * One validation-correction round: appends the geometric feedback to the
  * prior conversation and asks for a corrected pose JSON in-context.
  */
-export async function refinePose(prior: PoseGeneration, feedback: string, signal?: AbortSignal): Promise<PoseGeneration> {
+export async function refinePose(
+  prior: PoseGeneration,
+  feedback: string,
+  signal?: AbortSignal,
+): Promise<PoseGeneration> {
   return requestPose([...prior.messages, { role: 'user', content: feedback }], signal);
 }
 
-async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): Promise<PoseGeneration> {
+async function requestPose(
+  messages: AnthropicMessage[],
+  signal?: AbortSignal,
+): Promise<PoseGeneration> {
   const key = getAnthropicApiKey();
   if (!key) throw new AnthropicKeyMissingError();
 
@@ -225,8 +236,7 @@ async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): 
       }),
       signal,
     });
-  }
-  catch (e) {
+  } catch (e) {
     // Propagate AbortError so callers can distinguish cancellations from real failures.
     if (e instanceof DOMException && e.name === 'AbortError') throw e;
     throw new AnthropicNetworkError(e instanceof Error ? e.message : undefined);
@@ -240,8 +250,8 @@ async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): 
     throw new AnthropicNetworkError(detail ?? `HTTP ${res.status}`);
   }
 
-  const data = await res.json() as AnthropicMessagesResponse;
-  const text = data.content?.find(block => block.type === 'text')?.text ?? '';
+  const data = (await res.json()) as AnthropicMessagesResponse;
+  const text = data.content?.find((block) => block.type === 'text')?.text ?? '';
   // Debug-level so pose tuning can inspect the model's analysis + JSON from
   // the console (Safari Web Inspector) without noisy default output.
   console.debug('[pose] model reply:', text);
@@ -253,8 +263,7 @@ async function requestPose(messages: AnthropicMessage[], signal?: AbortSignal): 
   let pose: PoseJson;
   try {
     pose = parsePoseJson(text);
-  }
-  catch (e) {
+  } catch (e) {
     if (e instanceof PoseParseError) {
       if (data.stop_reason === 'max_tokens') {
         console.error('[pose] reply truncated by max_tokens:', data);

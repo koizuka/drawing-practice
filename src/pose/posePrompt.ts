@@ -75,9 +75,8 @@ Fill in unspecified joints with natural values that fit the described action. En
 
 export function buildPosePrompt(hint: string): string {
   const trimmed = hint.trim();
-  const hintText = trimmed.length > 0
-    ? `The user added this note about the pose: 「${trimmed}」. `
-    : '';
+  const hintText =
+    trimmed.length > 0 ? `The user added this note about the pose: 「${trimmed}」. ` : '';
   return SKETCH_TEMPLATE.replace('{HINT}', hintText);
 }
 

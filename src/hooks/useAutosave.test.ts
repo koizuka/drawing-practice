@@ -20,11 +20,24 @@ describe('useAutosave', () => {
   });
 
   const makeState = (overrides = {}) => ({
-    strokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 }],
+    strokes: [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1000,
+      },
+    ],
     redoStack: [],
     elapsedMs: 5000,
     source: 'sketchfab' as const,
-    referenceInfo: { title: 'Test', author: 'Author', source: 'sketchfab' as const, sketchfabUid: 'test-uid' },
+    referenceInfo: {
+      title: 'Test',
+      author: 'Author',
+      source: 'sketchfab' as const,
+      sketchfabUid: 'test-uid',
+    },
     referenceImageData: 'data:image/png;base64,abc',
     grid: { mode: 'normal' as const },
     lines: [],
@@ -88,7 +101,8 @@ describe('useAutosave', () => {
   it('clears draft when no strokes and no reference', async () => {
     const suppressRef = { current: false };
     const { rerender } = renderHook(
-      ({ version }) => useAutosave(() => makeState({ strokes: [], source: 'none' }), version, 0, suppressRef),
+      ({ version }) =>
+        useAutosave(() => makeState({ strokes: [], source: 'none' }), version, 0, suppressRef),
       { initialProps: { version: 0 } },
     );
 
@@ -193,7 +207,8 @@ describe('useAutosave', () => {
     const suppressRef = { current: false };
     let dirty = true;
     const { rerender } = renderHook(
-      ({ flush }) => useAutosave(() => makeState({ gallerySaveDirty: dirty }), 0, flush, suppressRef),
+      ({ flush }) =>
+        useAutosave(() => makeState({ gallerySaveDirty: dirty }), 0, flush, suppressRef),
       { initialProps: { flush: 0 } },
     );
 
@@ -201,7 +216,9 @@ describe('useAutosave', () => {
       rerender({ flush: 1 });
     });
     expect(saveDraft).toHaveBeenCalledTimes(1);
-    expect((saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].gallerySaveDirty).toBe(true);
+    expect(
+      (saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0].gallerySaveDirty,
+    ).toBe(true);
 
     // Simulate a successful gallery save: dirty flips to false, then a flush.
     dirty = false;
@@ -209,12 +226,21 @@ describe('useAutosave', () => {
       rerender({ flush: 2 });
     });
     expect(saveDraft).toHaveBeenCalledTimes(2);
-    expect((saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0].gallerySaveDirty).toBe(false);
+    expect(
+      (saveDraft as unknown as ReturnType<typeof vi.fn>).mock.calls[1][0].gallerySaveDirty,
+    ).toBe(false);
   });
 
   it('uses latest state on flush (no stale capture)', async () => {
     const suppressRef = { current: false };
-    let currentState = makeState({ referenceInfo: { title: 'Old', author: 'A', source: 'sketchfab' as const, sketchfabUid: 'old' } });
+    let currentState = makeState({
+      referenceInfo: {
+        title: 'Old',
+        author: 'A',
+        source: 'sketchfab' as const,
+        sketchfabUid: 'old',
+      },
+    });
     const { rerender } = renderHook(
       ({ flush }) => useAutosave(() => currentState, 0, flush, suppressRef),
       { initialProps: { flush: 0 } },
@@ -222,7 +248,14 @@ describe('useAutosave', () => {
 
     // Update state, then bump flushVersion. The hook captures getState via ref,
     // so the latest reference data should make it into saveDraft.
-    currentState = makeState({ referenceInfo: { title: 'New', author: 'B', source: 'sketchfab' as const, sketchfabUid: 'new' } });
+    currentState = makeState({
+      referenceInfo: {
+        title: 'New',
+        author: 'B',
+        source: 'sketchfab' as const,
+        sketchfabUid: 'new',
+      },
+    });
 
     await act(async () => {
       rerender({ flush: 1 });

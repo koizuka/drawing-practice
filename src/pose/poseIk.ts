@@ -64,7 +64,12 @@ export function foldDirection(preferred: Vector3, boneDir: Vector3, fallback: Ve
  * poseMapping uses for the upper arm, so the mid joint's hinge plane is
  * always where the fold direction says.
  */
-export function foldBasis(restAxis: Vector3, restFold: Vector3, boneDir: Vector3, fold: Vector3): Quaternion {
+export function foldBasis(
+  restAxis: Vector3,
+  restFold: Vector3,
+  boneDir: Vector3,
+  fold: Vector3,
+): Quaternion {
   const rest3 = new Vector3().crossVectors(restAxis, restFold);
   const world3 = new Vector3().crossVectors(boneDir, fold);
   const restBasis = new Matrix4().makeBasis(restAxis, restFold, rest3);
@@ -129,8 +134,7 @@ export function solveTwoBone(opts: TwoBoneOptions): TwoBoneSolution {
     if (toEnd.lengthSq() < 1e-8) toEnd.copy(toMid);
     end = mid.clone().addScaledVector(toEnd.normalize(), len2);
     bulge = toMid;
-  }
-  else {
+  } else {
     const d = target.clone().sub(root);
     let dist = d.length();
     const dHat = dist > 1e-6 ? d.divideScalar(dist) : restAxis.clone();
@@ -140,7 +144,8 @@ export function solveTwoBone(opts: TwoBoneOptions): TwoBoneSolution {
     const e = foldDirection(pole, dHat, new Vector3(0, 0, 1));
     const cosA1 = (len1 * len1 + dist * dist - len2 * len2) / (2 * len1 * dist);
     const a1 = Math.acos(Math.min(1, Math.max(-1, cosA1)));
-    mid = root.clone()
+    mid = root
+      .clone()
       .addScaledVector(dHat, Math.cos(a1) * len1)
       .addScaledVector(e, Math.sin(a1) * len1);
     end = root.clone().addScaledVector(dHat, dist);
@@ -152,11 +157,18 @@ export function solveTwoBone(opts: TwoBoneOptions): TwoBoneSolution {
   let bend = lowerDir.lengthSq() > 1e-10 ? boneDir.angleTo(lowerDir) : 0;
   // The second bone flexes toward the component of its direction that is
   // perpendicular to the first bone — opposite the bulge for a straight limb.
-  const fold = foldDirection(lowerDir.clone().normalize(), boneDir, perpendicular(bulge, boneDir).negate());
+  const fold = foldDirection(
+    lowerDir.clone().normalize(),
+    boneDir,
+    perpendicular(bulge, boneDir).negate(),
+  );
   const maxBend = opts.maxBend ?? Math.PI;
   if (bend > maxBend) {
     bend = maxBend;
-    const endDir = boneDir.clone().multiplyScalar(Math.cos(bend)).addScaledVector(fold, Math.sin(bend));
+    const endDir = boneDir
+      .clone()
+      .multiplyScalar(Math.cos(bend))
+      .addScaledVector(fold, Math.sin(bend));
     end = mid.clone().addScaledVector(endDir, len2);
   }
 

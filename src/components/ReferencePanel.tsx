@@ -1,8 +1,43 @@
 import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
-import { Box, Button, CircularProgress, IconButton, Typography, TextField, Link as MuiLink, Autocomplete } from '@mui/material';
+import {
+  Box,
+  Button,
+  CircularProgress,
+  IconButton,
+  Typography,
+  TextField,
+  Link as MuiLink,
+  Autocomplete,
+} from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
-import { X, PenLine, CircleX, Trash2, Layers, FlipHorizontal2, LocateFixed, Maximize, Minimize, Info, Film, Camera, Image as ImageIcon, Play, Pause, ZoomIn, Boxes, FolderOpen, KeyRound, Spline, PersonStanding } from 'lucide-react';
-import type { SketchfabActions, SketchfabFixAngleExtras, SketchfabModelMeta } from './SketchfabViewer';
+import {
+  X,
+  PenLine,
+  CircleX,
+  Trash2,
+  Layers,
+  FlipHorizontal2,
+  LocateFixed,
+  Maximize,
+  Minimize,
+  Info,
+  Film,
+  Camera,
+  Image as ImageIcon,
+  Play,
+  Pause,
+  ZoomIn,
+  Boxes,
+  FolderOpen,
+  KeyRound,
+  Spline,
+  PersonStanding,
+} from 'lucide-react';
+import type {
+  SketchfabActions,
+  SketchfabFixAngleExtras,
+  SketchfabModelMeta,
+} from './SketchfabViewer';
 import { ImageViewer, type GuideInteractionMode } from './ImageViewer';
 import { TraceTemplateViewer } from './TraceTemplateViewer';
 import { BundledTemplatePicker } from './BundledTemplatePicker';
@@ -18,8 +53,12 @@ import type { PoseSourceActions } from './PoseSourcePanel';
 
 // Heavy on-demand panels — only mounted when the user picks the matching
 // reference source. Splitting them out keeps them off the initial bundle.
-const SketchfabViewer = lazy(() => import('./SketchfabViewer').then(m => ({ default: m.SketchfabViewer })));
-const PexelsSearcher = lazy(() => import('./PexelsSearcher').then(m => ({ default: m.PexelsSearcher })));
+const SketchfabViewer = lazy(() =>
+  import('./SketchfabViewer').then((m) => ({ default: m.SketchfabViewer })),
+);
+const PexelsSearcher = lazy(() =>
+  import('./PexelsSearcher').then((m) => ({ default: m.PexelsSearcher })),
+);
 // Pulls in three.js + @pixiv/three-vrm — must stay a lazy chunk.
 const PoseSourcePanel = lazy(() => import('./PoseSourcePanel'));
 
@@ -41,8 +80,21 @@ import {
   parsePexelsPhotoUrl,
   type PexelsOrientationFilter,
 } from '../utils/pexels';
-import { addUrlHistory, getUrlHistory, getUrlHistoryEntry, deleteUrlHistory, type UrlHistoryEntry, type UrlHistoryType, type AddUrlHistoryOptions } from '../storage';
-import { resizeImageForHistory, dataUrlToJpegBlob, blobToDataUrl, sha256Hex } from '../utils/imageResize';
+import {
+  addUrlHistory,
+  getUrlHistory,
+  getUrlHistoryEntry,
+  deleteUrlHistory,
+  type UrlHistoryEntry,
+  type UrlHistoryType,
+  type AddUrlHistoryOptions,
+} from '../storage';
+import {
+  resizeImageForHistory,
+  dataUrlToJpegBlob,
+  blobToDataUrl,
+  sha256Hex,
+} from '../utils/imageResize';
 import { resetPageZoom } from '../utils/resetPageZoom';
 import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail';
 import {
@@ -54,7 +106,10 @@ import {
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
   if (entry.type === 'image') {
-    return { primary: entry.fileName ?? entry.title ?? t('localImage'), secondary: t('localImage') };
+    return {
+      primary: entry.fileName ?? entry.title ?? t('localImage'),
+      secondary: t('localImage'),
+    };
   }
   if (entry.title) return { primary: entry.title, secondary: entry.url };
   if (entry.type === 'youtube') {
@@ -64,8 +119,7 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
   let parsed: URL;
   try {
     parsed = new URL(entry.url);
-  }
-  catch {
+  } catch {
     return { primary: entry.url, secondary: '' };
   }
   const segments = parsed.pathname.split('/').filter(Boolean);
@@ -76,7 +130,10 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
   }
   if (entry.type === 'sketchfab') {
     const parsed = parseSketchfabModelUrl(entry.url);
-    return { primary: parsed ? `Sketchfab · ${parsed.uid.slice(0, 8)}` : entry.url, secondary: entry.url };
+    return {
+      primary: parsed ? `Sketchfab · ${parsed.uid.slice(0, 8)}` : entry.url,
+      secondary: entry.url,
+    };
   }
   const filename = segments.pop();
   return { primary: filename || parsed.hostname, secondary: parsed.hostname };
@@ -95,7 +152,12 @@ import { GridModePopoverButton } from './GridModePopoverButton';
 import { useFullscreen } from '../hooks/useFullscreen';
 import { t } from '../i18n';
 import type { Stroke } from '../drawing/types';
-import { referenceKey, type ReferenceSource, type ReferenceMode, type ReferenceInfo } from '../types';
+import {
+  referenceKey,
+  type ReferenceSource,
+  type ReferenceMode,
+  type ReferenceInfo,
+} from '../types';
 
 /**
  * Raw setters for the reference-related state living in SplitLayout. Exposed
@@ -117,110 +179,146 @@ export interface ReferenceSetters {
  * component by reference identity, so a new reference remounts it in the
  * expanded state.
  */
-function ReferenceInfoOverlay({ refInfo, initialCollapsed = false }: { refInfo: ReferenceInfo; initialCollapsed?: boolean }) {
+function ReferenceInfoOverlay({
+  refInfo,
+  initialCollapsed = false,
+}: {
+  refInfo: ReferenceInfo;
+  initialCollapsed?: boolean;
+}) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
   return (
-    <Box sx={{
-      position: 'absolute',
-      bottom: 8,
-      left: 8,
-      // Cap the overall overlay width so long titles / author lines can't
-      // push the collapse button off-screen on narrow viewports. The 16px
-      // budget accounts for the 8px left offset plus an 8px right gutter.
-      maxWidth: 'calc(100% - 16px)',
-      zIndex: 5,
-      pointerEvents: 'none',
-    }}
+    <Box
+      sx={{
+        position: 'absolute',
+        bottom: 8,
+        left: 8,
+        // Cap the overall overlay width so long titles / author lines can't
+        // push the collapse button off-screen on narrow viewports. The 16px
+        // budget accounts for the 8px left offset plus an 8px right gutter.
+        maxWidth: 'calc(100% - 16px)',
+        zIndex: 5,
+        pointerEvents: 'none',
+      }}
     >
-      {collapsed
-        ? (
-            <ToolbarTooltip title={t('expandReferenceInfo')}>
-              <IconButton
-                size="small"
-                onClick={() => setCollapsed(false)}
-                aria-label={t('expandReferenceInfo')}
-                sx={{
-                  'pointerEvents': 'auto',
-                  'bgcolor': 'rgba(0,0,0,0.5)',
-                  'color': 'white',
-                  '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
-                }}
-              >
-                <Info size={18} />
-              </IconButton>
-            </ToolbarTooltip>
-          )
-        : (
-            <Box sx={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 0.5,
+      {collapsed ? (
+        <ToolbarTooltip title={t('expandReferenceInfo')}>
+          <IconButton
+            size="small"
+            onClick={() => setCollapsed(false)}
+            aria-label={t('expandReferenceInfo')}
+            sx={{
               pointerEvents: 'auto',
               bgcolor: 'rgba(0,0,0,0.5)',
               color: 'white',
-              pl: 1,
-              pr: 0.5,
-              py: 0.5,
-              borderRadius: 1,
+              '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
             }}
+          >
+            <Info size={18} />
+          </IconButton>
+        </ToolbarTooltip>
+      ) : (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 0.5,
+            pointerEvents: 'auto',
+            bgcolor: 'rgba(0,0,0,0.5)',
+            color: 'white',
+            pl: 1,
+            pr: 0.5,
+            py: 0.5,
+            borderRadius: 1,
+          }}
+        >
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            {refInfo.title && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  fontWeight: 'bold',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {refInfo.title}
+              </Typography>
+            )}
+            {(refInfo.author || (refInfo.source === 'sketchfab' && refInfo.sketchfabUid)) && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  opacity: 0.9,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
+                  <>
+                    {t('pexelsPhotoBy')}{' '}
+                    <MuiLink
+                      href={refInfo.pexelsPhotographerUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ color: 'inherit', textDecoration: 'underline' }}
+                    >
+                      {refInfo.author}
+                    </MuiLink>
+                    {refInfo.pexelsPageUrl && (
+                      <>
+                        {' · '}
+                        <MuiLink
+                          href={refInfo.pexelsPageUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ color: 'inherit', textDecoration: 'underline' }}
+                        >
+                          {t('pexelsViaPexels')}
+                        </MuiLink>
+                      </>
+                    )}
+                  </>
+                ) : refInfo.source === 'sketchfab' && refInfo.sketchfabUid ? (
+                  <>
+                    {refInfo.author}
+                    {refInfo.author && ' · '}
+                    <MuiLink
+                      href={canonicalSketchfabUrl(refInfo.sketchfabUid)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      sx={{ color: 'inherit', textDecoration: 'underline' }}
+                    >
+                      {t('sketchfabViaSketchfab')}
+                    </MuiLink>
+                  </>
+                ) : (
+                  refInfo.author
+                )}
+              </Typography>
+            )}
+          </Box>
+          <ToolbarTooltip title={t('collapseReferenceInfo')}>
+            <IconButton
+              size="small"
+              onClick={() => setCollapsed(true)}
+              aria-label={t('collapseReferenceInfo')}
+              sx={{
+                flexShrink: 0,
+                color: 'white',
+                p: 0.25,
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
+              }}
             >
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                {refInfo.title && (
-                  <Typography variant="caption" sx={{ display: 'block', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {refInfo.title}
-                  </Typography>
-                )}
-                {(refInfo.author || (refInfo.source === 'sketchfab' && refInfo.sketchfabUid)) && (
-                  <Typography variant="caption" sx={{ display: 'block', opacity: 0.9, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl
-                      ? (
-                          <>
-                            {t('pexelsPhotoBy')}
-                            {' '}
-                            <MuiLink href={refInfo.pexelsPhotographerUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
-                              {refInfo.author}
-                            </MuiLink>
-                            {refInfo.pexelsPageUrl && (
-                              <>
-                                {' · '}
-                                <MuiLink href={refInfo.pexelsPageUrl} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
-                                  {t('pexelsViaPexels')}
-                                </MuiLink>
-                              </>
-                            )}
-                          </>
-                        )
-                      : refInfo.source === 'sketchfab' && refInfo.sketchfabUid
-                        ? (
-                            <>
-                              {refInfo.author}
-                              {refInfo.author && ' · '}
-                              <MuiLink href={canonicalSketchfabUrl(refInfo.sketchfabUid)} target="_blank" rel="noopener noreferrer" sx={{ color: 'inherit', textDecoration: 'underline' }}>
-                                {t('sketchfabViaSketchfab')}
-                              </MuiLink>
-                            </>
-                          )
-                        : refInfo.author}
-                  </Typography>
-                )}
-              </Box>
-              <ToolbarTooltip title={t('collapseReferenceInfo')}>
-                <IconButton
-                  size="small"
-                  onClick={() => setCollapsed(true)}
-                  aria-label={t('collapseReferenceInfo')}
-                  sx={{
-                    'flexShrink': 0,
-                    'color': 'white',
-                    'p': 0.25,
-                    '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
-                  }}
-                >
-                  <X size={14} />
-                </IconButton>
-              </ToolbarTooltip>
-            </Box>
-          )}
+              <X size={14} />
+            </IconButton>
+          </ToolbarTooltip>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -275,20 +373,42 @@ interface ReferencePanelProps {
 }
 
 export function ReferencePanel({
-  overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
-  onReferenceImageSize, overlayActive, onToggleOverlay,
-  source, referenceMode, fixedImageUrl, localImageUrl, refInfo,
-  onReferenceChange, onReferenceResetOnError,
-  onRegisterLoadSketchfabModel, onRegisterReloadUrlHistory,
+  overlayStrokes,
+  overlayCurrentStrokeRef,
+  onRegisterOverlayRedraw,
+  onReferenceImageSize,
+  overlayActive,
+  onToggleOverlay,
+  source,
+  referenceMode,
+  fixedImageUrl,
+  localImageUrl,
+  refInfo,
+  onReferenceChange,
+  onReferenceResetOnError,
+  onRegisterLoadSketchfabModel,
+  onRegisterReloadUrlHistory,
   onSketchfabViewerStateChange,
   onPexelsStartSession,
   collapseInfoOverlayByDefault = false,
   suppressGuideEditing = false,
-  isFlipped, onToggleFlip,
-  viewTransform, fitLeader,
+  isFlipped,
+  onToggleFlip,
+  viewTransform,
+  fitLeader,
   traceFeedback = null,
 }: ReferencePanelProps) {
-  const { grid, lines, version: guideVersion, setGridMode, addLine, removeLine, clearLines, placingCenter, placePerspectiveCenter } = useGuides();
+  const {
+    grid,
+    lines,
+    version: guideVersion,
+    setGridMode,
+    addLine,
+    removeLine,
+    clearLines,
+    placingCenter,
+    placePerspectiveCenter,
+  } = useGuides();
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
@@ -302,7 +422,9 @@ export function ReferencePanel({
   // tap on either panel places the anchor.
   const effectiveGuideMode: GuideInteractionMode = suppressGuideEditing
     ? 'none'
-    : placingCenter ? 'place-center' : guideMode;
+    : placingCenter
+      ? 'place-center'
+      : guideMode;
   const [highlightedGuideId, setHighlightedGuideId] = useState<string | null>(null);
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -310,18 +432,22 @@ export function ReferencePanel({
   const [thumbErrors, setThumbErrors] = useState<Set<string>>(() => new Set());
 
   const reloadUrlHistory = useCallback(() => {
-    getUrlHistory().then((list) => {
-      setUrlHistory(list);
-      // Drop suppression for entries no longer in history; keep it for entries
-      // still present so a known-404 thumbnail isn't re-fetched on every reload.
-      setThumbErrors((prev) => {
-        if (prev.size === 0) return prev;
-        const stillPresent = new Set<string>();
-        const urls = new Set(list.map(e => e.url));
-        for (const u of prev) if (urls.has(u)) stillPresent.add(u);
-        return stillPresent;
+    getUrlHistory()
+      .then((list) => {
+        setUrlHistory(list);
+        // Drop suppression for entries no longer in history; keep it for entries
+        // still present so a known-404 thumbnail isn't re-fetched on every reload.
+        setThumbErrors((prev) => {
+          if (prev.size === 0) return prev;
+          const stillPresent = new Set<string>();
+          const urls = new Set(list.map((e) => e.url));
+          for (const u of prev) if (urls.has(u)) stillPresent.add(u);
+          return stillPresent;
+        });
+      })
+      .catch(() => {
+        /* ignore storage errors */
       });
-    }).catch(() => { /* ignore storage errors */ });
   }, []);
 
   const blobThumbUrls = useMemo(() => {
@@ -339,13 +465,16 @@ export function ReferencePanel({
     };
   }, [blobThumbUrls]);
 
-  const addAndReloadHistory = useCallback((
-    url: string,
-    type: UrlHistoryType,
-    titleOrOptions?: string | AddUrlHistoryOptions,
-  ) => {
-    return addUrlHistory(url, type, titleOrOptions).then(reloadUrlHistory).catch(() => { /* ignore */ });
-  }, [reloadUrlHistory]);
+  const addAndReloadHistory = useCallback(
+    (url: string, type: UrlHistoryType, titleOrOptions?: string | AddUrlHistoryOptions) => {
+      return addUrlHistory(url, type, titleOrOptions)
+        .then(reloadUrlHistory)
+        .catch(() => {
+          /* ignore */
+        });
+    },
+    [reloadUrlHistory],
+  );
 
   useEffect(() => {
     reloadUrlHistory();
@@ -359,7 +488,7 @@ export function ReferencePanel({
   // reflect the current dirty state.
   useEffect(() => {
     if (!viewTransform) return;
-    return viewTransform.subscribe(() => setViewTick(t => t + 1));
+    return viewTransform.subscribe(() => setViewTick((t) => t + 1));
   }, [viewTransform]);
 
   const resetDisabled = viewTransform ? !viewTransform.isDirty() : false;
@@ -412,24 +541,24 @@ export function ReferencePanel({
     timeFilter: SketchfabTimeFilter;
   } | null>(null);
 
-  const applySketchfabRestore = useCallback((ctx: {
-    query: string;
-    category?: SketchfabCategorySlug;
-    timeFilter: SketchfabTimeFilter;
-  }) => {
-    setSketchfabRestore((prev) => {
-      // Skip the remount when the user re-selects an entry with the exact same
-      // search context — bumping token would dump the iframe + searchResults
-      // for nothing.
-      if (
-        prev
-        && prev.query === ctx.query
-        && prev.category === ctx.category
-        && prev.timeFilter === ctx.timeFilter
-      ) return prev;
-      return { token: (prev?.token ?? 0) + 1, ...ctx };
-    });
-  }, []);
+  const applySketchfabRestore = useCallback(
+    (ctx: { query: string; category?: SketchfabCategorySlug; timeFilter: SketchfabTimeFilter }) => {
+      setSketchfabRestore((prev) => {
+        // Skip the remount when the user re-selects an entry with the exact same
+        // search context — bumping token would dump the iframe + searchResults
+        // for nothing.
+        if (
+          prev &&
+          prev.query === ctx.query &&
+          prev.category === ctx.category &&
+          prev.timeFilter === ctx.timeFilter
+        )
+          return prev;
+        return { token: (prev?.token ?? 0) + 1, ...ctx };
+      });
+    },
+    [],
+  );
 
   // videoInteractMode: overlay steps aside so the iframe receives clicks.
   // Entered automatically on single-tap, exited via the toolbar button.
@@ -478,7 +607,13 @@ export function ReferencePanel({
         const dataUrl = reader.result as string;
         const hash = await hashPromise;
         const url = hash ? `local:${hash}` : undefined;
-        const info: ReferenceInfo = { title: file.name, author: '', source: 'image', fileName: file.name, url };
+        const info: ReferenceInfo = {
+          title: file.name,
+          author: '',
+          source: 'image',
+          fileName: file.name,
+          url,
+        };
         onReferenceChange((s) => {
           s.setLocalImageUrl(dataUrl);
           s.setFixedImageUrl(null);
@@ -503,13 +638,15 @@ export function ReferencePanel({
             // the Blob through so the upsert is self-contained: no redundant
             // read inside addUrlHistory, and if the row was evicted between
             // our get and the put we still end up with a complete entry.
-            await addAndReloadHistory(key, 'image', { fileName: file.name, imageBlob: existing.imageBlob });
+            await addAndReloadHistory(key, 'image', {
+              fileName: file.name,
+              imageBlob: existing.imageBlob,
+            });
             return;
           }
           const blob = await resizeImageForHistory(file);
           await addAndReloadHistory(key, 'image', { fileName: file.name, imageBlob: blob });
-        }
-        catch {
+        } catch {
           // Image is already displayed; history add is best-effort.
         }
       })();
@@ -519,194 +656,213 @@ export function ReferencePanel({
 
   const [urlLoading, setUrlLoading] = useState(false);
 
-  const handleLoadFromUrl = useCallback((rawUrl: string) => {
-    const url = rawUrl.trim();
-    if (!url) return;
-    setUrlError(null);
-    setUrlLoading(true);
+  const handleLoadFromUrl = useCallback(
+    (rawUrl: string) => {
+      const url = rawUrl.trim();
+      if (!url) return;
+      setUrlError(null);
+      setUrlLoading(true);
 
-    // Validate URL format
-    try {
-      new URL(url);
-    }
-    catch {
-      setUrlError(t('urlLoadFailed'));
-      setUrlLoading(false);
-      return;
-    }
+      // Validate URL format
+      try {
+        new URL(url);
+      } catch {
+        setUrlError(t('urlLoadFailed'));
+        setUrlLoading(false);
+        return;
+      }
 
-    // Sketchfab URL: extract UID and route to the SketchfabViewer in browse
-    // mode. The viewer iframe takes over loading; URL-history is added when
-    // the user "Fix Angle"s the model so the entry carries a screenshot.
-    const sketchfabMatch = parseSketchfabModelUrl(url);
-    if (sketchfabMatch) {
-      const uid = sketchfabMatch.uid;
-      onReferenceChange((s) => {
-        s.setSource('sketchfab');
-        s.setReferenceMode('browse');
-        s.setFixedImageUrl(null);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo({ title: '', author: '', source: 'sketchfab', sketchfabUid: uid });
-      });
-      setUrlInput('');
-      setUrlLoading(false);
-      // Resolve the URL-history entry once: it carries both the search context
-      // (for "Back to search" restoration) and the title (so the viewer can
-      // skip the redundant Sketchfab Data API call inside loadModel).
-      getUrlHistoryEntry(canonicalSketchfabUrl(uid))
-        .then((entry) => {
-          const ctx = entry?.sketchfabSearchContext;
-          if (ctx) {
-            applySketchfabRestore({
-              query: ctx.query,
-              category: ctx.category,
-              timeFilter: ctx.timeFilter,
+      // Sketchfab URL: extract UID and route to the SketchfabViewer in browse
+      // mode. The viewer iframe takes over loading; URL-history is added when
+      // the user "Fix Angle"s the model so the entry carries a screenshot.
+      const sketchfabMatch = parseSketchfabModelUrl(url);
+      if (sketchfabMatch) {
+        const uid = sketchfabMatch.uid;
+        onReferenceChange((s) => {
+          s.setSource('sketchfab');
+          s.setReferenceMode('browse');
+          s.setFixedImageUrl(null);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo({ title: '', author: '', source: 'sketchfab', sketchfabUid: uid });
+        });
+        setUrlInput('');
+        setUrlLoading(false);
+        // Resolve the URL-history entry once: it carries both the search context
+        // (for "Back to search" restoration) and the title (so the viewer can
+        // skip the redundant Sketchfab Data API call inside loadModel).
+        getUrlHistoryEntry(canonicalSketchfabUrl(uid))
+          .then((entry) => {
+            const ctx = entry?.sketchfabSearchContext;
+            if (ctx) {
+              applySketchfabRestore({
+                query: ctx.query,
+                category: ctx.category,
+                timeFilter: ctx.timeFilter,
+              });
+            }
+            const meta: SketchfabModelMeta | undefined = entry?.title
+              ? { name: entry.title, author: '' }
+              : undefined;
+            requestAnimationFrame(() => {
+              sfActionsRef.current?.loadModelByUid(uid, meta);
             });
+          })
+          .catch(() => {
+            // History lookup failed — still load the model; the viewer will
+            // fetch metadata itself.
+            requestAnimationFrame(() => {
+              sfActionsRef.current?.loadModelByUid(uid);
+            });
+          });
+        return;
+      }
+
+      // YouTube URL: switch to YouTube reference mode without image preload
+      const ytId = parseYouTubeVideoId(url);
+      if (ytId) {
+        const info: ReferenceInfo = {
+          title: ytId,
+          author: '',
+          source: 'youtube',
+          youtubeVideoId: ytId,
+        };
+        onReferenceChange((s) => {
+          s.setSource('youtube');
+          s.setReferenceMode('browse');
+          s.setFixedImageUrl(null);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+        });
+        setUrlInput('');
+        setUrlLoading(false);
+        fetchYouTubeTitle(ytId)
+          .catch(() => null)
+          .then((title) => addAndReloadHistory(url, 'youtube', title ?? undefined))
+          .catch(() => {
+            /* ignore */
+          });
+        return;
+      }
+
+      // Pexels photo URL: resolve via API to fetch the CDN URL + photographer.
+      const pexelsMatch = parsePexelsPhotoUrl(url);
+      if (pexelsMatch) {
+        getPhoto(pexelsMatch.id)
+          .then((photo) => {
+            const info = buildPexelsReferenceInfo(photo);
+            onReferenceChange((s) => {
+              s.setSource('pexels');
+              s.setReferenceMode('fixed');
+              s.setFixedImageUrl(photo.src.large2x);
+              s.setLocalImageUrl(null);
+              s.setReferenceInfo(info);
+            });
+            setUrlInput('');
+            // Don't pass pexelsSearchContext — addUrlHistory's preservation
+            // semantics keep the original context attached to this entry.
+            void addAndReloadHistory(url, 'pexels', {
+              title: info.title,
+              thumbnailUrl: photo.src.tiny,
+            });
+            // Restore the per-entry search context fire-and-forget so a slow /
+            // failing urlHistory read doesn't gate the reference state update.
+            getUrlHistoryEntry(url)
+              .then((entry) => {
+                const ctx = entry?.pexelsSearchContext;
+                if (!ctx) return;
+                setPexelsRestore((prev) => ({
+                  token: (prev?.token ?? 0) + 1,
+                  query: ctx.query,
+                  orientation: ctx.orientation,
+                }));
+              })
+              .catch(() => {
+                /* best-effort */
+              });
+          })
+          .catch((e) => setUrlError(t(mapPexelsErrorKey(e))))
+          .finally(() => setUrlLoading(false));
+        return;
+      }
+
+      const onFail = () => {
+        setUrlError(t('urlLoadFailed'));
+        setUrlLoading(false);
+      };
+
+      const onSuccess = () => {
+        setUrlLoading(false);
+        const title = url.split('/').pop()?.split('?')[0] ?? url;
+        const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url };
+        onReferenceChange((s) => {
+          s.setFixedImageUrl(url);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+          s.setSource('url');
+          s.setReferenceMode('fixed');
+        });
+        setUrlInput('');
+        void addAndReloadHistory(url, 'url');
+      };
+
+      // Preload image: try CORS first, then without, check naturalWidth
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        if (img.naturalWidth > 0) {
+          onSuccess();
+        } else {
+          onFail();
+        }
+      };
+      img.onerror = () => {
+        const retry = new Image();
+        retry.onload = () => {
+          if (retry.naturalWidth > 0) {
+            onSuccess();
+          } else {
+            onFail();
           }
-          const meta: SketchfabModelMeta | undefined = entry?.title
-            ? { name: entry.title, author: '' }
-            : undefined;
-          requestAnimationFrame(() => {
-            sfActionsRef.current?.loadModelByUid(uid, meta);
+        };
+        retry.onerror = onFail;
+        retry.src = url;
+      };
+      img.src = url;
+    },
+    [onReferenceChange, addAndReloadHistory, applySketchfabRestore],
+  );
+
+  const handleFixAngle = useCallback(
+    (screenshotUrl: string, info: ReferenceInfo, extras: SketchfabFixAngleExtras) => {
+      onReferenceChange((s) => {
+        s.setFixedImageUrl(screenshotUrl);
+        s.setReferenceInfo(info);
+        s.setReferenceMode('fixed');
+      });
+      if (info.source !== 'sketchfab' || !info.sketchfabUid) return;
+      const historyKey = canonicalSketchfabUrl(info.sketchfabUid);
+      const titleForHistory = info.title || undefined;
+      const sketchfabSearchContext = extras.searchContext ?? undefined;
+      // Convert the 1024x1024 PNG screenshot to a ~200KB JPEG Blob so URL-
+      // history sketchfab selection can restore directly into fixed mode (the
+      // same UX as gallery "Use this reference"). Falls back to the model CDN
+      // thumbnail URL if the encode fails — at least the dropdown still shows
+      // something.
+      void dataUrlToJpegBlob(screenshotUrl)
+        .then((blob) => {
+          void addAndReloadHistory(historyKey, 'sketchfab', {
+            title: titleForHistory,
+            ...(blob ? { imageBlob: blob } : {}),
+            ...(blob ? {} : { thumbnailUrl: extras.modelThumbnailUrl ?? undefined }),
+            sketchfabSearchContext,
           });
         })
         .catch(() => {
-          // History lookup failed — still load the model; the viewer will
-          // fetch metadata itself.
-          requestAnimationFrame(() => {
-            sfActionsRef.current?.loadModelByUid(uid);
-          });
+          /* best-effort */
         });
-      return;
-    }
-
-    // YouTube URL: switch to YouTube reference mode without image preload
-    const ytId = parseYouTubeVideoId(url);
-    if (ytId) {
-      const info: ReferenceInfo = {
-        title: ytId,
-        author: '',
-        source: 'youtube',
-        youtubeVideoId: ytId,
-      };
-      onReferenceChange((s) => {
-        s.setSource('youtube');
-        s.setReferenceMode('browse');
-        s.setFixedImageUrl(null);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      });
-      setUrlInput('');
-      setUrlLoading(false);
-      fetchYouTubeTitle(ytId)
-        .catch(() => null)
-        .then(title => addAndReloadHistory(url, 'youtube', title ?? undefined))
-        .catch(() => { /* ignore */ });
-      return;
-    }
-
-    // Pexels photo URL: resolve via API to fetch the CDN URL + photographer.
-    const pexelsMatch = parsePexelsPhotoUrl(url);
-    if (pexelsMatch) {
-      getPhoto(pexelsMatch.id)
-        .then((photo) => {
-          const info = buildPexelsReferenceInfo(photo);
-          onReferenceChange((s) => {
-            s.setSource('pexels');
-            s.setReferenceMode('fixed');
-            s.setFixedImageUrl(photo.src.large2x);
-            s.setLocalImageUrl(null);
-            s.setReferenceInfo(info);
-          });
-          setUrlInput('');
-          // Don't pass pexelsSearchContext — addUrlHistory's preservation
-          // semantics keep the original context attached to this entry.
-          void addAndReloadHistory(url, 'pexels', {
-            title: info.title,
-            thumbnailUrl: photo.src.tiny,
-          });
-          // Restore the per-entry search context fire-and-forget so a slow /
-          // failing urlHistory read doesn't gate the reference state update.
-          getUrlHistoryEntry(url)
-            .then((entry) => {
-              const ctx = entry?.pexelsSearchContext;
-              if (!ctx) return;
-              setPexelsRestore(prev => ({
-                token: (prev?.token ?? 0) + 1,
-                query: ctx.query,
-                orientation: ctx.orientation,
-              }));
-            })
-            .catch(() => { /* best-effort */ });
-        })
-        .catch(e => setUrlError(t(mapPexelsErrorKey(e))))
-        .finally(() => setUrlLoading(false));
-      return;
-    }
-
-    const onFail = () => {
-      setUrlError(t('urlLoadFailed'));
-      setUrlLoading(false);
-    };
-
-    const onSuccess = () => {
-      setUrlLoading(false);
-      const title = url.split('/').pop()?.split('?')[0] ?? url;
-      const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url };
-      onReferenceChange((s) => {
-        s.setFixedImageUrl(url);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-        s.setSource('url');
-        s.setReferenceMode('fixed');
-      });
-      setUrlInput('');
-      void addAndReloadHistory(url, 'url');
-    };
-
-    // Preload image: try CORS first, then without, check naturalWidth
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      if (img.naturalWidth > 0) { onSuccess(); }
-      else { onFail(); }
-    };
-    img.onerror = () => {
-      const retry = new Image();
-      retry.onload = () => {
-        if (retry.naturalWidth > 0) { onSuccess(); }
-        else { onFail(); }
-      };
-      retry.onerror = onFail;
-      retry.src = url;
-    };
-    img.src = url;
-  }, [onReferenceChange, addAndReloadHistory, applySketchfabRestore]);
-
-  const handleFixAngle = useCallback((screenshotUrl: string, info: ReferenceInfo, extras: SketchfabFixAngleExtras) => {
-    onReferenceChange((s) => {
-      s.setFixedImageUrl(screenshotUrl);
-      s.setReferenceInfo(info);
-      s.setReferenceMode('fixed');
-    });
-    if (info.source !== 'sketchfab' || !info.sketchfabUid) return;
-    const historyKey = canonicalSketchfabUrl(info.sketchfabUid);
-    const titleForHistory = info.title || undefined;
-    const sketchfabSearchContext = extras.searchContext ?? undefined;
-    // Convert the 1024x1024 PNG screenshot to a ~200KB JPEG Blob so URL-
-    // history sketchfab selection can restore directly into fixed mode (the
-    // same UX as gallery "Use this reference"). Falls back to the model CDN
-    // thumbnail URL if the encode fails — at least the dropdown still shows
-    // something.
-    void dataUrlToJpegBlob(screenshotUrl).then((blob) => {
-      void addAndReloadHistory(historyKey, 'sketchfab', {
-        title: titleForHistory,
-        ...(blob ? { imageBlob: blob } : {}),
-        ...(blob ? {} : { thumbnailUrl: extras.modelThumbnailUrl ?? undefined }),
-        sketchfabSearchContext,
-      });
-    }).catch(() => { /* best-effort */ });
-  }, [onReferenceChange, addAndReloadHistory]);
+    },
+    [onReferenceChange, addAndReloadHistory],
+  );
 
   const handleChangeAngle = useCallback(() => {
     onReferenceChange((s) => {
@@ -771,29 +927,29 @@ export function ReferencePanel({
     setPexelsKeyDialogOpen(true);
   }, []);
 
-  const handleSelectPexelsPhoto = useCallback((
-    info: Extract<ReferenceInfo, { source: 'pexels' }>,
-    thumbnailUrl: string,
-  ) => {
-    onReferenceChange((s) => {
-      s.setSource('pexels');
-      s.setReferenceMode('fixed');
-      s.setFixedImageUrl(info.pexelsImageUrl);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(info);
-    });
-    if (info.pexelsPageUrl) {
-      // runSearch saves to localStorage right before yielding the result list,
-      // so getPexelsLastSearch() here reflects the search that produced this
-      // photo. Persisting it per-entry lets URL-history loads restore the
-      // originating search context independently of the global last search.
-      void addAndReloadHistory(info.pexelsPageUrl, 'pexels', {
-        title: info.title,
-        thumbnailUrl,
-        pexelsSearchContext: getPexelsLastSearch() ?? undefined,
+  const handleSelectPexelsPhoto = useCallback(
+    (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => {
+      onReferenceChange((s) => {
+        s.setSource('pexels');
+        s.setReferenceMode('fixed');
+        s.setFixedImageUrl(info.pexelsImageUrl);
+        s.setLocalImageUrl(null);
+        s.setReferenceInfo(info);
       });
-    }
-  }, [onReferenceChange, addAndReloadHistory]);
+      if (info.pexelsPageUrl) {
+        // runSearch saves to localStorage right before yielding the result list,
+        // so getPexelsLastSearch() here reflects the search that produced this
+        // photo. Persisting it per-entry lets URL-history loads restore the
+        // originating search context independently of the global last search.
+        void addAndReloadHistory(info.pexelsPageUrl, 'pexels', {
+          title: info.title,
+          thumbnailUrl,
+          pexelsSearchContext: getPexelsLastSearch() ?? undefined,
+        });
+      }
+    },
+    [onReferenceChange, addAndReloadHistory],
+  );
 
   const handleBackToPexelsSearch = useCallback(() => {
     onReferenceChange((s) => {
@@ -833,11 +989,14 @@ export function ReferencePanel({
     return () => window.removeEventListener('keydown', handler);
   }, [source, referenceMode, sfShowViewer, handleClose, handleBackToPexelsSearch]);
 
-  const handleSfStateChange = useCallback((state: { showViewer: boolean; isReady: boolean }) => {
-    setSfShowViewer(state.showViewer);
-    setSfIsReady(state.isReady);
-    onSketchfabViewerStateChange?.(state.showViewer);
-  }, [onSketchfabViewerStateChange]);
+  const handleSfStateChange = useCallback(
+    (state: { showViewer: boolean; isReady: boolean }) => {
+      setSfShowViewer(state.showViewer);
+      setSfIsReady(state.isReady);
+      onSketchfabViewerStateChange?.(state.showViewer);
+    },
+    [onSketchfabViewerStateChange],
+  );
 
   // Load a Sketchfab model by UID (called from parent for gallery "load reference")
   const loadSketchfabModel = useCallback((uid: string, meta?: SketchfabModelMeta) => {
@@ -858,15 +1017,18 @@ export function ReferencePanel({
     onReferenceResetOnError();
   }, [onReferenceResetOnError]);
 
-  const handleAddGuideLine = useCallback((x1: number, y1: number, x2: number, y2: number) => {
-    addLine(x1, y1, x2, y2);
-  }, [addLine]);
+  const handleAddGuideLine = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) => {
+      addLine(x1, y1, x2, y2);
+    },
+    [addLine],
+  );
 
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedGuideId) {
       removeLine(highlightedGuideId);
       // 削除後、削除した線の一つ前を自動選択
-      const idx = lines.findIndex(l => l.id === highlightedGuideId);
+      const idx = lines.findIndex((l) => l.id === highlightedGuideId);
       const prevIdx = idx - 1;
       setHighlightedGuideId(prevIdx >= 0 ? lines[prevIdx].id : null);
     }
@@ -876,25 +1038,28 @@ export function ReferencePanel({
     setHighlightedGuideId(null);
   }, []);
 
-  const toggleGuideMode = useCallback((mode: GuideInteractionMode) => {
-    setGuideMode((prev) => {
-      const nextMode = prev === mode ? 'none' : mode;
-      // deleteモードに入る時、最新の補助線を自動選択
-      if (nextMode === 'delete' && lines.length > 0) {
-        setHighlightedGuideId(lines[lines.length - 1].id);
-      }
-      else {
-        setHighlightedGuideId(null);
-      }
-      return nextMode;
-    });
-  }, [lines]);
+  const toggleGuideMode = useCallback(
+    (mode: GuideInteractionMode) => {
+      setGuideMode((prev) => {
+        const nextMode = prev === mode ? 'none' : mode;
+        // deleteモードに入る時、最新の補助線を自動選択
+        if (nextMode === 'delete' && lines.length > 0) {
+          setHighlightedGuideId(lines[lines.length - 1].id);
+        } else {
+          setHighlightedGuideId(null);
+        }
+        return nextMode;
+      });
+    },
+    [lines],
+  );
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl; // 'sketchfab', 'url', 'pexels' use fixedImageUrl
   const traceTemplateInfo = refInfo?.source === 'trace-template' ? refInfo : null;
-  const activeTraceTemplate: TraceTemplate | null = (source === 'trace-template' && referenceMode === 'fixed' && traceTemplateInfo)
-    ? getBundledTemplate(traceTemplateInfo.templateId) ?? null
-    : null;
+  const activeTraceTemplate: TraceTemplate | null =
+    source === 'trace-template' && referenceMode === 'fixed' && traceTemplateInfo
+      ? (getBundledTemplate(traceTemplateInfo.templateId) ?? null)
+      : null;
   const isTraceFixed = !!activeTraceTemplate;
   const isFixed = (referenceMode === 'fixed' && !!displayImageUrl) || isTraceFixed;
   const isNone = source === 'none';
@@ -910,15 +1075,23 @@ export function ReferencePanel({
     });
   }, [onReferenceChange]);
 
-  const handleSelectTraceTemplate = useCallback((tmpl: TraceTemplate) => {
-    onReferenceChange((s) => {
-      s.setSource('trace-template');
-      s.setReferenceMode('fixed');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo({ title: t(tmpl.titleKey), author: 'Drawing Practice', source: 'trace-template', templateId: tmpl.id });
-    });
-  }, [onReferenceChange]);
+  const handleSelectTraceTemplate = useCallback(
+    (tmpl: TraceTemplate) => {
+      onReferenceChange((s) => {
+        s.setSource('trace-template');
+        s.setReferenceMode('fixed');
+        s.setFixedImageUrl(null);
+        s.setLocalImageUrl(null);
+        s.setReferenceInfo({
+          title: t(tmpl.titleKey),
+          author: 'Drawing Practice',
+          source: 'trace-template',
+          templateId: tmpl.id,
+        });
+      });
+    },
+    [onReferenceChange],
+  );
 
   const handleBackToTraceTemplatePicker = useCallback(() => {
     onReferenceChange((s) => {
@@ -1004,7 +1177,12 @@ export function ReferencePanel({
 
         {/* Sketchfab model viewer: Fix This Angle button */}
         {isSfBrowse && sfShowViewer && sfIsReady && (
-          <Button size="small" variant="contained" color="success" onClick={() => sfActionsRef.current?.fixAngle()}>
+          <Button
+            size="small"
+            variant="contained"
+            color="success"
+            onClick={() => sfActionsRef.current?.fixAngle()}
+          >
             {t('fixThisAngle')}
           </Button>
         )}
@@ -1030,7 +1208,12 @@ export function ReferencePanel({
           </Typography>
         )}
         {isPoseBrowse && poseViewerReady && (
-          <Button size="small" variant="contained" color="success" onClick={() => poseActionsRef.current?.fixAngle()}>
+          <Button
+            size="small"
+            variant="contained"
+            color="success"
+            onClick={() => poseActionsRef.current?.fixAngle()}
+          >
             {t('fixThisAngle')}
           </Button>
         )}
@@ -1064,8 +1247,7 @@ export function ReferencePanel({
               onClick={() => {
                 if (youtubePlaying) {
                   youtubePlayerRef.current?.pause();
-                }
-                else {
+                } else {
                   youtubePlayerRef.current?.play();
                 }
               }}
@@ -1082,8 +1264,8 @@ export function ReferencePanel({
               aria-label={t('youtubeReturnToZoom')}
               onClick={() => setYoutubeVideoInteractMode(false)}
               sx={{
-                'bgcolor': 'primary.main',
-                'color': 'white',
+                bgcolor: 'primary.main',
+                color: 'white',
                 '&:hover': { bgcolor: 'primary.dark' },
               }}
             >
@@ -1104,9 +1286,11 @@ export function ReferencePanel({
                   onClick={() => toggleGuideMode('add')}
                   disabled={suppressGuideEditing}
                   sx={{
-                    'bgcolor': effectiveGuideMode === 'add' ? 'error.main' : 'transparent',
-                    'color': effectiveGuideMode === 'add' ? 'white' : 'inherit',
-                    '&:hover': { bgcolor: effectiveGuideMode === 'add' ? 'error.dark' : 'action.hover' },
+                    bgcolor: effectiveGuideMode === 'add' ? 'error.main' : 'transparent',
+                    color: effectiveGuideMode === 'add' ? 'white' : 'inherit',
+                    '&:hover': {
+                      bgcolor: effectiveGuideMode === 'add' ? 'error.dark' : 'action.hover',
+                    },
                   }}
                 >
                   <PenLine size={20} />
@@ -1121,9 +1305,11 @@ export function ReferencePanel({
                   onClick={() => toggleGuideMode('delete')}
                   disabled={lines.length === 0 || suppressGuideEditing}
                   sx={{
-                    'bgcolor': effectiveGuideMode === 'delete' ? 'error.main' : 'transparent',
-                    'color': effectiveGuideMode === 'delete' ? 'white' : 'inherit',
-                    '&:hover': { bgcolor: effectiveGuideMode === 'delete' ? 'error.dark' : 'action.hover' },
+                    bgcolor: effectiveGuideMode === 'delete' ? 'error.main' : 'transparent',
+                    color: effectiveGuideMode === 'delete' ? 'white' : 'inherit',
+                    '&:hover': {
+                      bgcolor: effectiveGuideMode === 'delete' ? 'error.dark' : 'action.hover',
+                    },
                   }}
                 >
                   <CircleX size={20} />
@@ -1163,8 +1349,8 @@ export function ReferencePanel({
                 size="small"
                 onClick={handleDeleteHighlighted}
                 sx={{
-                  'bgcolor': 'error.main',
-                  'color': 'white',
+                  bgcolor: 'error.main',
+                  color: 'white',
                   '&:hover': { bgcolor: 'error.dark' },
                 }}
               >
@@ -1188,8 +1374,8 @@ export function ReferencePanel({
               size="small"
               onClick={onToggleOverlay}
               sx={{
-                'bgcolor': overlayActive ? 'warning.main' : 'transparent',
-                'color': overlayActive ? 'white' : 'inherit',
+                bgcolor: overlayActive ? 'warning.main' : 'transparent',
+                color: overlayActive ? 'white' : 'inherit',
                 '&:hover': { bgcolor: overlayActive ? 'warning.dark' : 'action.hover' },
               }}
             >
@@ -1206,8 +1392,8 @@ export function ReferencePanel({
               size="small"
               onClick={onToggleFlip}
               sx={{
-                'bgcolor': isFlipped ? 'info.main' : 'transparent',
-                'color': isFlipped ? 'white' : 'inherit',
+                bgcolor: isFlipped ? 'info.main' : 'transparent',
+                color: isFlipped ? 'white' : 'inherit',
                 '&:hover': { bgcolor: isFlipped ? 'info.dark' : 'action.hover' },
               }}
             >
@@ -1221,7 +1407,7 @@ export function ReferencePanel({
             <span>
               <IconButton
                 size="small"
-                onClick={() => setViewResetVersion(v => v + 1)}
+                onClick={() => setViewResetVersion((v) => v + 1)}
                 disabled={resetDisabled}
               >
                 <LocateFixed size={20} />
@@ -1244,18 +1430,27 @@ export function ReferencePanel({
         {/* No source: show selection buttons in center */}
         {isNone && (
           <Box sx={{ height: '100%', overflowY: 'auto' }}>
-            <Box sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '100%',
-              gap: 1.5,
-              px: 2,
-              py: 2,
-            }}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                minHeight: '100%',
+                gap: 1.5,
+                px: 2,
+                py: 2,
+              }}
             >
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, width: '100%', maxWidth: 480 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1.5,
+                  width: '100%',
+                  maxWidth: 480,
+                }}
+              >
                 <Button
                   variant="outlined"
                   fullWidth
@@ -1264,8 +1459,14 @@ export function ReferencePanel({
                   sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
                 >
                   <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('sketchfab')}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                      {t('sketchfab')}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: { xs: 'none', sm: 'block' } }}
+                    >
                       {t('sketchfabDescription')}
                     </Typography>
                   </Box>
@@ -1279,8 +1480,14 @@ export function ReferencePanel({
                     sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
                   >
                     <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('pexels')}</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                        {t('pexels')}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: { xs: 'none', sm: 'block' } }}
+                      >
                         {t('pexelsDescription')}
                       </Typography>
                     </Box>
@@ -1303,8 +1510,14 @@ export function ReferencePanel({
                     sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
                   >
                     <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('image')}</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                        {t('image')}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: { xs: 'none', sm: 'block' } }}
+                      >
                         {t('imageDescription')}
                       </Typography>
                     </Box>
@@ -1318,8 +1531,14 @@ export function ReferencePanel({
                   sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
                 >
                   <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('traceTemplate')}</Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                      {t('traceTemplate')}
+                    </Typography>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ display: { xs: 'none', sm: 'block' } }}
+                    >
                       {t('traceTemplateDescription')}
                     </Typography>
                   </Box>
@@ -1333,8 +1552,14 @@ export function ReferencePanel({
                     sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
                   >
                     <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>{t('pose')}</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: { xs: 'none', sm: 'block' } }}>
+                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
+                        {t('pose')}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: { xs: 'none', sm: 'block' } }}
+                      >
                         {t('poseDescription')}
                       </Typography>
                     </Box>
@@ -1349,8 +1574,18 @@ export function ReferencePanel({
                   </ToolbarTooltip>
                 </Box>
               </Box>
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, width: '100%', maxWidth: 480 }}>
-                <Typography variant="caption" color="text.secondary">{t('urlSectionLabel')}</Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 0.5,
+                  width: '100%',
+                  maxWidth: 480,
+                }}
+              >
+                <Typography variant="caption" color="text.secondary">
+                  {t('urlSectionLabel')}
+                </Typography>
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Autocomplete<UrlHistoryEntry, false, false, true>
                     freeSolo
@@ -1358,7 +1593,7 @@ export function ReferencePanel({
                     sx={{ flex: 1 }}
                     fullWidth
                     options={urlHistory}
-                    filterOptions={x => x}
+                    filterOptions={(x) => x}
                     getOptionLabel={(option) => {
                       if (typeof option === 'string') return option;
                       // Synthetic `local:<hash>` keys are not meaningful to the
@@ -1366,7 +1601,9 @@ export function ReferencePanel({
                       if (option.type === 'image') return option.fileName ?? '';
                       return option.url;
                     }}
-                    isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.url === b.url}
+                    isOptionEqualToValue={(a, b) =>
+                      typeof a !== 'string' && typeof b !== 'string' && a.url === b.url
+                    }
                     inputValue={urlInput}
                     onInputChange={(_, value, reason) => {
                       if (reason === 'input' || reason === 'clear') {
@@ -1403,7 +1640,10 @@ export function ReferencePanel({
                             // is self-contained (no redundant db read, and an
                             // evicted row between reads can't recreate a blobless
                             // entry).
-                            void addAndReloadHistory(historyKey, 'image', { fileName, imageBlob: blob });
+                            void addAndReloadHistory(historyKey, 'image', {
+                              fileName,
+                              imageBlob: blob,
+                            });
                           };
                           reader.readAsDataURL(blob);
                           return;
@@ -1476,7 +1716,11 @@ export function ReferencePanel({
                       const thumbSrc = resolveHistoryThumbnailSrc(option, blobThumbUrls);
                       const showThumb = thumbSrc !== null && !thumbErrors.has(option.url);
                       return (
-                        <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <li
+                          key={key}
+                          {...rest}
+                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                        >
                           <Box
                             sx={{
                               width: 40,
@@ -1491,35 +1735,54 @@ export function ReferencePanel({
                               overflow: 'hidden',
                             }}
                           >
-                            {showThumb
-                              ? (
-                                  <Box
-                                    component="img"
-                                    src={thumbSrc}
-                                    alt=""
-                                    loading="lazy"
-                                    referrerPolicy="no-referrer"
-                                    onError={() => {
-                                      setThumbErrors((prev) => {
-                                        if (prev.has(option.url)) return prev;
-                                        const next = new Set(prev);
-                                        next.add(option.url);
-                                        return next;
-                                      });
-                                    }}
-                                    sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                                  />
-                                )
-                              : (
-                                  <HistoryTypeIcon type={option.type} />
-                                )}
+                            {showThumb ? (
+                              <Box
+                                component="img"
+                                src={thumbSrc}
+                                alt=""
+                                loading="lazy"
+                                referrerPolicy="no-referrer"
+                                onError={() => {
+                                  setThumbErrors((prev) => {
+                                    if (prev.has(option.url)) return prev;
+                                    const next = new Set(prev);
+                                    next.add(option.url);
+                                    return next;
+                                  });
+                                }}
+                                sx={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover',
+                                  display: 'block',
+                                }}
+                              />
+                            ) : (
+                              <HistoryTypeIcon type={option.type} />
+                            )}
                           </Box>
                           <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography variant="body2" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <Typography
+                              variant="body2"
+                              sx={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
                               {primary}
                             </Typography>
                             {secondary && (
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              <Typography
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{
+                                  display: 'block',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
                                 {secondary}
                               </Typography>
                             )}
@@ -1531,10 +1794,17 @@ export function ReferencePanel({
                               // Touch devices commit option selection on pointerdown
                               // (before click), so we have to stop propagation there
                               // too — not just on click.
-                              onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                              onPointerDown={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                deleteUrlHistory(option.url).then(reloadUrlHistory).catch(() => { /* ignore */ });
+                                deleteUrlHistory(option.url)
+                                  .then(reloadUrlHistory)
+                                  .catch(() => {
+                                    /* ignore */
+                                  });
                               }}
                             >
                               <Trash2 size={14} />
@@ -1543,7 +1813,7 @@ export function ReferencePanel({
                         </li>
                       );
                     }}
-                    renderInput={params => (
+                    renderInput={(params) => (
                       <TextField
                         {...params}
                         size="small"
@@ -1568,16 +1838,18 @@ export function ReferencePanel({
                 </Box>
               </Box>
               {urlLoading && (
-                <Typography variant="caption" color="text.secondary">{t('loading')}</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {t('loading')}
+                </Typography>
               )}
               {urlError && (
-                <Typography variant="caption" color="error">{urlError}</Typography>
+                <Typography variant="caption" color="error">
+                  {urlError}
+                </Typography>
               )}
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Typography variant="caption" color="text.disabled">
-                  {t('buildDate')}
-                  :
-                  {new Date(import.meta.env.BUILD_DATE as string).toLocaleString()}
+                  {t('buildDate')}:{new Date(import.meta.env.BUILD_DATE as string).toLocaleString()}
                 </Typography>
                 <a
                   href="https://github.com/koizuka/drawing-practice"
@@ -1693,9 +1965,7 @@ export function ReferencePanel({
         )}
 
         {/* Trace template picker (browse mode) */}
-        {isTraceBrowse && (
-          <BundledTemplatePicker onSelect={handleSelectTraceTemplate} />
-        )}
+        {isTraceBrowse && <BundledTemplatePicker onSelect={handleSelectTraceTemplate} />}
 
         {/* Trace template viewer (fixed mode) */}
         {activeTraceTemplate && (
@@ -1756,7 +2026,7 @@ export function ReferencePanel({
           // resolves its pending-generate intent on this signal, and a
           // cancelled dialog must clear the intent rather than leave it armed
           // for a later unrelated key save.
-          setAnthropicKeyVersion(v => v + 1);
+          setAnthropicKeyVersion((v) => v + 1);
         }}
       />
 
@@ -1776,7 +2046,7 @@ export function ReferencePanel({
           }
         }}
         onKeyChanged={() => {
-          setPexelsKeyVersion(v => v + 1);
+          setPexelsKeyVersion((v) => v + 1);
           // Clear-with-empty-key keeps the user where they are; Save fires
           // only with a non-empty key (the dialog disables Save otherwise).
           if (pendingPexelsOpenRef.current) {

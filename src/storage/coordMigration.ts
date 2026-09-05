@@ -8,7 +8,7 @@ import type { GuideLine, GuideState, PerspectiveSettings } from '../guides/types
  */
 function shiftStroke(stroke: Stroke, dx: number, dy: number): Stroke {
   return {
-    points: stroke.points.map(p => ({ x: p.x + dx, y: p.y + dy })),
+    points: stroke.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
     timestamp: stroke.timestamp,
   };
 }
@@ -24,7 +24,7 @@ function shiftGuideLine(line: GuideLine, dx: number, dy: number): GuideLine {
 }
 
 export function shiftStrokes(strokes: readonly Stroke[], dx: number, dy: number): Stroke[] {
-  return strokes.map(s => shiftStroke(s, dx, dy));
+  return strokes.map((s) => shiftStroke(s, dx, dy));
 }
 
 export function shiftGuideState(state: GuideState, dx: number, dy: number): GuideState {
@@ -37,15 +37,21 @@ export function shiftGuideState(state: GuideState, dx: number, dy: number): Guid
   });
   const { perspective, perspectiveMemories } = state.grid;
   return {
-    grid: perspective || perspectiveMemories?.length
-      ? {
-          ...state.grid,
-          ...(perspective ? { perspective: shiftPerspective(perspective) } : {}),
-          ...(perspectiveMemories
-            ? { perspectiveMemories: perspectiveMemories.map(m => ({ ...m, settings: shiftPerspective(m.settings) })) }
-            : {}),
-        }
-      : state.grid,
-    lines: state.lines.map(l => shiftGuideLine(l, dx, dy)),
+    grid:
+      perspective || perspectiveMemories?.length
+        ? {
+            ...state.grid,
+            ...(perspective ? { perspective: shiftPerspective(perspective) } : {}),
+            ...(perspectiveMemories
+              ? {
+                  perspectiveMemories: perspectiveMemories.map((m) => ({
+                    ...m,
+                    settings: shiftPerspective(m.settings),
+                  })),
+                }
+              : {}),
+          }
+        : state.grid,
+    lines: state.lines.map((l) => shiftGuideLine(l, dx, dy)),
   };
 }
