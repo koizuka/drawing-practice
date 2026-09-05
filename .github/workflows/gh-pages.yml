@@ -10,7 +10,8 @@ on:
       - 'package-lock.json'
       - 'tsconfig*.json'
       - 'vite.config.ts'
-      - 'eslint.config.js'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
       - '.nvmrc'
       - '.github/workflows/gh-pages.yml'
 

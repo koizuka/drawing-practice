@@ -40,7 +40,8 @@ jobs:
               - 'package-lock.json'
               - 'src/**'
               - 'tsconfig*.json'
-              - 'eslint.config.js'
+              - '.oxlintrc.json'
+              - '.oxfmtrc.json'
               - '.nvmrc'
               - '.github/workflows/test.yml'
 

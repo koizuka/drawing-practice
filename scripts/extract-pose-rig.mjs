@@ -32,25 +32,21 @@ if (ext.VRMC_vrm?.humanoid?.humanBones) {
   humanBones = Object.fromEntries(
     Object.entries(ext.VRMC_vrm.humanoid.humanBones).map(([name, b]) => [name, b.node]),
   );
-}
-else if (ext.VRM?.humanoid?.humanBones) {
+} else if (ext.VRM?.humanoid?.humanBones) {
   isVrm0 = true;
-  humanBones = Object.fromEntries(
-    ext.VRM.humanoid.humanBones.map(b => [b.bone, b.node]),
-  );
-}
-else {
+  humanBones = Object.fromEntries(ext.VRM.humanoid.humanBones.map((b) => [b.bone, b.node]));
+} else {
   throw new Error('no VRM humanoid extension found');
 }
 
 // --- rest world positions via TRS composition ------------------------------
 const nodes = gltf.nodes ?? [];
 const parentOf = new Map();
-nodes.forEach((n, i) => (n.children ?? []).forEach(c => parentOf.set(c, i)));
+nodes.forEach((n, i) => (n.children ?? []).forEach((c) => parentOf.set(c, i)));
 
 /** column-major 4x4 multiply: out = a * b */
 function mul(a, b) {
-  const out = new Array(16).fill(0);
+  const out = Array.from({ length: 16 }, () => 0);
   for (let c = 0; c < 4; c++) {
     for (let r = 0; r < 4; r++) {
       for (let k = 0; k < 4; k++) out[c * 4 + r] += a[k * 4 + r] * b[c * 4 + k];
@@ -65,15 +61,35 @@ function localMatrix(n) {
   const [qx, qy, qz, qw] = n.rotation ?? [0, 0, 0, 1];
   const [sx, sy, sz] = n.scale ?? [1, 1, 1];
   // rotation matrix from quaternion, column-major, with scale then translation
-  const x2 = qx + qx, y2 = qy + qy, z2 = qz + qz;
-  const xx = qx * x2, xy = qx * y2, xz = qx * z2;
-  const yy = qy * y2, yz = qy * z2, zz = qz * z2;
-  const wx = qw * x2, wy = qw * y2, wz = qw * z2;
+  const x2 = qx + qx,
+    y2 = qy + qy,
+    z2 = qz + qz;
+  const xx = qx * x2,
+    xy = qx * y2,
+    xz = qx * z2;
+  const yy = qy * y2,
+    yz = qy * z2,
+    zz = qz * z2;
+  const wx = qw * x2,
+    wy = qw * y2,
+    wz = qw * z2;
   return [
-    (1 - (yy + zz)) * sx, (xy + wz) * sx, (xz - wy) * sx, 0,
-    (xy - wz) * sy, (1 - (xx + zz)) * sy, (yz + wx) * sy, 0,
-    (xz + wy) * sz, (yz - wx) * sz, (1 - (xx + yy)) * sz, 0,
-    tx, ty, tz, 1,
+    (1 - (yy + zz)) * sx,
+    (xy + wz) * sx,
+    (xz - wy) * sx,
+    0,
+    (xy - wz) * sy,
+    (1 - (xx + zz)) * sy,
+    (yz + wx) * sy,
+    0,
+    (xz + wy) * sz,
+    (yz - wx) * sz,
+    (1 - (xx + yy)) * sz,
+    0,
+    tx,
+    ty,
+    tz,
+    1,
   ];
 }
 
@@ -103,7 +119,7 @@ function humanoidParent(nodeIndex) {
   return null;
 }
 
-const round = v => Math.round(v * 1e5) / 1e5;
+const round = (v) => Math.round(v * 1e5) / 1e5;
 const bones = {};
 for (const [name, nodeIndex] of Object.entries(humanBones)) {
   bones[name] = {
@@ -123,5 +139,9 @@ writeFileSync(output, JSON.stringify(fixture, null, 2) + '\n');
 const head = bones.head?.position[1];
 console.log(`wrote ${output}`);
 console.log(`vrm ${fixture.vrmVersion}, ${Object.keys(bones).length} humanoid bones`);
-console.log(`head y = ${head} (standing height ~ ${head !== undefined ? (head + 0.12).toFixed(3) : '?'} m)`);
-console.log(`hips y = ${bones.hips?.position[1]}, toes z = ${bones.leftToes?.position[2]} (should be > foot z ${bones.leftFoot?.position[2]})`);
+console.log(
+  `head y = ${head} (standing height ~ ${head !== undefined ? (head + 0.12).toFixed(3) : '?'} m)`,
+);
+console.log(
+  `hips y = ${bones.hips?.position[1]}, toes z = ${bones.leftToes?.position[2]} (should be > foot z ${bones.leftFoot?.position[2]})`,
+);
