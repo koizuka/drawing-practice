@@ -1,32 +1,8 @@
-import { createContext, useRef, useState, useCallback, type ReactNode } from 'react';
+import { useRef, useState, useCallback, type ReactNode } from 'react';
 import { GuideManager } from './GuideManager';
 import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
 import { DEFAULT_GUIDE_STATE } from './types';
-
-interface GuideContextValue {
-  guideManagerRef: React.RefObject<GuideManager>;
-  grid: GridSettings;
-  lines: readonly GuideLine[];
-  version: number;
-  /** True when the last change was mid-gesture (drag); autosave may debounce it. */
-  lastChangeTransient: boolean;
-  setGridMode: (mode: GridMode) => void;
-  setPerspective: (patch: Partial<PerspectiveSettings>, opts?: { transient?: boolean }) => void;
-  /** Snapshot the current perspective settings into the recall-memory list (no-op if already memorized). */
-  recordPerspectiveMemory: () => void;
-  /** Delete one perspective memory by its label number. */
-  removePerspectiveMemory: (seq: number) => void;
-  /** Non-persisted UI state: next tap on a panel places the perspective anchor. */
-  placingCenter: boolean;
-  setPlacingCenter: (placing: boolean) => void;
-  placePerspectiveCenter: (x: number, y: number) => void;
-  addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine;
-  removeLine: (id: string) => void;
-  clearLines: () => void;
-  restoreGuides: (state: GuideState) => void;
-}
-
-const GuideContext = createContext<GuideContextValue | null>(null);
+import { GuideContext } from './guideContextValue';
 
 export function GuideProvider({ children }: { children: ReactNode }) {
   const guideManagerRef = useRef(new GuideManager());
@@ -119,7 +95,3 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     </GuideContext.Provider>
   );
 }
-
-// eslint-disable-next-line react-refresh/only-export-components
-export { GuideContext };
-export type { GuideContextValue };
