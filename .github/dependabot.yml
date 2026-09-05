@@ -8,14 +8,10 @@ updates:
   cooldown:
     default-days: 7
   groups:
-    eslint-core:
+    oxc:
       patterns:
-      - "eslint"
-      - "@eslint/*"
-    eslint-plugin:
-      patterns:
-      - "typescript-eslint"
-      - "eslint-*"
+      - "oxlint"
+      - "oxfmt"
     react:
       patterns:
       - "react"

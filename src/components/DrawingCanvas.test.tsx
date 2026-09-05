@@ -235,7 +235,12 @@ describe('DrawingCanvas erase mode (unified tap-select / drag-lasso)', () => {
       touches: [touch(1, 100, 100)],
       changedTouches: [touch(1, 100, 100)],
     });
-    for (const [x, y] of [[300, 100], [300, 200], [100, 200], [100, 100]]) {
+    for (const [x, y] of [
+      [300, 100],
+      [300, 200],
+      [100, 200],
+      [100, 100],
+    ]) {
       fireEvent.touchMove(canvas, {
         touches: [touch(1, x, y)],
         changedTouches: [touch(1, x, y)],
@@ -324,7 +329,9 @@ describe('DrawingCanvas erase mode (unified tap-select / drag-lasso)', () => {
     const sm = new StrokeManager();
     addStrokeAt(sm, 0, 0);
     const lassoDelete = vi.spyOn(sm, 'lassoDelete');
-    const { canvas, onHighlightStroke, onDeleteHighlightedStroke } = renderCanvas(sm, { mode: 'erase' });
+    const { canvas, onHighlightStroke, onDeleteHighlightedStroke } = renderCanvas(sm, {
+      mode: 'erase',
+    });
 
     fireEvent.touchStart(canvas, {
       touches: [touch(1, 200, 150)],
@@ -381,7 +388,12 @@ describe('DrawingCanvas erase mode (unified tap-select / drag-lasso)', () => {
       touches: [touch(1, 100, 100)],
       changedTouches: [touch(1, 100, 100)],
     });
-    for (const [x, y] of [[300, 100], [300, 200], [100, 200], [100, 100]]) {
+    for (const [x, y] of [
+      [300, 100],
+      [300, 200],
+      [100, 200],
+      [100, 100],
+    ]) {
       fireEvent.touchMove(canvas, {
         touches: [touch(1, x, y)],
         changedTouches: [touch(1, x, y)],
@@ -415,7 +427,12 @@ describe('DrawingCanvas erase mode (unified tap-select / drag-lasso)', () => {
       const lassoDelete = vi.spyOn(sm, 'lassoDelete');
       const { canvas } = renderCanvas(sm, { mode: 'erase' });
       fireEvent.mouseDown(canvas, { clientX: 100, clientY: 100 });
-      for (const [x, y] of [[300, 100], [300, 200], [100, 200], [100, 100]]) {
+      for (const [x, y] of [
+        [300, 100],
+        [300, 200],
+        [100, 200],
+        [100, 100],
+      ]) {
         fireEvent.mouseMove(canvas, { clientX: x, clientY: y });
       }
       fireEvent.mouseUp(canvas, { clientX: 100, clientY: 100 });
@@ -437,8 +454,14 @@ describe('DrawingCanvas synthetic-mouse suppression after touch', () => {
     const sm = new StrokeManager();
     const { canvas } = renderCanvas(sm); // pen mode, no prior stylus
 
-    fireEvent.touchStart(canvas, { touches: [finger(1, 50, 50)], changedTouches: [finger(1, 50, 50)] });
-    fireEvent.touchMove(canvas, { touches: [finger(1, 70, 80)], changedTouches: [finger(1, 70, 80)] });
+    fireEvent.touchStart(canvas, {
+      touches: [finger(1, 50, 50)],
+      changedTouches: [finger(1, 50, 50)],
+    });
+    fireEvent.touchMove(canvas, {
+      touches: [finger(1, 70, 80)],
+      changedTouches: [finger(1, 70, 80)],
+    });
     fireEvent.touchEnd(canvas, { touches: [], changedTouches: [finger(1, 70, 80)] });
     expect(sm.getStrokes()).toHaveLength(1);
 
@@ -463,7 +486,9 @@ describe('DrawingCanvas synthetic-mouse suppression after touch', () => {
 describe('DrawingCanvas perspective-anchor placement', () => {
   it('routes a pen-mode tap to onPlacePerspectiveCenter without starting a stroke', () => {
     const sm = new StrokeManager();
-    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { placingPerspectiveCenter: true });
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, {
+      placingPerspectiveCenter: true,
+    });
 
     fireEvent.touchStart(canvas, {
       touches: [touch(1, 200, 150)],
@@ -480,7 +505,10 @@ describe('DrawingCanvas perspective-anchor placement', () => {
   it('routes an erase-mode tap to onPlacePerspectiveCenter without erasing', () => {
     const sm = new StrokeManager();
     addStrokeAt(sm, 0, 0);
-    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { mode: 'erase', placingPerspectiveCenter: true });
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, {
+      mode: 'erase',
+      placingPerspectiveCenter: true,
+    });
 
     fireEvent.touchStart(canvas, {
       touches: [touch(1, 200, 150)],
@@ -494,7 +522,9 @@ describe('DrawingCanvas perspective-anchor placement', () => {
 
   it('routes a mouse click to onPlacePerspectiveCenter without drawing', () => {
     const sm = new StrokeManager();
-    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, { placingPerspectiveCenter: true });
+    const { canvas, onPlacePerspectiveCenter } = renderCanvas(sm, {
+      placingPerspectiveCenter: true,
+    });
 
     fireEvent.mouseDown(canvas, { clientX: 250, clientY: 150 });
     fireEvent.mouseMove(canvas, { clientX: 260, clientY: 160 });

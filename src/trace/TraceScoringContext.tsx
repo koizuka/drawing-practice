@@ -83,7 +83,8 @@ export function TraceScoringProvider({ children }: ProviderProps) {
   const [templateStrokes, setTemplateStrokes] = useState<readonly TraceStroke[] | null>(null);
   const [scores, setScores] = useState<TemplateScore[]>([]);
   const [latestFeedback, setLatestFeedback] = useState<TraceFeedback | null>(null);
-  const [attemptedStrokeTimestamps, setAttemptedStrokeTimestamps] = useState<ReadonlySet<number>>(EMPTY_TIMESTAMP_SET);
+  const [attemptedStrokeTimestamps, setAttemptedStrokeTimestamps] =
+    useState<ReadonlySet<number>>(EMPTY_TIMESTAMP_SET);
 
   // Append-only history of every scored attempt. Live derived state is
   // recomputed via computeScores / computeAttemptMap against the
@@ -93,7 +94,9 @@ export function TraceScoringProvider({ children }: ProviderProps) {
   // Monotonic per-template-stroke aggregate. Survives re-trace replacements
   // (deleted strokes still contributed to "best"). Reset by setTemplate /
   // resetScores. See computeScores docstring for rationale.
-  const allTimeStatsRef = useRef<Map<number, { attempts: number; bestErrorPct: number }>>(new Map());
+  const allTimeStatsRef = useRef<Map<number, { attempts: number; bestErrorPct: number }>>(
+    new Map(),
+  );
 
   const setTemplate = useCallback((strokes: readonly TraceStroke[] | null) => {
     setTemplateStrokes(strokes);
@@ -145,64 +148,82 @@ export function TraceScoringProvider({ children }: ProviderProps) {
     setLatestFeedback(null);
   }, []);
 
-  const handleStrokeFinalized = useCallback((stroke: Stroke, strokeManager: StrokeManager) => {
-    if (!templateStrokes || templateStrokes.length === 0) return;
-    const match = scoreAttempt(stroke, templateStrokes);
+  const handleStrokeFinalized = useCallback(
+    (stroke: Stroke, strokeManager: StrokeManager) => {
+      if (!templateStrokes || templateStrokes.length === 0) return;
+      const match = scoreAttempt(stroke, templateStrokes);
 
-    if (!match) {
-      // Out-of-range: unwind the endStroke as if it never happened. This
-      // bypasses the undo stack so a subsequent Undo can't resurrect the
-      // rejected stroke as an untracked ghost.
-      const top = strokeManager.getStrokes();
-      if (top.length > 0 && top[top.length - 1].timestamp === stroke.timestamp) {
-        strokeManager.discardLastStroke();
+      if (!match) {
+        // Out-of-range: unwind the endStroke as if it never happened. This
+        // bypasses the undo stack so a subsequent Undo can't resurrect the
+        // rejected stroke as an untracked ghost.
+        const top = strokeManager.getStrokes();
+        if (top.length > 0 && top[top.length - 1].timestamp === stroke.timestamp) {
+          strokeManager.discardLastStroke();
+        }
+        setLatestFeedback(null);
+        return;
       }
-      setLatestFeedback(null);
-      return;
-    }
 
-    // Replace any previous attempt for this template stroke.
-    const prevTs = attemptMapRef.current.get(match.templateStrokeIdx);
-    if (prevTs !== undefined && prevTs !== stroke.timestamp) {
-      const all = strokeManager.getStrokes();
-      const prevIdx = all.findIndex(s => s.timestamp === prevTs);
-      if (prevIdx >= 0) strokeManager.deleteStroke(prevIdx);
-    }
+      // Replace any previous attempt for this template stroke.
+      const prevTs = attemptMapRef.current.get(match.templateStrokeIdx);
+      if (prevTs !== undefined && prevTs !== stroke.timestamp) {
+        const all = strokeManager.getStrokes();
+        const prevIdx = all.findIndex((s) => s.timestamp === prevTs);
+        if (prevIdx >= 0) strokeManager.deleteStroke(prevIdx);
+      }
 
-    attemptHistoryRef.current.set(stroke.timestamp, {
-      templateStrokeIdx: match.templateStrokeIdx,
-      errorPct: match.errorPct,
-    });
-    // Update the monotonic stat — preserves best across re-trace replacements.
-    const prev = allTimeStatsRef.current.get(match.templateStrokeIdx);
-    allTimeStatsRef.current.set(match.templateStrokeIdx, {
-      attempts: (prev?.attempts ?? 0) + 1,
-      bestErrorPct: prev ? Math.min(prev.bestErrorPct, match.errorPct) : match.errorPct,
-    });
-    setLatestFeedback(buildFeedback(match));
-    syncAttempts(strokeManager);
-  }, [templateStrokes, syncAttempts]);
+      attemptHistoryRef.current.set(stroke.timestamp, {
+        templateStrokeIdx: match.templateStrokeIdx,
+        errorPct: match.errorPct,
+      });
+      // Update the monotonic stat — preserves best across re-trace replacements.
+      const prev = allTimeStatsRef.current.get(match.templateStrokeIdx);
+      allTimeStatsRef.current.set(match.templateStrokeIdx, {
+        attempts: (prev?.attempts ?? 0) + 1,
+        bestErrorPct: prev ? Math.min(prev.bestErrorPct, match.errorPct) : match.errorPct,
+      });
+      setLatestFeedback(buildFeedback(match));
+      syncAttempts(strokeManager);
+    },
+    [templateStrokes, syncAttempts],
+  );
 
   const totalCovered = scores.length;
   const totalStrokes = templateStrokes?.length ?? 0;
-  const overallBestPct = scores.length > 0
-    ? scores.reduce((sum, s) => sum + s.bestErrorPct, 0) / scores.length
-    : null;
+  const overallBestPct =
+    scores.length > 0 ? scores.reduce((sum, s) => sum + s.bestErrorPct, 0) / scores.length : null;
 
-  const value = useMemo<TraceScoringValue>(() => ({
-    setTemplate,
-    scores,
-    latestFeedback,
-    attemptedStrokeTimestamps,
-    totalCovered,
-    totalStrokes,
-    overallBestPct,
-    handleStrokeFinalized,
-    syncAttempts,
-    resetScores,
-    clearLatestFeedback,
-    templateStrokes,
-  }), [setTemplate, scores, latestFeedback, attemptedStrokeTimestamps, totalCovered, totalStrokes, overallBestPct, handleStrokeFinalized, syncAttempts, resetScores, clearLatestFeedback, templateStrokes]);
+  const value = useMemo<TraceScoringValue>(
+    () => ({
+      setTemplate,
+      scores,
+      latestFeedback,
+      attemptedStrokeTimestamps,
+      totalCovered,
+      totalStrokes,
+      overallBestPct,
+      handleStrokeFinalized,
+      syncAttempts,
+      resetScores,
+      clearLatestFeedback,
+      templateStrokes,
+    }),
+    [
+      setTemplate,
+      scores,
+      latestFeedback,
+      attemptedStrokeTimestamps,
+      totalCovered,
+      totalStrokes,
+      overallBestPct,
+      handleStrokeFinalized,
+      syncAttempts,
+      resetScores,
+      clearLatestFeedback,
+      templateStrokes,
+    ],
+  );
 
   return <TraceScoringContext.Provider value={value}>{children}</TraceScoringContext.Provider>;
 }

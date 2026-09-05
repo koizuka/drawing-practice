@@ -80,10 +80,19 @@ interface YouTubeViewerProps {
 }
 
 export function YouTubeViewer({
-  videoId, grid, guideLines, guideVersion,
-  overlayStrokes, overlayCurrentStrokeRef, onRegisterOverlayRedraw,
+  videoId,
+  grid,
+  guideLines,
+  guideVersion,
+  overlayStrokes,
+  overlayCurrentStrokeRef,
+  onRegisterOverlayRedraw,
   onFitSize,
-  guideMode, onAddGuideLine, onPlaceCenter, highlightedGuideId, onHighlightGuide,
+  guideMode,
+  onAddGuideLine,
+  onPlaceCenter,
+  highlightedGuideId,
+  onHighlightGuide,
   viewTransform,
   isFitLeader = false,
   videoInteractMode = false,
@@ -124,32 +133,38 @@ export function YouTubeViewer({
   // offsetX/offsetY here are the screen position of WORLD (0, 0) — i.e. the
   // iframe's geometric center under the new center-origin convention. Callers
   // shift by half the iframe extent in world coords to get its top-left.
-  const getViewTransformState = useCallback((containerRect: DOMRect): { scale: number; offsetX: number; offsetY: number } => {
-    const container: ContainerSize = { width: containerRect.width, height: containerRect.height };
-    const baseScale = computeBaseScale(container, LOGICAL_CONTENT);
-    if (viewTransform) {
-      return viewTransform.project(container, baseScale);
-    }
-    return {
-      scale: baseScale,
-      offsetX: containerRect.width / 2,
-      offsetY: containerRect.height / 2,
-    };
-  }, [viewTransform]);
+  const getViewTransformState = useCallback(
+    (containerRect: DOMRect): { scale: number; offsetX: number; offsetY: number } => {
+      const container: ContainerSize = { width: containerRect.width, height: containerRect.height };
+      const baseScale = computeBaseScale(container, LOGICAL_CONTENT);
+      if (viewTransform) {
+        return viewTransform.project(container, baseScale);
+      }
+      return {
+        scale: baseScale,
+        offsetX: containerRect.width / 2,
+        offsetY: containerRect.height / 2,
+      };
+    },
+    [viewTransform],
+  );
 
   // Returns world coordinates (origin = grid center = logical-content center).
   // Strokes and guide lines stored on the drawing side share this coord space.
-  const getWorldPoint = useCallback((clientX: number, clientY: number): Point => {
-    const container = containerRef.current;
-    if (!container) return { x: 0, y: 0 };
-    const rect = container.getBoundingClientRect();
-    const { scale, offsetX, offsetY } = getViewTransformState(rect);
-    if (scale === 0) return { x: 0, y: 0 };
-    return {
-      x: (clientX - rect.left - offsetX) / scale,
-      y: (clientY - rect.top - offsetY) / scale,
-    };
-  }, [getViewTransformState]);
+  const getWorldPoint = useCallback(
+    (clientX: number, clientY: number): Point => {
+      const container = containerRef.current;
+      if (!container) return { x: 0, y: 0 };
+      const rect = container.getBoundingClientRect();
+      const { scale, offsetX, offsetY } = getViewTransformState(rect);
+      if (scale === 0) return { x: 0, y: 0 };
+      return {
+        x: (clientX - rect.left - offsetX) / scale,
+        y: (clientY - rect.top - offsetY) / scale,
+      };
+    },
+    [getViewTransformState],
+  );
 
   /** Current screen pixels per logical unit; 0 if the container is not laid out yet.
    *  Callers divide screen-pixel thresholds (e.g. GUIDE_HIT_THRESHOLD_PX) by this
@@ -221,7 +236,16 @@ export function YouTubeViewer({
     }
 
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  }, [grid, guideLines, overlayStrokes, overlayCurrentStrokeRef, highlightedGuideId, dragStart, dragEnd, getViewTransformState]);
+  }, [
+    grid,
+    guideLines,
+    overlayStrokes,
+    overlayCurrentStrokeRef,
+    highlightedGuideId,
+    dragStart,
+    dragEnd,
+    getViewTransformState,
+  ]);
 
   const requestRedraw = useCallback(() => {
     if (rafRef.current) return;
@@ -279,7 +303,9 @@ export function YouTubeViewer({
   // applyPlacement identity changes (which churn whenever viewTransform-
   // derived deps change downstream).
   const applyPlacementRef = useRef(applyPlacement);
-  useEffect(() => { applyPlacementRef.current = applyPlacement; });
+  useEffect(() => {
+    applyPlacementRef.current = applyPlacement;
+  });
 
   useEffect(() => {
     if (!viewTransform) return;
@@ -313,8 +339,7 @@ export function YouTubeViewer({
       if (e.ctrlKey) {
         const scaleDelta = 1 - e.deltaY * TRACKPAD_ZOOM_SPEED;
         viewTransform.applyGesture(focalX, focalY, scaleDelta, 0, 0, container, baseScale);
-      }
-      else {
+      } else {
         viewTransform.applyGesture(focalX, focalY, 1, -e.deltaX, -e.deltaY, container, baseScale);
       }
     };
@@ -357,8 +382,7 @@ export function YouTubeViewer({
       let payload: unknown;
       try {
         payload = JSON.parse(e.data);
-      }
-      catch {
+      } catch {
         return;
       }
       if (!payload || typeof payload !== 'object') return;
@@ -366,8 +390,7 @@ export function YouTubeViewer({
       if (data.event === YT_EVENT_INFO_DELIVERY && data.info && typeof data.info === 'object') {
         const state = (data.info as Record<string, unknown>).playerState;
         if (typeof state === 'number') emit(state === YT_PLAYER_STATE_PLAYING);
-      }
-      else if (data.event === YT_EVENT_STATE_CHANGE && typeof data.info === 'number') {
+      } else if (data.event === YT_EVENT_STATE_CHANGE && typeof data.info === 'number') {
         emit(data.info === YT_PLAYER_STATE_PLAYING);
       }
     };
@@ -375,54 +398,62 @@ export function YouTubeViewer({
     return () => window.removeEventListener('message', handleMessage);
   }, [onPlayerStateChange]);
 
-  useImperativeHandle(ref, () => ({
-    play() {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PLAY, args: [] }),
-        YOUTUBE_ORIGIN,
-      );
-    },
-    pause() {
-      iframeRef.current?.contentWindow?.postMessage(
-        JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PAUSE, args: [] }),
-        YOUTUBE_ORIGIN,
-      );
-    },
-  }), []);
+  useImperativeHandle(
+    ref,
+    () => ({
+      play() {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PLAY, args: [] }),
+          YOUTUBE_ORIGIN,
+        );
+      },
+      pause() {
+        iframeRef.current?.contentWindow?.postMessage(
+          JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PAUSE, args: [] }),
+          YOUTUBE_ORIGIN,
+        );
+      },
+    }),
+    [],
+  );
 
-  const beginGuideInteraction = useCallback((clientX: number, clientY: number) => {
-    if (guideMode === 'none') return;
-    const point = getWorldPoint(clientX, clientY);
-    if (guideMode === 'add') {
-      setDragStart(point);
-      setDragEnd(point);
-    }
-    else if (guideMode === 'delete') {
-      // Hit threshold is a fixed screen-pixel distance; convert to logical units.
-      const scale = getLogicalScale();
-      if (scale === 0) return;
-      const threshold = GUIDE_HIT_THRESHOLD_PX / scale;
-      let best: GuideLine | null = null;
-      let bestDist = threshold;
-      for (const line of guideLines) {
-        const dist = pointToSegmentDistance(point.x, point.y, line.x1, line.y1, line.x2, line.y2);
-        if (dist < bestDist) {
-          bestDist = dist;
-          best = line;
+  const beginGuideInteraction = useCallback(
+    (clientX: number, clientY: number) => {
+      if (guideMode === 'none') return;
+      const point = getWorldPoint(clientX, clientY);
+      if (guideMode === 'add') {
+        setDragStart(point);
+        setDragEnd(point);
+      } else if (guideMode === 'delete') {
+        // Hit threshold is a fixed screen-pixel distance; convert to logical units.
+        const scale = getLogicalScale();
+        if (scale === 0) return;
+        const threshold = GUIDE_HIT_THRESHOLD_PX / scale;
+        let best: GuideLine | null = null;
+        let bestDist = threshold;
+        for (const line of guideLines) {
+          const dist = pointToSegmentDistance(point.x, point.y, line.x1, line.y1, line.x2, line.y2);
+          if (dist < bestDist) {
+            bestDist = dist;
+            best = line;
+          }
         }
+        onHighlightGuide?.(best?.id ?? null);
+      } else if (guideMode === 'place-center') {
+        onPlaceCenter?.(point.x, point.y);
       }
-      onHighlightGuide?.(best?.id ?? null);
-    }
-    else if (guideMode === 'place-center') {
-      onPlaceCenter?.(point.x, point.y);
-    }
-  }, [guideMode, getWorldPoint, getLogicalScale, guideLines, onHighlightGuide, onPlaceCenter]);
+    },
+    [guideMode, getWorldPoint, getLogicalScale, guideLines, onHighlightGuide, onPlaceCenter],
+  );
 
-  const updateGuideInteraction = useCallback((clientX: number, clientY: number) => {
-    if (guideMode !== 'add' || !dragStart) return;
-    setDragEnd(getWorldPoint(clientX, clientY));
-    requestRedraw();
-  }, [guideMode, dragStart, getWorldPoint, requestRedraw]);
+  const updateGuideInteraction = useCallback(
+    (clientX: number, clientY: number) => {
+      if (guideMode !== 'add' || !dragStart) return;
+      setDragEnd(getWorldPoint(clientX, clientY));
+      requestRedraw();
+    },
+    [guideMode, dragStart, getWorldPoint, requestRedraw],
+  );
 
   const endGuideInteraction = useCallback(() => {
     if (guideMode !== 'add' || !dragStart || !dragEnd) return;
@@ -458,17 +489,23 @@ export function YouTubeViewer({
     }
   }, []);
 
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (!videoInteractMode && guideMode === 'none') {
-      tapCandidateRef.current = { time: Date.now(), x: e.clientX, y: e.clientY };
-    }
-    beginGuideInteraction(e.clientX, e.clientY);
-  }, [videoInteractMode, guideMode, beginGuideInteraction]);
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!videoInteractMode && guideMode === 'none') {
+        tapCandidateRef.current = { time: Date.now(), x: e.clientX, y: e.clientY };
+      }
+      beginGuideInteraction(e.clientX, e.clientY);
+    },
+    [videoInteractMode, guideMode, beginGuideInteraction],
+  );
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    maybeInvalidateTap(e.clientX, e.clientY);
-    updateGuideInteraction(e.clientX, e.clientY);
-  }, [maybeInvalidateTap, updateGuideInteraction]);
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      maybeInvalidateTap(e.clientX, e.clientY);
+      updateGuideInteraction(e.clientX, e.clientY);
+    },
+    [maybeInvalidateTap, updateGuideInteraction],
+  );
 
   const handleMouseUp = useCallback(() => {
     commitTapIfValid();
@@ -480,133 +517,155 @@ export function YouTubeViewer({
     endGuideInteraction();
   }, [endGuideInteraction]);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const touch = e.changedTouches[i];
-      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
-    }
-
-    if (activeTouchesRef.current.size >= 2) {
-      e.preventDefault();
-      tapCandidateRef.current = null;
-      if (dragStart || dragEnd) {
-        setDragStart(null);
-        setDragEnd(null);
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
       }
-      const ids = Array.from(activeTouchesRef.current.keys());
-      const t1 = activeTouchesRef.current.get(ids[0])!;
-      const t2 = activeTouchesRef.current.get(ids[1])!;
-      const dx = t2.x - t1.x;
-      const dy = t2.y - t1.y;
-      pinchRef.current = {
-        id1: ids[0],
-        id2: ids[1],
-        lastDist: Math.sqrt(dx * dx + dy * dy),
-        lastMidX: (t1.x + t2.x) / 2,
-        lastMidY: (t1.y + t2.y) / 2,
-      };
-      pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
-      return;
-    }
 
-    const touch = e.changedTouches[0];
-    if (!videoInteractMode && guideMode === 'none') {
-      tapCandidateRef.current = { time: Date.now(), x: touch.clientX, y: touch.clientY };
-    }
-
-    if (guideMode === 'none') return;
-    e.preventDefault();
-    beginGuideInteraction(touch.clientX, touch.clientY);
-  }, [videoInteractMode, guideMode, beginGuideInteraction, dragStart, dragEnd]);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      const touch = e.changedTouches[i];
-      activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
-    }
-
-    if (pinchRef.current) {
-      const t1 = activeTouchesRef.current.get(pinchRef.current.id1);
-      const t2 = activeTouchesRef.current.get(pinchRef.current.id2);
-      if (!t1 || !t2) return;
-      e.preventDefault();
-
-      if (viewTransform) {
-        const container = containerSizeRef.current;
-        const baseScale = computeBaseScale(container, LOGICAL_CONTENT);
-
+      if (activeTouchesRef.current.size >= 2) {
+        e.preventDefault();
+        tapCandidateRef.current = null;
+        if (dragStart || dragEnd) {
+          setDragStart(null);
+          setDragEnd(null);
+        }
+        const ids = Array.from(activeTouchesRef.current.keys());
+        const t1 = activeTouchesRef.current.get(ids[0])!;
+        const t2 = activeTouchesRef.current.get(ids[1])!;
         const dx = t2.x - t1.x;
         const dy = t2.y - t1.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        const midX = (t1.x + t2.x) / 2;
-        const midY = (t1.y + t2.y) / 2;
-
-        const rect = pinchRectRef.current!;
-        const focalX = midX - rect.left;
-        const focalY = midY - rect.top;
-
-        const scaleDelta = dist / pinchRef.current.lastDist;
-        const translateX = midX - pinchRef.current.lastMidX;
-        const translateY = midY - pinchRef.current.lastMidY;
-
-        viewTransform.applyGesture(focalX, focalY, scaleDelta, translateX, translateY, container, baseScale);
-
-        pinchRef.current.lastDist = dist;
-        pinchRef.current.lastMidX = midX;
-        pinchRef.current.lastMidY = midY;
+        pinchRef.current = {
+          id1: ids[0],
+          id2: ids[1],
+          lastDist: Math.sqrt(dx * dx + dy * dy),
+          lastMidX: (t1.x + t2.x) / 2,
+          lastMidY: (t1.y + t2.y) / 2,
+        };
+        pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
+        return;
       }
-      return;
-    }
 
-    const touch = e.changedTouches[0];
-    maybeInvalidateTap(touch.clientX, touch.clientY);
+      const touch = e.changedTouches[0];
+      if (!videoInteractMode && guideMode === 'none') {
+        tapCandidateRef.current = { time: Date.now(), x: touch.clientX, y: touch.clientY };
+      }
 
-    if (guideMode !== 'add' || !dragStart) return;
-    e.preventDefault();
-    updateGuideInteraction(touch.clientX, touch.clientY);
-  }, [viewTransform, guideMode, dragStart, maybeInvalidateTap, updateGuideInteraction]);
+      if (guideMode === 'none') return;
+      e.preventDefault();
+      beginGuideInteraction(touch.clientX, touch.clientY);
+    },
+    [videoInteractMode, guideMode, beginGuideInteraction, dragStart, dragEnd],
+  );
 
-  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      activeTouchesRef.current.delete(e.changedTouches[i].identifier);
-    }
+  const handleTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        const touch = e.changedTouches[i];
+        activeTouchesRef.current.set(touch.identifier, { x: touch.clientX, y: touch.clientY });
+      }
 
-    if (pinchRef.current) {
-      if (!activeTouchesRef.current.has(pinchRef.current.id1)
-        || !activeTouchesRef.current.has(pinchRef.current.id2)) {
+      if (pinchRef.current) {
+        const t1 = activeTouchesRef.current.get(pinchRef.current.id1);
+        const t2 = activeTouchesRef.current.get(pinchRef.current.id2);
+        if (!t1 || !t2) return;
+        e.preventDefault();
+
+        if (viewTransform) {
+          const container = containerSizeRef.current;
+          const baseScale = computeBaseScale(container, LOGICAL_CONTENT);
+
+          const dx = t2.x - t1.x;
+          const dy = t2.y - t1.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const midX = (t1.x + t2.x) / 2;
+          const midY = (t1.y + t2.y) / 2;
+
+          const rect = pinchRectRef.current!;
+          const focalX = midX - rect.left;
+          const focalY = midY - rect.top;
+
+          const scaleDelta = dist / pinchRef.current.lastDist;
+          const translateX = midX - pinchRef.current.lastMidX;
+          const translateY = midY - pinchRef.current.lastMidY;
+
+          viewTransform.applyGesture(
+            focalX,
+            focalY,
+            scaleDelta,
+            translateX,
+            translateY,
+            container,
+            baseScale,
+          );
+
+          pinchRef.current.lastDist = dist;
+          pinchRef.current.lastMidX = midX;
+          pinchRef.current.lastMidY = midY;
+        }
+        return;
+      }
+
+      const touch = e.changedTouches[0];
+      maybeInvalidateTap(touch.clientX, touch.clientY);
+
+      if (guideMode !== 'add' || !dragStart) return;
+      e.preventDefault();
+      updateGuideInteraction(touch.clientX, touch.clientY);
+    },
+    [viewTransform, guideMode, dragStart, maybeInvalidateTap, updateGuideInteraction],
+  );
+
+  const handleTouchEnd = useCallback(
+    (e: React.TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouchesRef.current.delete(e.changedTouches[i].identifier);
+      }
+
+      if (pinchRef.current) {
+        if (
+          !activeTouchesRef.current.has(pinchRef.current.id1) ||
+          !activeTouchesRef.current.has(pinchRef.current.id2)
+        ) {
+          pinchRef.current = null;
+          pinchRectRef.current = null;
+        }
+        tapCandidateRef.current = null;
+        e.preventDefault();
+        return;
+      }
+
+      commitTapIfValid();
+
+      if (guideMode !== 'add') return;
+      e.preventDefault();
+      endGuideInteraction();
+    },
+    [commitTapIfValid, guideMode, endGuideInteraction],
+  );
+
+  const handleTouchCancel = useCallback(
+    (e: React.TouchEvent) => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        activeTouchesRef.current.delete(e.changedTouches[i].identifier);
+      }
+      tapCandidateRef.current = null;
+      if (pinchRef.current) {
         pinchRef.current = null;
         pinchRectRef.current = null;
       }
-      tapCandidateRef.current = null;
-      e.preventDefault();
-      return;
-    }
-
-    commitTapIfValid();
-
-    if (guideMode !== 'add') return;
-    e.preventDefault();
-    endGuideInteraction();
-  }, [commitTapIfValid, guideMode, endGuideInteraction]);
-
-  const handleTouchCancel = useCallback((e: React.TouchEvent) => {
-    for (let i = 0; i < e.changedTouches.length; i++) {
-      activeTouchesRef.current.delete(e.changedTouches[i].identifier);
-    }
-    tapCandidateRef.current = null;
-    if (pinchRef.current) {
-      pinchRef.current = null;
-      pinchRectRef.current = null;
-    }
-    if (guideMode === 'add' && (dragStart || dragEnd)) {
-      setDragStart(null);
-      setDragEnd(null);
-    }
-  }, [guideMode, dragStart, dragEnd]);
+      if (guideMode === 'add' && (dragStart || dragEnd)) {
+        setDragStart(null);
+        setDragEnd(null);
+      }
+    },
+    [guideMode, dragStart, dragEnd],
+  );
 
   const overlayActive = !videoInteractMode;
-  const cursor
-    = guideMode === 'add' || guideMode === 'place-center'
+  const cursor =
+    guideMode === 'add' || guideMode === 'place-center'
       ? 'crosshair'
       : guideMode === 'delete'
         ? 'pointer'
@@ -615,7 +674,10 @@ export function YouTubeViewer({
           : 'default';
 
   return (
-    <Box ref={containerRef} sx={{ position: 'absolute', inset: 0, bgcolor: '#000', overflow: 'hidden' }}>
+    <Box
+      ref={containerRef}
+      sx={{ position: 'absolute', inset: 0, bgcolor: '#000', overflow: 'hidden' }}
+    >
       <Box ref={wrapperRef} sx={{ position: 'absolute' }}>
         <iframe
           ref={iframeRef}
@@ -624,7 +686,14 @@ export function YouTubeViewer({
           title="YouTube reference"
           allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
           allowFullScreen
-          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0, display: 'block' }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            width: '100%',
+            height: '100%',
+            border: 0,
+            display: 'block',
+          }}
         />
       </Box>
       {/* Spans the whole container — not just the 16:9 player — so pinch/

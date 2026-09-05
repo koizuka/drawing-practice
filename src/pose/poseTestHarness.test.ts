@@ -36,8 +36,8 @@ describe('poseTestHarness', () => {
 const KNEE_HUG_RECIPE: PoseJson = {
   body: { crouch: 1, hipsHeight: 0.19, leanForward: 8 },
   head: { nod: -8 },
-  leftLeg: { kneeAt: { x: 0.10, y: 0.46, z: 0.16 }, footAt: { x: 0.10, y: 0, z: 0.36 } },
-  rightLeg: { kneeAt: { x: -0.10, y: 0.46, z: 0.16 }, footAt: { x: -0.10, y: 0, z: 0.36 } },
+  leftLeg: { kneeAt: { x: 0.1, y: 0.46, z: 0.16 }, footAt: { x: 0.1, y: 0, z: 0.36 } },
+  rightLeg: { kneeAt: { x: -0.1, y: 0.46, z: 0.16 }, footAt: { x: -0.1, y: 0, z: 0.36 } },
   leftArm: { handAt: { x: 0.06, y: 0.35, z: 0.26 }, elbowDirection: 'in' },
   rightArm: { handAt: { x: -0.06, y: 0.35, z: 0.23 }, elbowDirection: 'in' },
 };
@@ -46,43 +46,67 @@ const KNEE_HUG_RECIPE: PoseJson = {
 const KNEE_HUG_STRETCH_RECIPE: PoseJson = {
   body: { crouch: 1, hipsHeight: 0.19, leanForward: 12 },
   head: { nod: -12 },
-  leftLeg: { kneeAt: { x: 0.12, y: 0.48, z: 0.12 }, footAt: { x: 0.11, y: 0, z: 0.30 } },
-  rightLeg: { kneeAt: { x: -0.12, y: 0.48, z: 0.12 }, footAt: { x: -0.11, y: 0, z: 0.30 } },
-  leftArm: { handAt: { x: 0.06, y: 0.36, z: 0.20 }, elbowDirection: 'in' },
+  leftLeg: { kneeAt: { x: 0.12, y: 0.48, z: 0.12 }, footAt: { x: 0.11, y: 0, z: 0.3 } },
+  rightLeg: { kneeAt: { x: -0.12, y: 0.48, z: 0.12 }, footAt: { x: -0.11, y: 0, z: 0.3 } },
+  leftArm: { handAt: { x: 0.06, y: 0.36, z: 0.2 }, elbowDirection: 'in' },
   rightArm: { handAt: { x: -0.06, y: 0.36, z: 0.17 }, elbowDirection: 'in' },
 };
 
 describe('posePrompt recipes pass validation on the real mannequin', () => {
   const RECIPES: Array<[string, PoseJson]> = [
-    ['deep squat', {
-      body: { crouch: 1, hipsHeight: 0.38, leanForward: 20 },
-      head: { nod: -15 },
-      leftLeg: { kneeAt: { x: 0.19, y: 0.45, z: 0.25 }, footAt: { x: 0.13, y: 0, z: 0.08 } },
-      rightLeg: { kneeAt: { x: -0.19, y: 0.45, z: 0.25 }, footAt: { x: -0.13, y: 0, z: 0.08 } },
-    }],
-    ['half-kneeling (left knee up)', {
-      body: { hipsHeight: 0.45 },
-      leftLeg: { kneeAt: { x: 0.15, y: 0.43, z: 0.32 }, footAt: { x: 0.15, y: 0, z: 0.32 } },
-      rightLeg: { kneeAt: { x: -0.10, y: 0.05, z: 0 }, footAt: { x: -0.10, y: 0.05, z: -0.35 }, ankle: -40 },
-    }],
-    ['all-fours', {
-      body: { bend: 75, leanForward: 10, hipsHeight: 0.42 },
-      head: { nod: -50 },
-      leftArm: { handAt: { x: 0.15, y: 0, z: 0.40 } },
-      rightArm: { handAt: { x: -0.15, y: 0, z: 0.40 } },
-      leftLeg: { kneeAt: { x: 0.10, y: 0.05, z: 0 }, footAt: { x: 0.10, y: 0.04, z: -0.40 }, ankle: -50 },
-      rightLeg: { kneeAt: { x: -0.10, y: 0.05, z: 0 }, footAt: { x: -0.10, y: 0.04, z: -0.40 }, ankle: -50 },
-    }],
+    [
+      'deep squat',
+      {
+        body: { crouch: 1, hipsHeight: 0.38, leanForward: 20 },
+        head: { nod: -15 },
+        leftLeg: { kneeAt: { x: 0.19, y: 0.45, z: 0.25 }, footAt: { x: 0.13, y: 0, z: 0.08 } },
+        rightLeg: { kneeAt: { x: -0.19, y: 0.45, z: 0.25 }, footAt: { x: -0.13, y: 0, z: 0.08 } },
+      },
+    ],
+    [
+      'half-kneeling (left knee up)',
+      {
+        body: { hipsHeight: 0.45 },
+        leftLeg: { kneeAt: { x: 0.15, y: 0.43, z: 0.32 }, footAt: { x: 0.15, y: 0, z: 0.32 } },
+        rightLeg: {
+          kneeAt: { x: -0.1, y: 0.05, z: 0 },
+          footAt: { x: -0.1, y: 0.05, z: -0.35 },
+          ankle: -40,
+        },
+      },
+    ],
+    [
+      'all-fours',
+      {
+        body: { bend: 75, leanForward: 10, hipsHeight: 0.42 },
+        head: { nod: -50 },
+        leftArm: { handAt: { x: 0.15, y: 0, z: 0.4 } },
+        rightArm: { handAt: { x: -0.15, y: 0, z: 0.4 } },
+        leftLeg: {
+          kneeAt: { x: 0.1, y: 0.05, z: 0 },
+          footAt: { x: 0.1, y: 0.04, z: -0.4 },
+          ankle: -50,
+        },
+        rightLeg: {
+          kneeAt: { x: -0.1, y: 0.05, z: 0 },
+          footAt: { x: -0.1, y: 0.04, z: -0.4 },
+          ankle: -50,
+        },
+      },
+    ],
     ['knee-hug sitting (taiiku-zuwari)', KNEE_HUG_RECIPE],
     ['tight knee-hug stretch', KNEE_HUG_STRETCH_RECIPE],
-    ['handstand', {
-      body: { bend: 175, hipsHeight: 0.88 },
-      head: { nod: -40 },
-      leftArm: { handAt: { x: 0.12, y: 0, z: 0 } },
-      rightArm: { handAt: { x: -0.12, y: 0, z: 0 } },
-      leftLeg: { forward: 25, kneeBend: 0, ankle: -30 },
-      rightLeg: { forward: -15, kneeBend: 0, ankle: -30 },
-    }],
+    [
+      'handstand',
+      {
+        body: { bend: 175, hipsHeight: 0.88 },
+        head: { nod: -40 },
+        leftArm: { handAt: { x: 0.12, y: 0, z: 0 } },
+        rightArm: { handAt: { x: -0.12, y: 0, z: 0 } },
+        leftLeg: { forward: 25, kneeBend: 0, ankle: -30 },
+        rightLeg: { forward: -15, kneeBend: 0, ankle: -30 },
+      },
+    ],
   ];
 
   it.each(RECIPES)('%s', (_name, pose) => {
@@ -103,7 +127,7 @@ describe('knee-hug recipe silhouette', () => {
       // at shoulder height pressed against the body (the v2 on-device
       // complaint: real taiiku-zuwari keeps air between knees and chest).
       expect(knee.y).toBeGreaterThan(0.42);
-      expect(knee.z).toBeGreaterThan(0.10);
+      expect(knee.z).toBeGreaterThan(0.1);
       // Knees stay together (not flared around the torso).
       expect(Math.abs(knee.x)).toBeLessThan(0.12);
       // Soles planted at their rest floor offset, heels a shin's reach ahead.
@@ -135,8 +159,9 @@ describe('knee-hug recipe silhouette', () => {
       };
       return (['left', 'right'] as const).map((side) => {
         const knee = posed[`${side}LowerLeg`]!;
-        return segmentDistance(knee, knee, posed.hips!, shoulderMid)
-          - TORSO_HALF_DEPTH - THIGH_RADIUS;
+        return (
+          segmentDistance(knee, knee, posed.hips!, shoulderMid) - TORSO_HALF_DEPTH - THIGH_RADIUS
+        );
       });
     };
     for (const clearance of kneeClearances(KNEE_HUG_RECIPE)) {
@@ -160,8 +185,8 @@ describe('planted footAt floor guarantee', () => {
     const pose: PoseJson = {
       body: { leanForward: 30, crouch: 1, hipsHeight: 0.15 },
       head: { nod: -15 },
-      leftLeg: { kneeAt: { x: 0.12, y: 0.65, z: 0.35 }, footAt: { x: 0.10, y: 0, z: 0.05 } },
-      rightLeg: { kneeAt: { x: -0.12, y: 0.65, z: 0.35 }, footAt: { x: -0.10, y: 0, z: 0.05 } },
+      leftLeg: { kneeAt: { x: 0.12, y: 0.65, z: 0.35 }, footAt: { x: 0.1, y: 0, z: 0.05 } },
+      rightLeg: { kneeAt: { x: -0.12, y: 0.65, z: 0.35 }, footAt: { x: -0.1, y: 0, z: 0.05 } },
     };
     const { posed, rest } = h.applyAndMeasure(pose);
     for (const name of ['leftFoot', 'rightFoot', 'leftToes', 'rightToes'] as const) {
@@ -173,7 +198,7 @@ describe('planted footAt floor guarantee', () => {
     // solve lands within ~1.5cm of the requested sole height — allow 2cm.
     expect(posed.leftFoot!.y).toBeGreaterThanOrEqual(rest.leftFoot!.y - 0.02);
     expect(posed.rightFoot!.y).toBeGreaterThanOrEqual(rest.rightFoot!.y - 0.02);
-    const floorProblems = h.diagnose(pose).filter(p => p.includes('BELOW the floor'));
+    const floorProblems = h.diagnose(pose).filter((p) => p.includes('BELOW the floor'));
     expect(floorProblems).toEqual([]);
   });
 });

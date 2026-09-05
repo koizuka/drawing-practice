@@ -7,7 +7,10 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   if (strokes.length === 0) return '';
 
   // Find bounding box
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let minX = Infinity,
+    minY = Infinity,
+    maxX = -Infinity,
+    maxY = -Infinity;
   for (const stroke of strokes) {
     for (const p of stroke.points) {
       if (p.x < minX) minX = p.x;

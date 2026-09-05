@@ -104,7 +104,8 @@ describe('ImageViewer pinch gesture', () => {
   });
 
   it('captures canvas rect once at pinch start and reuses it during touchMove', () => {
-    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
       .mockReturnValue(CANVAS_RECT);
     const { container } = render(<ImageViewer {...baseProps} guideMode="none" />);
     const canvas = container.querySelector('canvas')!;
@@ -124,9 +125,7 @@ describe('ImageViewer pinch gesture', () => {
 
   it('flips focalX and translateX when isFlipped=true', () => {
     const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
-    const { container } = render(
-      <ImageViewer {...baseProps} guideMode="none" isFlipped />,
-    );
+    const { container } = render(<ImageViewer {...baseProps} guideMode="none" isFlipped />);
     const canvas = container.querySelector('canvas')!;
 
     // pinch starts with midpoint (100, 100); rect.left=10 rect.top=20 rect.width=400

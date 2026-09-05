@@ -22,11 +22,24 @@ describe('sessionStore', () => {
   });
 
   const sampleDraft: DraftData = {
-    strokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 }],
+    strokes: [
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 10, y: 10 },
+        ],
+        timestamp: 1000,
+      },
+    ],
     redoStack: [],
     elapsedMs: 5000,
     source: 'sketchfab',
-    referenceInfo: { title: 'Test Model', author: 'Author', source: 'sketchfab', sketchfabUid: 'abc123' },
+    referenceInfo: {
+      title: 'Test Model',
+      author: 'Author',
+      source: 'sketchfab',
+      sketchfabUid: 'abc123',
+    },
     referenceImageData: 'data:image/png;base64,abc',
     guideState: {
       grid: { mode: 'normal' },

@@ -34,7 +34,14 @@ describe('builders', () => {
   });
 
   it('polyline with closed=true appends the first point as last', () => {
-    const tri = polyline([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 5, y: 8 }], true);
+    const tri = polyline(
+      [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+        { x: 5, y: 8 },
+      ],
+      true,
+    );
     expect(tri.closed).toBe(true);
     expect(tri.points).toHaveLength(4);
     expect(tri.points[3]).toEqual({ x: 0, y: 0 });

@@ -14,22 +14,22 @@ const v = (x: number, y: number, z: number): Vec3 => ({ x, y, z });
 function standingRest(): LandmarkSet {
   return {
     hips: v(0, 0.85, 0),
-    chest: v(0, 1.10, 0),
-    head: v(0, 1.40, 0),
+    chest: v(0, 1.1, 0),
+    head: v(0, 1.4, 0),
     leftUpperArm: v(0.12, 1.25, 0),
     leftLowerArm: v(0.35, 1.25, 0),
     leftHand: v(0.58, 1.25, 0),
     rightUpperArm: v(-0.12, 1.25, 0),
     rightLowerArm: v(-0.35, 1.25, 0),
     rightHand: v(-0.58, 1.25, 0),
-    leftUpperLeg: v(0.08, 0.80, 0),
+    leftUpperLeg: v(0.08, 0.8, 0),
     leftLowerLeg: v(0.08, 0.45, 0),
     leftFoot: v(0.08, 0.08, 0),
-    leftToes: v(0.08, 0.02, 0.10),
-    rightUpperLeg: v(-0.08, 0.80, 0),
+    leftToes: v(0.08, 0.02, 0.1),
+    rightUpperLeg: v(-0.08, 0.8, 0),
     rightLowerLeg: v(-0.08, 0.45, 0),
     rightFoot: v(-0.08, 0.08, 0),
-    rightToes: v(-0.08, 0.02, 0.10),
+    rightToes: v(-0.08, 0.02, 0.1),
   };
 }
 
@@ -60,9 +60,11 @@ describe('diagnosePose', () => {
 
   it('reports joints below the floor', () => {
     const posed = standingRest();
-    posed.leftFoot = v(0.08, -0.10, 0);
+    posed.leftFoot = v(0.08, -0.1, 0);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('left foot') && p.includes('BELOW the floor'))).toBe(true);
+    expect(problems.some((p) => p.includes('left foot') && p.includes('BELOW the floor'))).toBe(
+      true,
+    );
   });
 
   it('does not flag a side-lying foot as sunken (girl-style sitting ankles)', () => {
@@ -71,14 +73,14 @@ describe('diagnosePose', () => {
     // to be diagnosed as "5cm BELOW the floor" and the model's correction
     // wrecked an otherwise good sitting pose.
     const posed = standingRest();
-    posed.leftFoot = v(0.20, 0.05, -0.15);
-    posed.rightFoot = v(-0.20, 0.05, -0.15);
+    posed.leftFoot = v(0.2, 0.05, -0.15);
+    posed.rightFoot = v(-0.2, 0.05, -0.15);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('BELOW the floor'))).toBe(false);
+    expect(problems.some((p) => p.includes('BELOW the floor'))).toBe(false);
   });
 
   it('reports a fully airborne figure with the lowest part', () => {
-    const posed = shift(standingRest(), 0.30);
+    const posed = shift(standingRest(), 0.3);
     const problems = diagnosePose(measurement(posed), {});
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('no body part touches the floor');
@@ -88,7 +90,7 @@ describe('diagnosePose', () => {
   it('flags a slight hover just past contact clearance (no dead zone between contact and floating)', () => {
     // 10cm hover: above the 8cm contact cutoff, so nothing supports the
     // figure — must be diagnosed, not silently passed.
-    const posed = shift(standingRest(), 0.10);
+    const posed = shift(standingRest(), 0.1);
     const problems = diagnosePose(measurement(posed), {});
     expect(problems).toHaveLength(1);
     expect(problems[0]).toContain('no body part touches the floor');
@@ -108,12 +110,12 @@ describe('diagnosePose', () => {
       rightLowerLeg: v(-0.07, 0.07, 0.35),
       leftFoot: v(0.18, 0.05, 0.05),
       rightFoot: v(-0.18, 0.05, 0.05),
-      leftToes: v(0.20, 0.03, -0.05),
-      rightToes: v(-0.20, 0.03, -0.05),
-      leftHand: v(0.15, 0.30, 0.15),
-      rightHand: v(-0.15, 0.30, 0.15),
-      leftLowerArm: v(0.14, 0.50, 0.05),
-      rightLowerArm: v(-0.14, 0.50, 0.05),
+      leftToes: v(0.2, 0.03, -0.05),
+      rightToes: v(-0.2, 0.03, -0.05),
+      leftHand: v(0.15, 0.3, 0.15),
+      rightHand: v(-0.15, 0.3, 0.15),
+      leftLowerArm: v(0.14, 0.5, 0.05),
+      rightLowerArm: v(-0.14, 0.5, 0.05),
       leftUpperArm: v(0.12, 0.65, 0),
       rightUpperArm: v(-0.12, 0.65, 0),
     };
@@ -127,7 +129,9 @@ describe('diagnosePose', () => {
     posed.chest = v(0, 1.0, 0.7);
     posed.head = v(0, 1.1, 0.8);
     const problems = diagnosePose(measurement(posed), { body: { turn: 0 } });
-    expect(problems.some(p => p.includes('center of mass') && p.includes('tip forward'))).toBe(true);
+    expect(problems.some((p) => p.includes('center of mass') && p.includes('tip forward'))).toBe(
+      true,
+    );
   });
 
   it('reports a forearm sunk into the torso volume (hand covering the crotch/chest)', () => {
@@ -136,23 +140,23 @@ describe('diagnosePose', () => {
     // it never comes near the old 5cm line-crossing threshold.
     const posed = standingRest();
     posed.leftLowerArm = v(0.15, 0.95, 0.06);
-    posed.leftHand = v(-0.05, 0.90, 0.06);
+    posed.leftHand = v(-0.05, 0.9, 0.06);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('left forearm') && p.includes('torso'))).toBe(true);
+    expect(problems.some((p) => p.includes('left forearm') && p.includes('torso'))).toBe(true);
   });
 
   it('reports a forearm buried in the pelvis (crotch sits BELOW the hips–chest axis)', () => {
     const posed = standingRest();
     posed.leftLowerArm = v(0.12, 0.72, 0.05);
-    posed.leftHand = v(0.0, 0.70, 0.05);
+    posed.leftHand = v(0.0, 0.7, 0.05);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('left forearm') && p.includes('torso'))).toBe(true);
+    expect(problems.some((p) => p.includes('left forearm') && p.includes('torso'))).toBe(true);
   });
 
   it('allows surface-level contact in front of the torso (crossed arms, hand on chest)', () => {
     const posed = standingRest();
     posed.leftLowerArm = v(0.15, 0.95, 0.12);
-    posed.leftHand = v(-0.05, 0.90, 0.12);
+    posed.leftHand = v(-0.05, 0.9, 0.12);
     const problems = diagnosePose(measurement(posed), {});
     expect(problems).toEqual([]);
   });
@@ -160,28 +164,30 @@ describe('diagnosePose', () => {
   it('reports crossing limbs', () => {
     const posed = standingRest();
     // Right shin swung across the left shin's line, center lines ~1cm apart.
-    posed.rightLowerLeg = v(0.30, 0.45, 0.01);
-    posed.rightFoot = v(-0.30, 0.08, 0.01);
+    posed.rightLowerLeg = v(0.3, 0.45, 0.01);
+    posed.rightFoot = v(-0.3, 0.08, 0.01);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('passes through'))).toBe(true);
+    expect(problems.some((p) => p.includes('passes through'))).toBe(true);
   });
 
   it('steers crossed-forearm interpenetration toward depth layering, not separation', () => {
     const posed = standingRest();
     // Forearms crossing through each other in front of the chest (X guard
     // with zero depth separation) — the fix hint must preserve the cross.
-    posed.leftLowerArm = v(0.15, 1.10, 0.20);
-    posed.leftHand = v(-0.15, 1.15, 0.20);
-    posed.rightLowerArm = v(-0.15, 1.10, 0.20);
-    posed.rightHand = v(0.15, 1.15, 0.20);
+    posed.leftLowerArm = v(0.15, 1.1, 0.2);
+    posed.leftHand = v(-0.15, 1.15, 0.2);
+    posed.rightLowerArm = v(-0.15, 1.1, 0.2);
+    posed.rightHand = v(0.15, 1.15, 0.2);
     const problems = diagnosePose(measurement(posed), {});
-    const crossing = problems.find(p => p.includes('forearm') && p.includes('passes through'));
+    const crossing = problems.find((p) => p.includes('forearm') && p.includes('passes through'));
     expect(crossing).toContain('layer them in depth');
     // Non-forearm crossings keep the plain message.
     const shins = standingRest();
-    shins.rightLowerLeg = v(0.30, 0.45, 0.01);
-    shins.rightFoot = v(-0.30, 0.08, 0.01);
-    const shinProblem = diagnosePose(measurement(shins), {}).find(p => p.includes('passes through'));
+    shins.rightLowerLeg = v(0.3, 0.45, 0.01);
+    shins.rightFoot = v(-0.3, 0.08, 0.01);
+    const shinProblem = diagnosePose(measurement(shins), {}).find((p) =>
+      p.includes('passes through'),
+    );
     expect(shinProblem).not.toContain('layer them in depth');
   });
 
@@ -192,40 +198,44 @@ describe('diagnosePose', () => {
   it('reports a forearm passing through the head volume', () => {
     const posed = standingRest();
     // Forearm skewers the skull: center line 5cm from the head joint.
-    posed.leftLowerArm = v(0.25, 1.40, 0.05);
+    posed.leftLowerArm = v(0.25, 1.4, 0.05);
     posed.leftHand = v(0.02, 1.42, 0.05);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('left forearm') && p.includes('through the head'))).toBe(true);
+    expect(problems.some((p) => p.includes('left forearm') && p.includes('through the head'))).toBe(
+      true,
+    );
   });
 
   it('allows a hand resting ON the scalp (head-touch poses)', () => {
     const posed = standingRest();
-    posed.leftLowerArm = v(0.30, 1.32, 0.10);
-    posed.leftHand = v(0.10, 1.48, 0.05);
+    posed.leftLowerArm = v(0.3, 1.32, 0.1);
+    posed.leftHand = v(0.1, 1.48, 0.05);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('through the head'))).toBe(false);
+    expect(problems.some((p) => p.includes('through the head'))).toBe(false);
   });
 
   it('reports a hand placed on the wrong side of the midline as a possible left/right mix-up', () => {
     // Left hand way over on the figure's right side, arm otherwise clear of
     // the torso — the classic swapped-target error.
     const posed = standingRest();
-    posed.leftLowerArm = v(0.05, 1.25, 0.30);
-    posed.leftHand = v(-0.25, 1.25, 0.30);
+    posed.leftLowerArm = v(0.05, 1.25, 0.3);
+    posed.leftHand = v(-0.25, 1.25, 0.3);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p =>
-      p.includes('left hand') && p.includes('RIGHT side') && p.includes('mix-up'),
-    )).toBe(true);
+    expect(
+      problems.some(
+        (p) => p.includes('left hand') && p.includes('RIGHT side') && p.includes('mix-up'),
+      ),
+    ).toBe(true);
     // The feedback must permit keeping an intentional cross.
-    expect(problems.find(p => p.includes('mix-up'))).toContain('keep it as is');
+    expect(problems.find((p) => p.includes('mix-up'))).toContain('keep it as is');
   });
 
   it('reports a foot planted on the wrong side of the midline', () => {
     const posed = standingRest();
-    posed.rightLowerLeg = v(0.10, 0.45, 0.10);
-    posed.rightFoot = v(0.20, 0.08, 0.20);
+    posed.rightLowerLeg = v(0.1, 0.45, 0.1);
+    posed.rightFoot = v(0.2, 0.08, 0.2);
     const problems = diagnosePose(measurement(posed), {});
-    expect(problems.some(p => p.includes('right foot') && p.includes('LEFT side'))).toBe(true);
+    expect(problems.some((p) => p.includes('right foot') && p.includes('LEFT side'))).toBe(true);
   });
 
   it('evaluates the midline in the FIGURE frame when the body is turned', () => {
@@ -234,29 +244,31 @@ describe('diagnosePose', () => {
     const posed = standingRest();
     posed.leftHand = v(0, 1.25, 0.58);
     posed.rightHand = v(0, 1.25, -0.58);
-    expect(diagnosePose(measurement(posed), { body: { turn: 90 } }).some(p => p.includes('mix-up'))).toBe(false);
+    expect(
+      diagnosePose(measurement(posed), { body: { turn: 90 } }).some((p) => p.includes('mix-up')),
+    ).toBe(false);
     posed.leftHand = v(0, 1.25, -0.58);
     posed.rightHand = v(0, 1.25, 0.58);
     const problems = diagnosePose(measurement(posed), { body: { turn: 90 } });
-    expect(problems.some(p => p.includes('left hand') && p.includes('mix-up'))).toBe(true);
-    expect(problems.some(p => p.includes('right hand') && p.includes('mix-up'))).toBe(true);
+    expect(problems.some((p) => p.includes('left hand') && p.includes('mix-up'))).toBe(true);
+    expect(problems.some((p) => p.includes('right hand') && p.includes('mix-up'))).toBe(true);
   });
 
   it('tolerates hands near the midline (clasped hands, hands on lap)', () => {
     const posed = standingRest();
-    posed.leftHand = v(-0.03, 0.90, 0.15);
-    posed.rightHand = v(0.03, 0.90, 0.15);
-    posed.leftLowerArm = v(0.20, 1.00, 0.12);
-    posed.rightLowerArm = v(-0.20, 1.00, 0.12);
-    expect(diagnosePose(measurement(posed), {}).some(p => p.includes('mix-up'))).toBe(false);
+    posed.leftHand = v(-0.03, 0.9, 0.15);
+    posed.rightHand = v(0.03, 0.9, 0.15);
+    posed.leftLowerArm = v(0.2, 1.0, 0.12);
+    posed.rightLowerArm = v(-0.2, 1.0, 0.12);
+    expect(diagnosePose(measurement(posed), {}).some((p) => p.includes('mix-up'))).toBe(false);
   });
 });
 
 describe('buildValidationFeedback', () => {
   it('numbers the problems and asks for a complete corrected JSON', () => {
     const posed = standingRest();
-    posed.leftFoot = v(0.08, -0.10, 0);
-    posed.rightHand = v(-0.3, -0.10, 0.2);
+    posed.leftFoot = v(0.08, -0.1, 0);
+    posed.rightHand = v(-0.3, -0.1, 0.2);
     const feedback = buildValidationFeedback(measurement(posed), {});
     expect(feedback).toContain('1. ');
     expect(feedback).toContain('2. ');

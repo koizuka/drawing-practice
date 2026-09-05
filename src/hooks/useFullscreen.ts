@@ -14,8 +14,7 @@ export function useFullscreen() {
   const toggleFullscreen = useCallback(async () => {
     if (document.fullscreenElement) {
       await document.exitFullscreen();
-    }
-    else {
+    } else {
       await document.documentElement.requestFullscreen();
     }
   }, []);

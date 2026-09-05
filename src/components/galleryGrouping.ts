@@ -11,14 +11,18 @@ export function loadGroupMode(): GroupMode {
   try {
     const v = localStorage.getItem(GROUP_MODE_STORAGE_KEY);
     if (v === 'date' || v === 'ref-first' || v === 'ref-recent') return v;
+  } catch {
+    /* ignore */
   }
-  catch { /* ignore */ }
   return 'date';
 }
 
 export function persistGroupMode(mode: GroupMode): void {
-  try { localStorage.setItem(GROUP_MODE_STORAGE_KEY, mode); }
-  catch { /* ignore */ }
+  try {
+    localStorage.setItem(GROUP_MODE_STORAGE_KEY, mode);
+  } catch {
+    /* ignore */
+  }
 }
 
 const monthFormatter = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: 'long' });
@@ -60,13 +64,20 @@ export function canLoadReference(ref: ReferenceInfo | undefined): boolean {
  */
 export function syncThumbUrl(ref: ReferenceInfo): string | null {
   switch (ref.source) {
-    case 'sketchfab': return ref.imageUrl ?? null;
-    case 'url': return ref.imageUrl;
-    case 'youtube': return buildYouTubeGalleryThumbnailUrl(ref.youtubeVideoId);
-    case 'pexels': return ref.pexelsImageUrl;
-    case 'image': return null;
-    case 'trace-template': return null;
-    case 'pose': return ref.imageUrl ?? null;
+    case 'sketchfab':
+      return ref.imageUrl ?? null;
+    case 'url':
+      return ref.imageUrl;
+    case 'youtube':
+      return buildYouTubeGalleryThumbnailUrl(ref.youtubeVideoId);
+    case 'pexels':
+      return ref.pexelsImageUrl;
+    case 'image':
+      return null;
+    case 'trace-template':
+      return null;
+    case 'pose':
+      return ref.imageUrl ?? null;
   }
 }
 
@@ -96,15 +107,13 @@ export function buildGroups(
     if (mode === 'date') {
       key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       label = formatYearMonth(date);
-    }
-    else {
+    } else {
       const ref = d.reference;
       reference = ref;
       if (ref) {
         key = referenceKey(ref);
         label = refLabelOf(ref, legacyLabel);
-      }
-      else {
+      } else {
         key = LEGACY_GROUP_KEY;
         label = legacyLabel;
       }
@@ -126,11 +135,9 @@ export function buildGroups(
   }
   if (mode === 'date') {
     groups.sort((a, b) => b.key.localeCompare(a.key));
-  }
-  else if (mode === 'ref-first') {
+  } else if (mode === 'ref-first') {
     groups.sort((a, b) => +b.firstUsedAt - +a.firstUsedAt);
-  }
-  else {
+  } else {
     groups.sort((a, b) => +b.lastUsedAt - +a.lastUsedAt);
   }
   return groups;

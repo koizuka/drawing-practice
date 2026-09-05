@@ -1,6 +1,10 @@
 import { renderHook, act } from '@testing-library/react';
 import { vi } from 'vitest';
-import { useGestureSession, type GestureSessionFetchResult, type UseGestureSessionOptions } from './useGestureSession';
+import {
+  useGestureSession,
+  type GestureSessionFetchResult,
+  type UseGestureSessionOptions,
+} from './useGestureSession';
 import type { PexelsOrientationFilter, PexelsPhoto } from '../utils/pexels';
 
 function makePhoto(id: number): PexelsPhoto {
@@ -55,15 +59,17 @@ function makeMocks(): MockOpts {
 }
 
 function setup(mocks: MockOpts) {
-  return renderHook(() => useGestureSession({
-    onPhotoChange: mocks.onPhotoChange,
-    onTimeUp: mocks.onTimeUp,
-    onAdvance: mocks.onAdvance,
-    onSessionEnd: mocks.onSessionEnd,
-    fetchMore: mocks.fetchMore,
-    // Identity shuffler so the test queue order is deterministic.
-    shuffle: items => [...items],
-  }));
+  return renderHook(() =>
+    useGestureSession({
+      onPhotoChange: mocks.onPhotoChange,
+      onTimeUp: mocks.onTimeUp,
+      onAdvance: mocks.onAdvance,
+      onSessionEnd: mocks.onSessionEnd,
+      fetchMore: mocks.fetchMore,
+      // Identity shuffler so the test queue order is deterministic.
+      shuffle: (items) => [...items],
+    }),
+  );
 }
 
 describe('useGestureSession', () => {
@@ -339,8 +345,7 @@ describe('useGestureSession', () => {
       // Advanced to next photo despite the save error.
       expect(result.current.currentPhoto?.id).toBe(2);
       expect(consoleErr).toHaveBeenCalled();
-    }
-    finally {
+    } finally {
       consoleErr.mockRestore();
     }
   });

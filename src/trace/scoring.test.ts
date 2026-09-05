@@ -14,7 +14,11 @@ function ring(r: number, n: number, cx = 0, cy = 0): TraceStroke {
   return { points: pts, length: polylineLength(pts), closed: true };
 }
 
-function line(from: { x: number; y: number }, to: { x: number; y: number }, n: number): TraceStroke {
+function line(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  n: number,
+): TraceStroke {
   const pts: { x: number; y: number }[] = [];
   for (let i = 0; i <= n; i++) {
     const t = i / n;
@@ -24,7 +28,7 @@ function line(from: { x: number; y: number }, to: { x: number; y: number }, n: n
 }
 
 function userStroke(pts: { x: number; y: number }[]): Stroke {
-  return { points: pts.map(p => ({ ...p })), timestamp: 0 };
+  return { points: pts.map((p) => ({ ...p })), timestamp: 0 };
 }
 
 describe('scoreAttempt — open templates', () => {
@@ -48,7 +52,10 @@ describe('scoreAttempt — open templates', () => {
 
   it('rejects a trace whose endpoints are too far from the template', () => {
     const tpl = line({ x: 0, y: 0 }, { x: 100, y: 0 }, 16);
-    const user = userStroke([{ x: 200, y: 0 }, { x: 300, y: 0 }]);
+    const user = userStroke([
+      { x: 200, y: 0 },
+      { x: 300, y: 0 },
+    ]);
     expect(scoreAttempt(user, [tpl])).toBeNull();
   });
 });

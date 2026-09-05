@@ -62,7 +62,11 @@ describe('resample', () => {
   });
 
   it('reversePolyline reverses order without mutating input', () => {
-    const pts = [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 2 }];
+    const pts = [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+      { x: 2, y: 2 },
+    ];
     const r = reversePolyline(pts);
     expect(r[0]).toEqual({ x: 2, y: 2 });
     expect(r[2]).toEqual({ x: 0, y: 0 });

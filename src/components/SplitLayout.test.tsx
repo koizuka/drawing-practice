@@ -72,7 +72,10 @@ describe('SplitLayout', () => {
      * label inheritance, so we look up the SVG icon by its lucide class name
      * and return the nearest button ancestor.
      */
-    function findDrawingToolbarButton(container: HTMLElement, iconClass: string): HTMLButtonElement {
+    function findDrawingToolbarButton(
+      container: HTMLElement,
+      iconClass: string,
+    ): HTMLButtonElement {
       const icon = container.querySelector(`svg.${iconClass}`);
       if (!icon) throw new Error(`icon ${iconClass} not found`);
       const button = icon.closest('button');
@@ -170,11 +173,15 @@ describe('SplitLayout', () => {
       expect(undoBtn(container)).toBeDisabled();
 
       const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
-      fireEvent.change(urlInput, { target: { value: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' } });
+      fireEvent.change(urlInput, {
+        target: { value: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' },
+      });
       fireEvent.click(screen.getByText('Load'));
 
       // YouTube iframe is rendered
-      const iframe = container.querySelector('iframe[title="YouTube reference"]') as HTMLIFrameElement;
+      const iframe = container.querySelector(
+        'iframe[title="YouTube reference"]',
+      ) as HTMLIFrameElement;
       expect(iframe).not.toBeNull();
       expect(iframe.src).toContain('dQw4w9WgXcQ');
 
@@ -211,8 +218,7 @@ describe('SplitLayout', () => {
 
         fireEvent.click(undoBtn(container));
         expect(screen.getByText('Image File')).toBeInTheDocument();
-      }
-      finally {
+      } finally {
         localStorage.removeItem('pexelsApiKey');
       }
     });
@@ -225,7 +231,9 @@ describe('SplitLayout', () => {
       expect(undoBtn(container)).toBeDisabled();
 
       const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
-      fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-12345/' } });
+      fireEvent.change(urlInput, {
+        target: { value: 'https://www.pexels.com/photo/sample-12345/' },
+      });
       fireEvent.click(screen.getByText('Load'));
 
       await waitFor(() => expect(screen.queryByText('Image File')).not.toBeInTheDocument());
@@ -243,8 +251,10 @@ describe('SplitLayout', () => {
     async function loadPexels(id: number, photographer: string) {
       getPhotoMock.mockResolvedValueOnce(pexelsPhoto(id, photographer));
       // Wait for the source picker (panels mount post-restore).
-      const urlInput = await screen.findByPlaceholderText(/https:\/\//i) as HTMLInputElement;
-      fireEvent.change(urlInput, { target: { value: `https://www.pexels.com/photo/sample-${id}/` } });
+      const urlInput = (await screen.findByPlaceholderText(/https:\/\//i)) as HTMLInputElement;
+      fireEvent.change(urlInput, {
+        target: { value: `https://www.pexels.com/photo/sample-${id}/` },
+      });
       fireEvent.click(screen.getByText('Load'));
       await waitFor(() => expect(screen.getByText(photographer)).toBeInTheDocument());
     }
@@ -344,8 +354,20 @@ describe('SplitLayout', () => {
       const draft: SessionDraft = {
         id: 1,
         strokes: [
-          { points: [{ x: 0, y: 0 }, { x: 10, y: 10 }], timestamp: 1000 },
-          { points: [{ x: 20, y: 20 }, { x: 30, y: 30 }], timestamp: 2000 },
+          {
+            points: [
+              { x: 0, y: 0 },
+              { x: 10, y: 10 },
+            ],
+            timestamp: 1000,
+          },
+          {
+            points: [
+              { x: 20, y: 20 },
+              { x: 30, y: 30 },
+            ],
+            timestamp: 2000,
+          },
         ],
         redoStack: [],
         elapsedMs: 90_000, // 1:30
@@ -451,9 +473,12 @@ describe('SplitLayout', () => {
       // Immediate flush: saveDraft must fire synchronously after the click,
       // well before the 2s debounce. If it doesn't, a fast reload would lose
       // the user's reference confirmation.
-      await waitFor(() => {
-        expect(saveDraftMock).toHaveBeenCalled();
-      }, { timeout: 500 });
+      await waitFor(
+        () => {
+          expect(saveDraftMock).toHaveBeenCalled();
+        },
+        { timeout: 500 },
+      );
 
       const lastCall = saveDraftMock.mock.calls.at(-1)![0];
       expect(lastCall.source).toBe('sketchfab');
@@ -470,13 +495,18 @@ describe('SplitLayout', () => {
       saveDraftMock.mockClear();
 
       const urlInput = screen.getByPlaceholderText(/https:\/\//i) as HTMLInputElement;
-      fireEvent.change(urlInput, { target: { value: 'https://www.pexels.com/photo/sample-67890/' } });
+      fireEvent.change(urlInput, {
+        target: { value: 'https://www.pexels.com/photo/sample-67890/' },
+      });
       fireEvent.click(screen.getByText('Load'));
 
-      await waitFor(() => {
-        const pexelsCalls = saveDraftMock.mock.calls.filter(c => c[0].source === 'pexels');
-        expect(pexelsCalls.length).toBeGreaterThan(0);
-      }, { timeout: 500 });
+      await waitFor(
+        () => {
+          const pexelsCalls = saveDraftMock.mock.calls.filter((c) => c[0].source === 'pexels');
+          expect(pexelsCalls.length).toBeGreaterThan(0);
+        },
+        { timeout: 500 },
+      );
     });
 
     it('does not depend on the 2s debounce timer firing (pure immediate-flush path)', async () => {
@@ -507,8 +537,7 @@ describe('SplitLayout', () => {
         expect(saveDraftMock).toHaveBeenCalled();
         const args = saveDraftMock.mock.calls.at(-1)![0];
         expect(args.source).toBe('sketchfab');
-      }
-      finally {
+      } finally {
         vi.useRealTimers();
       }
     });

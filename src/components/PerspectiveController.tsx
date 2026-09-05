@@ -18,7 +18,8 @@ const DOT_RADIUS = 6;
  * place-anchor tap mode. Mounted only while grid.mode === 'perspective'.
  */
 export function PerspectiveController() {
-  const { grid, setPerspective, placingCenter, setPlacingCenter, removePerspectiveMemory } = useGuides();
+  const { grid, setPerspective, placingCenter, setPlacingCenter, removePerspectiveMemory } =
+    useGuides();
   const [collapsed, setCollapsed] = useState(false);
   // Label of the memory whose deletion is awaiting the in-place ✓/✗
   // confirmation.
@@ -29,7 +30,7 @@ export function PerspectiveController() {
   // the one the trash button targets. Deleting "the number I tapped last"
   // beats a delete-by-number mode: the user doesn't have to remember which
   // number holds which angle.
-  const activeMemory = memories.find(m => perspectiveSettingsEqual(m.settings, perspective));
+  const activeMemory = memories.find((m) => perspectiveSettingsEqual(m.settings, perspective));
   // Drop a pending confirmation the moment the active memory changes
   // (recalling another memory, rotating away) so it can't delete something no
   // longer highlighted — and can't resurface later when the user happens to
@@ -38,7 +39,8 @@ export function PerspectiveController() {
   if (confirmingDeleteSeq !== null && confirmingDeleteSeq !== activeMemory?.seq) {
     setConfirmingDeleteSeq(null);
   }
-  const confirmingDelete = confirmingDeleteSeq !== null && confirmingDeleteSeq === activeMemory?.seq;
+  const confirmingDelete =
+    confirmingDeleteSeq !== null && confirmingDeleteSeq === activeMemory?.seq;
 
   const padRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
@@ -47,49 +49,64 @@ export function PerspectiveController() {
   const pendingRef = useRef<{ yaw: number; pitch: number } | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  useEffect(() => () => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    },
+    [],
+  );
 
-  const flushPending = useCallback((transient: boolean) => {
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    const pending = pendingRef.current;
-    if (!pending) return;
-    if (!transient) pendingRef.current = null;
-    setPerspective(pending, { transient });
-  }, [setPerspective]);
-
-  const updateFromPointer = useCallback((clientX: number, clientY: number) => {
-    const pad = padRef.current;
-    if (!pad) return;
-    const rect = pad.getBoundingClientRect();
-    const u = Math.min(1, Math.max(-1, ((clientX - rect.left) / rect.width) * 2 - 1));
-    const v = Math.min(1, Math.max(-1, ((clientY - rect.top) / rect.height) * 2 - 1));
-    // Trackball-style: dragging the dot down tilts the box top toward the
-    // viewer (positive pitch = looking down onto the floor).
-    pendingRef.current = { yaw: u * 90, pitch: v * 90 };
-    if (rafRef.current === null) {
-      rafRef.current = requestAnimationFrame(() => {
+  const flushPending = useCallback(
+    (transient: boolean) => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
-        if (pendingRef.current && draggingRef.current) flushPending(true);
-      });
-    }
-  }, [flushPending]);
+      }
+      const pending = pendingRef.current;
+      if (!pending) return;
+      if (!transient) pendingRef.current = null;
+      setPerspective(pending, { transient });
+    },
+    [setPerspective],
+  );
 
-  const handlePadPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    draggingRef.current = true;
-    updateFromPointer(e.clientX, e.clientY);
-  }, [updateFromPointer]);
+  const updateFromPointer = useCallback(
+    (clientX: number, clientY: number) => {
+      const pad = padRef.current;
+      if (!pad) return;
+      const rect = pad.getBoundingClientRect();
+      const u = Math.min(1, Math.max(-1, ((clientX - rect.left) / rect.width) * 2 - 1));
+      const v = Math.min(1, Math.max(-1, ((clientY - rect.top) / rect.height) * 2 - 1));
+      // Trackball-style: dragging the dot down tilts the box top toward the
+      // viewer (positive pitch = looking down onto the floor).
+      pendingRef.current = { yaw: u * 90, pitch: v * 90 };
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          if (pendingRef.current && draggingRef.current) flushPending(true);
+        });
+      }
+    },
+    [flushPending],
+  );
 
-  const handlePadPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current) return;
-    updateFromPointer(e.clientX, e.clientY);
-  }, [updateFromPointer]);
+  const handlePadPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      draggingRef.current = true;
+      updateFromPointer(e.clientX, e.clientY);
+    },
+    [updateFromPointer],
+  );
+
+  const handlePadPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!draggingRef.current) return;
+      updateFromPointer(e.clientX, e.clientY);
+    },
+    [updateFromPointer],
+  );
 
   const handlePadPointerEnd = useCallback(() => {
     if (!draggingRef.current) return;
@@ -106,9 +123,9 @@ export function PerspectiveController() {
             size="small"
             onClick={() => setCollapsed(false)}
             sx={{
-              'bgcolor': 'info.main',
-              'color': 'white',
-              'boxShadow': 2,
+              bgcolor: 'info.main',
+              color: 'white',
+              boxShadow: 2,
               '&:hover': { bgcolor: 'info.dark' },
             }}
           >
@@ -138,7 +155,7 @@ export function PerspectiveController() {
         // or trigger browser scroll/zoom.
         touchAction: 'none',
       }}
-      onPointerDown={e => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
     >
       <Box sx={{ display: 'flex', gap: 1 }}>
         <Box
@@ -161,8 +178,26 @@ export function PerspectiveController() {
           }}
         >
           {/* Center cross marking the neutral (yaw=0, pitch=0) position */}
-          <Box sx={{ position: 'absolute', left: '50%', top: 4, bottom: 4, width: '1px', bgcolor: 'divider' }} />
-          <Box sx={{ position: 'absolute', top: '50%', left: 4, right: 4, height: '1px', bgcolor: 'divider' }} />
+          <Box
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              top: 4,
+              bottom: 4,
+              width: '1px',
+              bgcolor: 'divider',
+            }}
+          />
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: 4,
+              right: 4,
+              height: '1px',
+              bgcolor: 'divider',
+            }}
+          />
           <Box
             data-testid="perspective-pad-dot"
             sx={{
@@ -185,7 +220,9 @@ export function PerspectiveController() {
           max={1}
           step={0.01}
           value={perspective.strength}
-          onChange={(_e, value) => setPerspective({ strength: value as number }, { transient: true })}
+          onChange={(_e, value) =>
+            setPerspective({ strength: value as number }, { transient: true })
+          }
           onChangeCommitted={(_e, value) => setPerspective({ strength: value as number })}
           sx={{ height: PAD_SIZE, touchAction: 'none' }}
         />
@@ -211,10 +248,10 @@ export function PerspectiveController() {
                       setConfirmingDeleteSeq(null);
                     }}
                     sx={{
-                      'width': 22,
-                      'height': 22,
-                      'bgcolor': 'error.main',
-                      'color': 'white',
+                      width: 22,
+                      height: 22,
+                      bgcolor: 'error.main',
+                      color: 'white',
                       '&:hover': { bgcolor: 'error.dark' },
                     }}
                   >
@@ -225,21 +262,24 @@ export function PerspectiveController() {
             }
             const active = memory.seq === activeMemory?.seq;
             return (
-              <ToolbarTooltip key={memory.seq} title={`${t('perspectiveMemoryRecall')} ${memory.seq}`}>
+              <ToolbarTooltip
+                key={memory.seq}
+                title={`${t('perspectiveMemoryRecall')} ${memory.seq}`}
+              >
                 <IconButton
                   size="small"
                   data-testid={`perspective-memory-${memory.seq}`}
                   aria-label={`${t('perspectiveMemoryRecall')} ${memory.seq}`}
                   onClick={() => setPerspective({ ...memory.settings })}
                   sx={{
-                    'width': 22,
-                    'height': 22,
-                    'fontSize': 12,
-                    'border': '1px solid',
-                    'borderColor': active ? 'info.main' : 'divider',
-                    'borderRadius': 1,
-                    'bgcolor': active ? 'info.main' : 'transparent',
-                    'color': active ? 'white' : 'inherit',
+                    width: 22,
+                    height: 22,
+                    fontSize: 12,
+                    border: '1px solid',
+                    borderColor: active ? 'info.main' : 'divider',
+                    borderRadius: 1,
+                    bgcolor: active ? 'info.main' : 'transparent',
+                    color: active ? 'white' : 'inherit',
                     '&:hover': { bgcolor: active ? 'info.dark' : 'action.hover' },
                   }}
                 >
@@ -248,37 +288,35 @@ export function PerspectiveController() {
               </ToolbarTooltip>
             );
           })}
-          {confirmingDelete
-            ? (
-                <ToolbarTooltip title={t('cancel')}>
-                  <IconButton
-                    size="small"
-                    data-testid="perspective-memory-delete-cancel"
-                    aria-label={t('cancel')}
-                    onClick={() => setConfirmingDeleteSeq(null)}
-                    sx={{ width: 22, height: 22 }}
-                  >
-                    <X size={14} />
-                  </IconButton>
-                </ToolbarTooltip>
-              )
-            : (
-                <ToolbarTooltip title={t('perspectiveMemoryDelete')}>
-                  {/* span keeps the tooltip working while the button is disabled */}
-                  <span>
-                    <IconButton
-                      size="small"
-                      data-testid="perspective-memory-delete"
-                      aria-label={t('perspectiveMemoryDelete')}
-                      disabled={!activeMemory}
-                      onClick={() => setConfirmingDeleteSeq(activeMemory!.seq)}
-                      sx={{ width: 22, height: 22 }}
-                    >
-                      <Trash2 size={14} />
-                    </IconButton>
-                  </span>
-                </ToolbarTooltip>
-              )}
+          {confirmingDelete ? (
+            <ToolbarTooltip title={t('cancel')}>
+              <IconButton
+                size="small"
+                data-testid="perspective-memory-delete-cancel"
+                aria-label={t('cancel')}
+                onClick={() => setConfirmingDeleteSeq(null)}
+                sx={{ width: 22, height: 22 }}
+              >
+                <X size={14} />
+              </IconButton>
+            </ToolbarTooltip>
+          ) : (
+            <ToolbarTooltip title={t('perspectiveMemoryDelete')}>
+              {/* span keeps the tooltip working while the button is disabled */}
+              <span>
+                <IconButton
+                  size="small"
+                  data-testid="perspective-memory-delete"
+                  aria-label={t('perspectiveMemoryDelete')}
+                  disabled={!activeMemory}
+                  onClick={() => setConfirmingDeleteSeq(activeMemory!.seq)}
+                  sx={{ width: 22, height: 22 }}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
+              </span>
+            </ToolbarTooltip>
+          )}
         </Box>
       )}
       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -287,8 +325,8 @@ export function PerspectiveController() {
             size="small"
             onClick={() => setPlacingCenter(!placingCenter)}
             sx={{
-              'bgcolor': placingCenter ? 'primary.main' : 'transparent',
-              'color': placingCenter ? 'white' : 'inherit',
+              bgcolor: placingCenter ? 'primary.main' : 'transparent',
+              color: placingCenter ? 'white' : 'inherit',
               '&:hover': { bgcolor: placingCenter ? 'primary.dark' : 'action.hover' },
             }}
           >

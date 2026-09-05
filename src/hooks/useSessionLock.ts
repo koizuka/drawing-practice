@@ -51,8 +51,7 @@ export function useSessionLock(): SessionLockStatus {
               retryTimer = null;
               tryAcquire(retriesLeft - 1);
             }, RETRY_DELAY_MS);
-          }
-          else {
+          } else {
             setStatus('denied');
           }
           return Promise.resolve();

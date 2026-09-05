@@ -45,9 +45,12 @@ function AnthropicApiKeyDialogBody({ onClose, onKeyChanged }: AnthropicApiKeyDia
       <DialogTitle>{t('anthropicApiKeyTitle')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
-          {t('anthropicApiKeyDescription')}
-          {' '}
-          <Link href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer noopener">
+          {t('anthropicApiKeyDescription')}{' '}
+          <Link
+            href="https://console.anthropic.com/settings/keys"
+            target="_blank"
+            rel="noreferrer noopener"
+          >
             console.anthropic.com
           </Link>
         </DialogContentText>
@@ -57,13 +60,17 @@ function AnthropicApiKeyDialogBody({ onClose, onKeyChanged }: AnthropicApiKeyDia
           type="password"
           label={t('pexelsApiKeyInput')}
           value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+          }}
           size="small"
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClear} color="warning">{t('pexelsApiKeyClear')}</Button>
+        <Button onClick={handleClear} color="warning">
+          {t('pexelsApiKeyClear')}
+        </Button>
         <Button onClick={onClose}>{t('cancel')}</Button>
         <Button onClick={handleSave} variant="contained" disabled={value.trim() === ''}>
           {t('pexelsApiKeySave')}

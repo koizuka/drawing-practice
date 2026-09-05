@@ -3,7 +3,10 @@ import { refinePoseUntilValid } from './poseRefineLoop';
 import type { PoseJson } from './poseTypes';
 import type { PoseMeasurement } from './poseValidation';
 
-interface Gen { pose: PoseJson; tag: string }
+interface Gen {
+  pose: PoseJson;
+  tag: string;
+}
 
 /** Measurement with the left foot deep below the floor (always diagnosable). */
 const BAD: PoseMeasurement = {
@@ -110,10 +113,7 @@ describe('refinePoseUntilValid', () => {
 
   it('does not re-measure when the loop never measured (viewer not ready)', async () => {
     const measure = vi.fn(() => null);
-    await refinePoseUntilValid<Gen>(
-      { pose: {}, tag: 'initial' },
-      { measure, refine: vi.fn() },
-    );
+    await refinePoseUntilValid<Gen>({ pose: {}, tag: 'initial' }, { measure, refine: vi.fn() });
     expect(measure).toHaveBeenCalledTimes(1);
   });
 
@@ -136,16 +136,18 @@ describe('refinePoseUntilValid', () => {
 
   it('propagates aborts', async () => {
     const onRefineError = vi.fn();
-    await expect(refinePoseUntilValid<Gen>(
-      { pose: {}, tag: 'initial' },
-      {
-        measure: () => BAD,
-        refine: async () => {
-          throw new DOMException('aborted', 'AbortError');
+    await expect(
+      refinePoseUntilValid<Gen>(
+        { pose: {}, tag: 'initial' },
+        {
+          measure: () => BAD,
+          refine: async () => {
+            throw new DOMException('aborted', 'AbortError');
+          },
+          onRefineError,
         },
-        onRefineError,
-      },
-    )).rejects.toSatisfy((e: unknown) => e instanceof DOMException && e.name === 'AbortError');
+      ),
+    ).rejects.toSatisfy((e: unknown) => e instanceof DOMException && e.name === 'AbortError');
     expect(onRefineError).not.toHaveBeenCalled();
   });
 });

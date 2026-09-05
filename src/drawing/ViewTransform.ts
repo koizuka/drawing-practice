@@ -85,9 +85,12 @@ export class ViewTransform {
    */
   restoreCamera(viewCenterX: number, viewCenterY: number, zoom: number): void {
     const clampedZoom = clampZoom(zoom);
-    if (this.viewCenterX === viewCenterX
-      && this.viewCenterY === viewCenterY
-      && this.zoom === clampedZoom) return;
+    if (
+      this.viewCenterX === viewCenterX &&
+      this.viewCenterY === viewCenterY &&
+      this.zoom === clampedZoom
+    )
+      return;
     this.viewCenterX = viewCenterX;
     this.viewCenterY = viewCenterY;
     this.zoom = clampedZoom;
@@ -116,9 +119,11 @@ export class ViewTransform {
   }
 
   private isAtHomeInternal(): boolean {
-    return this.viewCenterX === this.homeX
-      && this.viewCenterY === this.homeY
-      && this.zoom === this.homeZoom;
+    return (
+      this.viewCenterX === this.homeX &&
+      this.viewCenterY === this.homeY &&
+      this.zoom === this.homeZoom
+    );
   }
 
   /**
@@ -135,7 +140,12 @@ export class ViewTransform {
     };
   }
 
-  screenToCanvas(screenX: number, screenY: number, container: ContainerSize, baseScale: number): Point {
+  screenToCanvas(
+    screenX: number,
+    screenY: number,
+    container: ContainerSize,
+    baseScale: number,
+  ): Point {
     const t = this.project(container, baseScale);
     return {
       x: (screenX - t.offsetX) / t.scale,
@@ -143,7 +153,12 @@ export class ViewTransform {
     };
   }
 
-  canvasToScreen(canvasX: number, canvasY: number, container: ContainerSize, baseScale: number): Point {
+  canvasToScreen(
+    canvasX: number,
+    canvasY: number,
+    container: ContainerSize,
+    baseScale: number,
+  ): Point {
     const t = this.project(container, baseScale);
     return {
       x: canvasX * t.scale + t.offsetX,
@@ -214,7 +229,9 @@ export class ViewTransform {
    */
   subscribe(listener: (intent: CameraIntent | null) => void): () => void {
     this.listeners.add(listener);
-    return () => { this.listeners.delete(listener); };
+    return () => {
+      this.listeners.delete(listener);
+    };
   }
 
   private notify(intent: CameraIntent | null): void {

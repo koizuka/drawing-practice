@@ -244,13 +244,18 @@ export function parsePoseJson(raw: string): PoseJson {
   let parsed: unknown;
   let found = false;
   for (let end = raw.lastIndexOf('}'); end !== -1 && !found; end = raw.lastIndexOf('}', end - 1)) {
-    for (let start = raw.lastIndexOf('{', end); start !== -1; start = raw.lastIndexOf('{', start - 1)) {
+    for (
+      let start = raw.lastIndexOf('{', end);
+      start !== -1;
+      start = raw.lastIndexOf('{', start - 1)
+    ) {
       try {
         parsed = JSON.parse(raw.slice(start, end + 1));
         found = true;
         break;
+      } catch {
+        /* keep scanning */
       }
-      catch { /* keep scanning */ }
     }
   }
   if (!found) {

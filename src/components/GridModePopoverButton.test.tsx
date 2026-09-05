@@ -31,8 +31,14 @@ describe('GridModePopoverButton', () => {
     render(<GridModePopoverButton grid={{ mode: 'large' }} onSetGridMode={() => {}} />);
 
     openPopover();
-    expect(screen.getByRole('button', { name: t('gridModeLarge') })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: t('gridModeNone') })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: t('gridModeLarge') })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: t('gridModeNone') })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
   });
 
   it('does not fire when the same mode is re-selected', () => {

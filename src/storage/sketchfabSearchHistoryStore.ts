@@ -33,7 +33,12 @@ export async function addSketchfabSearchHistory(
   await db.sketchfabSearchHistory.put(entry);
 
   const all = await db.sketchfabSearchHistory.toArray();
-  const toDelete = selectKeysToEvict(all, SKETCHFAB_SEARCH_HISTORY_LIMIT, e => e.key, e => e.lastUsedAt.getTime());
+  const toDelete = selectKeysToEvict(
+    all,
+    SKETCHFAB_SEARCH_HISTORY_LIMIT,
+    (e) => e.key,
+    (e) => e.lastUsedAt.getTime(),
+  );
   if (toDelete.length > 0) await db.sketchfabSearchHistory.bulkDelete(toDelete);
 }
 

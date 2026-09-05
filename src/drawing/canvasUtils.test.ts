@@ -23,7 +23,12 @@ describe('pointInPolygon', () => {
   it('returns false for a degenerate polygon (fewer than 3 points)', () => {
     expect(pointInPolygon({ x: 0, y: 0 }, [])).toBe(false);
     expect(pointInPolygon({ x: 0, y: 0 }, [{ x: 0, y: 0 }])).toBe(false);
-    expect(pointInPolygon({ x: 0, y: 0 }, [{ x: 0, y: 0 }, { x: 1, y: 1 }])).toBe(false);
+    expect(
+      pointInPolygon({ x: 0, y: 0 }, [
+        { x: 0, y: 0 },
+        { x: 1, y: 1 },
+      ]),
+    ).toBe(false);
   });
 
   it('handles concave (non-convex) polygons correctly', () => {

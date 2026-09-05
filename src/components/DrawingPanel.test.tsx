@@ -15,14 +15,28 @@ vi.mock('../storage/generateThumbnail', () => ({
 }));
 const stubDrawingRecord = {
   id: 1,
-  strokes: [{ points: [{ x: 0, y: 0 }, { x: 5, y: 5 }], timestamp: 1 }],
+  strokes: [
+    {
+      points: [
+        { x: 0, y: 0 },
+        { x: 5, y: 5 },
+      ],
+      timestamp: 1,
+    },
+  ],
   thumbnail: '',
   referenceInfo: '',
   createdAt: new Date('2026-04-15T10:00:00Z'),
   elapsedMs: 1000,
 };
 vi.mock('./Gallery', () => ({
-  Gallery: ({ onClose, onLoadDrawing }: { onClose: () => void; onLoadDrawing?: (d: unknown) => void }) => (
+  Gallery: ({
+    onClose,
+    onLoadDrawing,
+  }: {
+    onClose: () => void;
+    onLoadDrawing?: (d: unknown) => void;
+  }) => (
     <div data-testid="gallery-stub">
       <button onClick={onClose}>close gallery</button>
       {onLoadDrawing && (
@@ -66,19 +80,21 @@ type Harness = {
   setReferenceCollapsed: (v: boolean) => void;
 };
 
-function setup(opts: {
-  captureRef?: () => ReferenceSnapshot;
-  onToggleReferenceCollapsed?: () => void;
-  collapseLocked?: boolean;
-  initialReferenceCollapsed?: boolean;
-  templateStrokes?: readonly import('../trace/types').TraceStroke[] | null;
-  onTraceResetScores?: () => void;
-  onStrokesChanged?: (opts?: { flush?: boolean }) => void;
-  onLoadDrawing?: (d: unknown) => void;
-  traceTotalCovered?: number;
-  traceTotalStrokes?: number;
-  traceOverallBestPct?: number | null;
-} = {}) {
+function setup(
+  opts: {
+    captureRef?: () => ReferenceSnapshot;
+    onToggleReferenceCollapsed?: () => void;
+    collapseLocked?: boolean;
+    initialReferenceCollapsed?: boolean;
+    templateStrokes?: readonly import('../trace/types').TraceStroke[] | null;
+    onTraceResetScores?: () => void;
+    onStrokesChanged?: (opts?: { flush?: boolean }) => void;
+    onLoadDrawing?: (d: unknown) => void;
+    traceTotalCovered?: number;
+    traceTotalStrokes?: number;
+    traceOverallBestPct?: number | null;
+  } = {},
+) {
   const sm = new StrokeManager();
   const harness: Harness = {
     timer: null as unknown as TimerHandle,
@@ -88,11 +104,22 @@ function setup(opts: {
     setReferenceCollapsed: () => {},
   };
 
-  function Inner({ children }: { children: (h: { timer: TimerHandle; restoreVersion: number; historySyncVersion: number; referenceCollapsed: boolean }) => ReactNode }) {
+  function Inner({
+    children,
+  }: {
+    children: (h: {
+      timer: TimerHandle;
+      restoreVersion: number;
+      historySyncVersion: number;
+      referenceCollapsed: boolean;
+    }) => ReactNode;
+  }) {
     const timer = useTimer();
     const [restoreVersion, setRestoreVersion] = useState(0);
     const [historySyncVersion, setHistorySyncVersion] = useState(0);
-    const [referenceCollapsed, setReferenceCollapsed] = useState(opts.initialReferenceCollapsed ?? false);
+    const [referenceCollapsed, setReferenceCollapsed] = useState(
+      opts.initialReferenceCollapsed ?? false,
+    );
 
     // Mirror handles into the external harness object via effects so the
     // react-hooks/immutability lint rule is satisfied (mutating outside state
@@ -102,8 +129,8 @@ function setup(opts: {
       harness.timer = timer;
     });
     useEffect(() => {
-      harness.bumpRestore = () => setRestoreVersion(v => v + 1);
-      harness.bumpHistory = () => setHistorySyncVersion(v => v + 1);
+      harness.bumpRestore = () => setRestoreVersion((v) => v + 1);
+      harness.bumpHistory = () => setHistorySyncVersion((v) => v + 1);
       harness.setReferenceCollapsed = (v: boolean) => setReferenceCollapsed(v);
     }, []);
 
@@ -121,7 +148,9 @@ function setup(opts: {
             historySyncVersion={historySyncVersion}
             captureReferenceSnapshot={opts.captureRef}
             onStrokesChanged={opts.onStrokesChanged}
-            onLoadDrawing={opts.onLoadDrawing as ((d: import('../storage').DrawingRecord) => void) | undefined}
+            onLoadDrawing={
+              opts.onLoadDrawing as ((d: import('../storage').DrawingRecord) => void) | undefined
+            }
             onToggleReferenceCollapsed={opts.onToggleReferenceCollapsed}
             collapseLocked={opts.collapseLocked}
             referenceCollapsed={referenceCollapsed}
@@ -482,7 +511,16 @@ describe('DrawingPanel toolbar state', () => {
     const onTraceResetScores = vi.fn();
     const { container, harness } = setup({
       onTraceResetScores,
-      templateStrokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], length: 10, closed: false }],
+      templateStrokes: [
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+          ],
+          length: 10,
+          closed: false,
+        },
+      ],
       traceTotalCovered: 1,
       traceTotalStrokes: 1,
       traceOverallBestPct: 0.5,
@@ -514,7 +552,16 @@ describe('DrawingPanel toolbar state', () => {
       onTraceResetScores: () => {
         strokesAtResetTime = harness.sm!.getStrokes().length;
       },
-      templateStrokes: [{ points: [{ x: 0, y: 0 }, { x: 10, y: 0 }], length: 10, closed: false }],
+      templateStrokes: [
+        {
+          points: [
+            { x: 0, y: 0 },
+            { x: 10, y: 0 },
+          ],
+          length: 10,
+          closed: false,
+        },
+      ],
       traceTotalCovered: 1,
       traceTotalStrokes: 1,
       traceOverallBestPct: 0.5,
@@ -588,7 +635,10 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
     canvasPropsRef.current = null;
   });
 
-  async function openGallery(container: HTMLElement, findByTestId: (id: string) => Promise<HTMLElement>) {
+  async function openGallery(
+    container: HTMLElement,
+    findByTestId: (id: string) => Promise<HTMLElement>,
+  ) {
     act(() => {
       fireEvent.click(findIconButton(container, 'lucide-images'));
     });
@@ -604,14 +654,18 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
       fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
     });
 
-    expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull();
+    expect(
+      queryByText('The canvas has unsaved changes. Replace them with this drawing?'),
+    ).toBeNull();
     expect(onLoadDrawing).toHaveBeenCalledWith(stubDrawingRecord);
     expect(queryByTestId('gallery-stub')).not.toBeInTheDocument();
   });
 
   it('asks for confirmation when unsaved strokes exist; cancel keeps the gallery open', async () => {
     const onLoadDrawing = vi.fn();
-    const { container, harness, findByTestId, queryByTestId, getByText, queryByText } = setup({ onLoadDrawing });
+    const { container, harness, findByTestId, queryByTestId, getByText, queryByText } = setup({
+      onLoadDrawing,
+    });
 
     act(() => {
       addStroke(harness.sm!, 0, 0);
@@ -623,7 +677,9 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
       fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
     });
 
-    expect(getByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeInTheDocument();
+    expect(
+      getByText('The canvas has unsaved changes. Replace them with this drawing?'),
+    ).toBeInTheDocument();
     expect(onLoadDrawing).not.toHaveBeenCalled();
 
     act(() => {
@@ -631,7 +687,9 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
     });
     // MUI Dialog unmounts its content after a close transition.
     await waitFor(() =>
-      expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull(),
+      expect(
+        queryByText('The canvas has unsaved changes. Replace them with this drawing?'),
+      ).toBeNull(),
     );
     expect(queryByTestId('gallery-stub')).toBeInTheDocument();
     expect(onLoadDrawing).not.toHaveBeenCalled();
@@ -673,7 +731,9 @@ describe('DrawingPanel gallery "continue this drawing" confirmation', () => {
       fireEvent.click(stub.querySelector('button:nth-of-type(2)')!);
     });
 
-    expect(queryByText('The canvas has unsaved changes. Replace them with this drawing?')).toBeNull();
+    expect(
+      queryByText('The canvas has unsaved changes. Replace them with this drawing?'),
+    ).toBeNull();
     expect(onLoadDrawing).toHaveBeenCalledWith(stubDrawingRecord);
   });
 });
@@ -688,7 +748,9 @@ describe('DrawingPanel collapse toggle', () => {
   // button (PanelLeftClose vs PanelLeftOpen) and there's no text label, so we
   // grep by aria-label, which mirrors the tooltip text.
   function findCollapseButton(container: HTMLElement): HTMLButtonElement | null {
-    return container.querySelector<HTMLButtonElement>('button[aria-label*="reference"i], button[aria-label*="angle"i]');
+    return container.querySelector<HTMLButtonElement>(
+      'button[aria-label*="reference"i], button[aria-label*="angle"i]',
+    );
   }
 
   it('omits the collapse button when no toggle handler is provided', () => {
@@ -738,7 +800,9 @@ describe('DrawingPanel collapse toggle', () => {
       initialReferenceCollapsed: false,
     });
 
-    const toolbar = container.querySelector<HTMLDivElement>('button[aria-label*="reference"i]')!.closest('div')!;
+    const toolbar = container
+      .querySelector<HTMLDivElement>('button[aria-label*="reference"i]')!
+      .closest('div')!;
     expect(toolbar).not.toBeNull();
 
     act(() => {
@@ -748,7 +812,7 @@ describe('DrawingPanel collapse toggle', () => {
     // No click happened, so no element inside the toolbar should have an
     // inline transform applied by the FLIP effect.
     const elementsWithTransform = Array.from(toolbar.querySelectorAll('*')).filter(
-      el => (el as HTMLElement).style.transform !== '',
+      (el) => (el as HTMLElement).style.transform !== '',
     );
     expect(elementsWithTransform).toHaveLength(0);
     expect(onToggle).not.toHaveBeenCalled();
@@ -777,9 +841,15 @@ describe('DrawingPanel freeze-hint streak signal (strokeEditVersion)', () => {
     const editV0 = canvasPropsRef.current!.strokeEditVersion;
     const redrawV0 = canvasPropsRef.current!.redrawVersion;
 
-    act(() => { drawAndNotify(harness); });
-    act(() => { drawAndNotify(harness); });
-    act(() => { drawAndNotify(harness); });
+    act(() => {
+      drawAndNotify(harness);
+    });
+    act(() => {
+      drawAndNotify(harness);
+    });
+    act(() => {
+      drawAndNotify(harness);
+    });
 
     // Freehand commits must leave the freeze-streak signal untouched...
     expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV0);
@@ -790,10 +860,14 @@ describe('DrawingPanel freeze-hint streak signal (strokeEditVersion)', () => {
 
   it('bumps strokeEditVersion on a discrete edit (clear) so the streak resets around a button press', () => {
     const { container, harness } = setup();
-    act(() => { drawAndNotify(harness); }); // enable the trash button
+    act(() => {
+      drawAndNotify(harness);
+    }); // enable the trash button
     const editV = canvasPropsRef.current!.strokeEditVersion ?? 0;
 
-    act(() => { fireEvent.click(findIconButton(container, 'lucide-trash-2')); });
+    act(() => {
+      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+    });
 
     expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV + 1);
   });

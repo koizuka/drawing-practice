@@ -151,8 +151,7 @@ describe('useKeyboardShortcuts', () => {
         });
         input.dispatchEvent(event);
         expect(actions.onResetZoom).not.toHaveBeenCalled();
-      }
-      finally {
+      } finally {
         document.body.removeChild(input);
       }
     });
@@ -204,8 +203,7 @@ describe('useKeyboardShortcuts', () => {
         });
         input.dispatchEvent(event);
         expect(actions.onPenTool).not.toHaveBeenCalled();
-      }
-      finally {
+      } finally {
         document.body.removeChild(input);
       }
     });
@@ -225,8 +223,7 @@ describe('useKeyboardShortcuts', () => {
         });
         textarea.dispatchEvent(event);
         expect(actions.onEraseTool).not.toHaveBeenCalled();
-      }
-      finally {
+      } finally {
         document.body.removeChild(textarea);
       }
     });

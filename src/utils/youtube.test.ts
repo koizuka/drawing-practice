@@ -7,7 +7,9 @@ describe('parseYouTubeVideoId', () => {
   });
 
   it('extracts id from youtube.com/watch with extra params', () => {
-    expect(parseYouTubeVideoId('https://youtube.com/watch?v=dQw4w9WgXcQ&t=30s&feature=share')).toBe('dQw4w9WgXcQ');
+    expect(parseYouTubeVideoId('https://youtube.com/watch?v=dQw4w9WgXcQ&t=30s&feature=share')).toBe(
+      'dQw4w9WgXcQ',
+    );
   });
 
   it('extracts id from youtu.be short URL', () => {
@@ -93,15 +95,21 @@ describe('fetchYouTubeTitle', () => {
   });
 
   it('trims the returned title', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ title: '  Spaced Title  ' }),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ title: '  Spaced Title  ' }),
+      }),
+    );
     expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBe('Spaced Title');
   });
 
   it('returns null on non-ok response (private/removed video)', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: false, json: () => Promise.resolve({}) }),
+    );
     expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBeNull();
   });
 
@@ -111,10 +119,13 @@ describe('fetchYouTubeTitle', () => {
   });
 
   it('returns null when title is missing or empty', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
-      ok: true,
-      json: () => Promise.resolve({ title: '   ' }),
-    }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ title: '   ' }),
+      }),
+    );
     expect(await fetchYouTubeTitle('dQw4w9WgXcQ')).toBeNull();
   });
 

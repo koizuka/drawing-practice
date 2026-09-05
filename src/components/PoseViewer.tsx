@@ -1,12 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, type Ref } from 'react';
 import { Box } from '@mui/material';
-import {
-  AmbientLight,
-  DirectionalLight,
-  PerspectiveCamera,
-  Scene,
-  WebGLRenderer,
-} from 'three';
+import { AmbientLight, DirectionalLight, PerspectiveCamera, Scene, WebGLRenderer } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { VRMLoaderPlugin, VRMUtils, type VRM } from '@pixiv/three-vrm';
@@ -17,9 +11,7 @@ import type { PoseJson } from '../pose/poseTypes';
 import { LANDMARK_NAMES, type LandmarkSet, type PoseMeasurement } from '../pose/poseValidation';
 import { bundledVrmUrl, getBundledVrm, BUNDLED_VRMS } from '../pose/bundledVrms';
 
-export type PoseVrmSource
-  = | { kind: 'bundled'; vrmId: string }
-    | { kind: 'user'; blob: Blob };
+export type PoseVrmSource = { kind: 'bundled'; vrmId: string } | { kind: 'user'; blob: Blob };
 
 export interface PoseViewerActions {
   /** PNG data URL of the current view, or null before the model is ready. */
@@ -85,7 +77,7 @@ function rigOf(vrm: VRM): PoseRig {
 }
 
 function applyToVrm(vrm: VRM, poseJson: PoseJson | null): void {
-  const resolve: BoneResolver = name => vrm.humanoid.getNormalizedBoneNode(name);
+  const resolve: BoneResolver = (name) => vrm.humanoid.getNormalizedBoneNode(name);
   const reset = () => vrm.humanoid.resetNormalizedPose();
   if (poseJson) applyPose(resolve, reset, poseJson, rigOf(vrm));
   else reset();
@@ -97,7 +89,14 @@ function applyToVrm(vrm: VRM, poseJson: PoseJson | null): void {
  * browse iframe, the drawing panel leads while this is on screen, and grid
  * sync only happens after Fix-Angle captures a still image.
  */
-export default function PoseViewer({ pose, vrmSource, active = true, onReady, onLoadError, actionsRef }: PoseViewerProps) {
+export default function PoseViewer({
+  pose,
+  vrmSource,
+  active = true,
+  onReady,
+  onLoadError,
+  actionsRef,
+}: PoseViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<WebGLRenderer | null>(null);
   const animationLoopRef = useRef<(() => void) | null>(null);
@@ -200,8 +199,7 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
     if (userBlob) {
       objectUrl = URL.createObjectURL(userBlob);
       url = objectUrl;
-    }
-    else {
+    } else {
       const entry = getBundledVrm(sourceKey.replace(/^bundled:/, '')) ?? BUNDLED_VRMS[0];
       url = bundledVrmUrl(entry);
     }
@@ -217,7 +215,7 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
     };
 
     const loader = new GLTFLoader();
-    loader.register(parser => new VRMLoaderPlugin(parser));
+    loader.register((parser) => new VRMLoaderPlugin(parser));
     loader.load(
       url,
       (gltf) => {
@@ -254,7 +252,7 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
       cancelled = true;
       revokeObjectUrl();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [sourceKey, userBlob]);
 
   // Re-apply when the pose changes (generation, undo/redo, draft restore).
@@ -265,54 +263,63 @@ export default function PoseViewer({ pose, vrmSource, active = true, onReady, on
     // Not yet loaded: the load callback applies poseRef.current on arrival.
   }, [pose]);
 
-  useImperativeHandle(actionsRef, () => ({
-    captureScreenshot: () => {
-      const renderer = rendererRef.current;
-      const scene = sceneRef.current;
-      const camera = cameraRef.current;
-      if (!renderer || !scene || !camera || !vrmRef.current) return null;
-      // applyToVrm writes to the NORMALIZED humanoid bones; the mesh follows
-      // only after vrm.update() syncs them to the raw skeleton (normally done
-      // by the rAF loop). A pose applied synchronously in the same task as
-      // this capture (commit path: measure → screenshot) has not had a rAF
-      // tick yet — without this update the shot shows the PREVIOUS pose.
-      // Delta 0 keeps spring bones where they are.
-      vrmRef.current.update(0);
-      // Render synchronously right before reading pixels so the buffer is
-      // valid without preserveDrawingBuffer.
-      renderer.render(scene, camera);
-      return renderer.domElement.toDataURL('image/png');
-    },
-    measurePose: (candidate) => {
-      const vrm = vrmRef.current;
-      if (!vrm) return null;
-      const root = vrm.humanoid.normalizedHumanBonesRoot;
-      const collect = (): LandmarkSet => {
-        root.updateWorldMatrix(true, true);
-        const out: LandmarkSet = {};
-        const v = new Vector3();
-        for (const name of LANDMARK_NAMES) {
-          const node = vrm.humanoid.getNormalizedBoneNode(name);
-          if (!node) continue;
-          node.getWorldPosition(v);
-          // Rig-local = normalized humanoid space regardless of any VRM0
-          // 180° scene rotation.
-          root.worldToLocal(v);
-          out[name] = { x: v.x, y: v.y, z: v.z };
-        }
-        return out;
-      };
-      vrm.humanoid.resetNormalizedPose();
-      const rest = collect();
-      applyToVrm(vrm, candidate);
-      const posed = collect();
-      return { rest, posed };
-    },
-    restorePose: () => {
-      const vrm = vrmRef.current;
-      if (vrm) applyToVrm(vrm, poseRef.current);
-    },
-  }), []);
+  useImperativeHandle(
+    actionsRef,
+    () => ({
+      captureScreenshot: () => {
+        const renderer = rendererRef.current;
+        const scene = sceneRef.current;
+        const camera = cameraRef.current;
+        if (!renderer || !scene || !camera || !vrmRef.current) return null;
+        // applyToVrm writes to the NORMALIZED humanoid bones; the mesh follows
+        // only after vrm.update() syncs them to the raw skeleton (normally done
+        // by the rAF loop). A pose applied synchronously in the same task as
+        // this capture (commit path: measure → screenshot) has not had a rAF
+        // tick yet — without this update the shot shows the PREVIOUS pose.
+        // Delta 0 keeps spring bones where they are.
+        vrmRef.current.update(0);
+        // Render synchronously right before reading pixels so the buffer is
+        // valid without preserveDrawingBuffer.
+        renderer.render(scene, camera);
+        return renderer.domElement.toDataURL('image/png');
+      },
+      measurePose: (candidate) => {
+        const vrm = vrmRef.current;
+        if (!vrm) return null;
+        const root = vrm.humanoid.normalizedHumanBonesRoot;
+        const collect = (): LandmarkSet => {
+          root.updateWorldMatrix(true, true);
+          const out: LandmarkSet = {};
+          const v = new Vector3();
+          for (const name of LANDMARK_NAMES) {
+            const node = vrm.humanoid.getNormalizedBoneNode(name);
+            if (!node) continue;
+            node.getWorldPosition(v);
+            // Rig-local = normalized humanoid space regardless of any VRM0
+            // 180° scene rotation.
+            root.worldToLocal(v);
+            out[name] = { x: v.x, y: v.y, z: v.z };
+          }
+          return out;
+        };
+        vrm.humanoid.resetNormalizedPose();
+        const rest = collect();
+        applyToVrm(vrm, candidate);
+        const posed = collect();
+        return { rest, posed };
+      },
+      restorePose: () => {
+        const vrm = vrmRef.current;
+        if (vrm) applyToVrm(vrm, poseRef.current);
+      },
+    }),
+    [],
+  );
 
-  return <Box ref={containerRef} sx={{ width: '100%', height: '100%', minHeight: 0, overflow: 'hidden' }} />;
+  return (
+    <Box
+      ref={containerRef}
+      sx={{ width: '100%', height: '100%', minHeight: 0, overflow: 'hidden' }}
+    />
+  );
 }

@@ -37,7 +37,11 @@ const MAX_HALF_ANGLE = (32 * Math.PI) / 180;
 /** Fraction of the camera distance kept as the near clipping plane. */
 const NEAR_FRACTION = 0.05;
 
-interface Vec3 { x: number; y: number; z: number }
+interface Vec3 {
+  x: number;
+  y: number;
+  z: number;
+}
 
 interface Segment3D {
   a: Vec3;
@@ -54,7 +58,15 @@ interface Wall {
   segments: Segment3D[];
 }
 
-function seg(ax: number, ay: number, az: number, bx: number, by: number, bz: number, major: boolean): Segment3D {
+function seg(
+  ax: number,
+  ay: number,
+  az: number,
+  bx: number,
+  by: number,
+  bz: number,
+  major: boolean,
+): Segment3D {
   return { a: { x: ax, y: ay, z: az }, b: { x: bx, y: by, z: bz }, major };
 }
 
@@ -193,11 +205,13 @@ interface CacheEntry {
 let cache: CacheEntry | null = null;
 
 function sameSettings(a: PerspectiveSettings, b: PerspectiveSettings): boolean {
-  return a.yaw === b.yaw
-    && a.pitch === b.pitch
-    && a.strength === b.strength
-    && a.centerX === b.centerX
-    && a.centerY === b.centerY;
+  return (
+    a.yaw === b.yaw &&
+    a.pitch === b.pitch &&
+    a.strength === b.strength &&
+    a.centerX === b.centerX &&
+    a.centerY === b.centerY
+  );
 }
 
 /**
@@ -220,7 +234,17 @@ export function computePerspectiveGridLines(settings: PerspectiveSettings): Pers
   const lines: PerspectiveSegment[] = [];
 
   for (const segment of FLOOR) {
-    project(lines, segment, sinYaw, cosYaw, sinPitch, cosPitch, d, settings.centerX, settings.centerY);
+    project(
+      lines,
+      segment,
+      sinYaw,
+      cosYaw,
+      sinPitch,
+      cosPitch,
+      d,
+      settings.centerX,
+      settings.centerY,
+    );
   }
 
   // Room-style culling: draw only the walls whose inner face is toward the
@@ -233,7 +257,17 @@ export function computePerspectiveGridLines(settings: PerspectiveSettings): Pers
     const facingAway = n.x * view.x + n.y * view.y + n.z * view.z > 0;
     if (!facingAway) continue;
     for (const segment of wall.segments) {
-      project(lines, segment, sinYaw, cosYaw, sinPitch, cosPitch, d, settings.centerX, settings.centerY);
+      project(
+        lines,
+        segment,
+        sinYaw,
+        cosYaw,
+        sinPitch,
+        cosPitch,
+        d,
+        settings.centerX,
+        settings.centerY,
+      );
     }
   }
 

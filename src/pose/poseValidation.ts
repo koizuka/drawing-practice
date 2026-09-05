@@ -25,11 +25,23 @@ export interface Vec3 {
 
 /** Humanoid bones sampled as landmarks. Optional bones may be absent. */
 export const LANDMARK_NAMES = [
-  'hips', 'chest', 'head',
-  'leftUpperArm', 'leftLowerArm', 'leftHand',
-  'rightUpperArm', 'rightLowerArm', 'rightHand',
-  'leftUpperLeg', 'leftLowerLeg', 'leftFoot', 'leftToes',
-  'rightUpperLeg', 'rightLowerLeg', 'rightFoot', 'rightToes',
+  'hips',
+  'chest',
+  'head',
+  'leftUpperArm',
+  'leftLowerArm',
+  'leftHand',
+  'rightUpperArm',
+  'rightLowerArm',
+  'rightHand',
+  'leftUpperLeg',
+  'leftLowerLeg',
+  'leftFoot',
+  'leftToes',
+  'rightUpperLeg',
+  'rightLowerLeg',
+  'rightFoot',
+  'rightToes',
 ] as const;
 export type LandmarkName = (typeof LANDMARK_NAMES)[number];
 
@@ -56,13 +68,18 @@ const FIXED_RADIUS: Partial<Record<LandmarkName, number>> = {
   // floor-sitting poses must not be diagnosed as floating (they'd be
   // uncorrectable and would burn refine rounds on every sit).
   hips: 0.12,
-  chest: 0.10,
+  chest: 0.1,
   head: 0.11,
-  leftUpperArm: 0.05, rightUpperArm: 0.05,
-  leftLowerArm: 0.04, rightLowerArm: 0.04,
-  leftHand: 0.03, rightHand: 0.03,
-  leftUpperLeg: 0.07, rightUpperLeg: 0.07,
-  leftLowerLeg: 0.05, rightLowerLeg: 0.05,
+  leftUpperArm: 0.05,
+  rightUpperArm: 0.05,
+  leftLowerArm: 0.04,
+  rightLowerArm: 0.04,
+  leftHand: 0.03,
+  rightHand: 0.03,
+  leftUpperLeg: 0.07,
+  rightUpperLeg: 0.07,
+  leftLowerLeg: 0.05,
+  rightLowerLeg: 0.05,
 };
 
 /**
@@ -92,13 +109,20 @@ const PART_LABEL: Record<LandmarkName, string> = {
   hips: 'hips',
   chest: 'chest',
   head: 'head',
-  leftUpperArm: 'left shoulder', rightUpperArm: 'right shoulder',
-  leftLowerArm: 'left elbow', rightLowerArm: 'right elbow',
-  leftHand: 'left hand', rightHand: 'right hand',
-  leftUpperLeg: 'left hip joint', rightUpperLeg: 'right hip joint',
-  leftLowerLeg: 'left knee', rightLowerLeg: 'right knee',
-  leftFoot: 'left foot', rightFoot: 'right foot',
-  leftToes: 'left toes', rightToes: 'right toes',
+  leftUpperArm: 'left shoulder',
+  rightUpperArm: 'right shoulder',
+  leftLowerArm: 'left elbow',
+  rightLowerArm: 'right elbow',
+  leftHand: 'left hand',
+  rightHand: 'right hand',
+  leftUpperLeg: 'left hip joint',
+  rightUpperLeg: 'right hip joint',
+  leftLowerLeg: 'left knee',
+  rightLowerLeg: 'right knee',
+  leftFoot: 'left foot',
+  rightFoot: 'right foot',
+  leftToes: 'left toes',
+  rightToes: 'right toes',
 };
 
 /**
@@ -107,19 +131,25 @@ const PART_LABEL: Record<LandmarkName, string> = {
  * outside the support area.
  */
 const MASS_WEIGHT: Partial<Record<LandmarkName, number>> = {
-  hips: 0.30,
+  hips: 0.3,
   chest: 0.22,
   head: 0.08,
-  leftLowerLeg: 0.10, rightLowerLeg: 0.10,
-  leftFoot: 0.05, rightFoot: 0.05,
-  leftLowerArm: 0.04, rightLowerArm: 0.04,
-  leftHand: 0.01, rightHand: 0.01,
+  leftLowerLeg: 0.1,
+  rightLowerLeg: 0.1,
+  leftFoot: 0.05,
+  rightFoot: 0.05,
+  leftLowerArm: 0.04,
+  rightLowerArm: 0.04,
+  leftHand: 0.01,
+  rightHand: 0.01,
 };
 
 /** End effectors checked for a left/right mix-up, with their side sign (+x = left). */
 const CONTRALATERAL_LIMBS: ReadonlyArray<readonly [LandmarkName, 1 | -1]> = [
-  ['leftHand', 1], ['rightHand', -1],
-  ['leftFoot', 1], ['rightFoot', -1],
+  ['leftHand', 1],
+  ['rightHand', -1],
+  ['leftFoot', 1],
+  ['rightFoot', -1],
 ] as const;
 
 /** Limb segments checked for mutual intersection, as (label, from, to). */
@@ -141,13 +171,16 @@ const LIMB_SEGMENTS: ReadonlyArray<readonly [string, LandmarkName, LandmarkName]
  * half-depth. 0.08 still permits genuine surface contact (crossed arms,
  * a hand covering the chest sits ~0.10-0.13 from the axis).
  */
-const SEGMENT_PAIRS: ReadonlyArray<readonly [number, number] | readonly [number, number, number]> = [
-  [0, 1], // thigh × thigh
-  [2, 3], // shin × shin
-  [0, 3], [1, 2], // thigh × opposite shin
-  [4, 6, 0.08], [5, 6, 0.08], // forearm × torso
-  [4, 5], // forearm × forearm
-] as const;
+const SEGMENT_PAIRS: ReadonlyArray<readonly [number, number] | readonly [number, number, number]> =
+  [
+    [0, 1], // thigh × thigh
+    [2, 3], // shin × shin
+    [0, 3],
+    [1, 2], // thigh × opposite shin
+    [4, 6, 0.08],
+    [5, 6, 0.08], // forearm × torso
+    [4, 5], // forearm × forearm
+  ] as const;
 
 function radiusOf(name: LandmarkName, rest: LandmarkSet): number {
   const fixed = FIXED_RADIUS[name];
@@ -170,7 +203,9 @@ const FOOT_PENETRATION_RADIUS_CAP = 0.035;
 
 function penetrationRadiusOf(name: LandmarkName, rest: LandmarkSet): number {
   const r = radiusOf(name, rest);
-  return name.endsWith('Foot') || name.endsWith('Toes') ? Math.min(r, FOOT_PENETRATION_RADIUS_CAP) : r;
+  return name.endsWith('Foot') || name.endsWith('Toes')
+    ? Math.min(r, FOOT_PENETRATION_RADIUS_CAP)
+    : r;
 }
 
 function cm(meters: number): number {
@@ -179,9 +214,15 @@ function cm(meters: number): number {
 
 /** Closest distance between two 3D segments (standard clamped-parameter form). */
 export function segmentDistance(a0: Vec3, a1: Vec3, b0: Vec3, b1: Vec3): number {
-  const dax = a1.x - a0.x, day = a1.y - a0.y, daz = a1.z - a0.z;
-  const dbx = b1.x - b0.x, dby = b1.y - b0.y, dbz = b1.z - b0.z;
-  const rx = a0.x - b0.x, ry = a0.y - b0.y, rz = a0.z - b0.z;
+  const dax = a1.x - a0.x,
+    day = a1.y - a0.y,
+    daz = a1.z - a0.z;
+  const dbx = b1.x - b0.x,
+    dby = b1.y - b0.y,
+    dbz = b1.z - b0.z;
+  const rx = a0.x - b0.x,
+    ry = a0.y - b0.y,
+    rz = a0.z - b0.z;
   const A = dax * dax + day * day + daz * daz;
   const B = dax * dbx + day * dby + daz * dbz;
   const C = dbx * dbx + dby * dby + dbz * dbz;
@@ -229,7 +270,9 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
   }
 
   // 2. Floating: nothing touches the floor at all.
-  const contacts = [...clearances.entries()].filter(([, c]) => c <= CONTACT_CLEARANCE).map(([n]) => n);
+  const contacts = [...clearances.entries()]
+    .filter(([, c]) => c <= CONTACT_CLEARANCE)
+    .map(([n]) => n);
   let lowestName: LandmarkName | null = null;
   let lowest = Infinity;
   for (const [name, clearance] of clearances) {
@@ -240,14 +283,16 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
   }
   if (contacts.length === 0 && lowestName) {
     problems.push(
-      `no body part touches the floor — the lowest point is the ${PART_LABEL[lowestName]}, about ${cm(lowest)}cm above it. `
-      + 'If the pose is meant to be airborne (e.g. jumping), this is fine; otherwise ground it.',
+      `no body part touches the floor — the lowest point is the ${PART_LABEL[lowestName]}, about ${cm(lowest)}cm above it. ` +
+        'If the pose is meant to be airborne (e.g. jumping), this is fine; otherwise ground it.',
     );
   }
 
   // 3. Static balance: center of mass over the support area.
   if (contacts.length > 0 && problems.length === 0) {
-    let wSum = 0, comX = 0, comZ = 0;
+    let wSum = 0,
+      comX = 0,
+      comZ = 0;
     for (const [name, w] of Object.entries(MASS_WEIGHT) as Array<[LandmarkName, number]>) {
       const p = posed[name];
       if (!p) continue;
@@ -258,12 +303,17 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
     if (wSum > 0) {
       comX /= wSum;
       comZ /= wSum;
-      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      let minX = Infinity,
+        maxX = -Infinity,
+        minZ = Infinity,
+        maxZ = -Infinity;
       for (const name of contacts) {
         const p = posed[name];
         if (!p) continue;
-        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
-        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+        minX = Math.min(minX, p.x);
+        maxX = Math.max(maxX, p.x);
+        minZ = Math.min(minZ, p.z);
+        maxZ = Math.max(maxZ, p.z);
       }
       const dx = comX - Math.min(maxX + SUPPORT_MARGIN, Math.max(minX - SUPPORT_MARGIN, comX));
       const dz = comZ - Math.min(maxZ + SUPPORT_MARGIN, Math.max(minZ - SUPPORT_MARGIN, comZ));
@@ -274,13 +324,18 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
         const t = (pose.body?.turn ?? 0) * DEG;
         const front = dx * -Math.sin(t) + dz * Math.cos(t);
         const left = dx * Math.cos(t) + dz * Math.sin(t);
-        const direction = Math.abs(front) >= Math.abs(left)
-          ? (front > 0 ? 'toward the figure\'s front — it would tip forward' : 'behind the figure — it would tip backward')
-          : (left > 0 ? 'toward the figure\'s left — it would tip to its left' : 'toward the figure\'s right — it would tip to its right');
-        const contactList = contacts.map(n => PART_LABEL[n]).join(', ');
+        const direction =
+          Math.abs(front) >= Math.abs(left)
+            ? front > 0
+              ? "toward the figure's front — it would tip forward"
+              : 'behind the figure — it would tip backward'
+            : left > 0
+              ? "toward the figure's left — it would tip to its left"
+              : "toward the figure's right — it would tip to its right";
+        const contactList = contacts.map((n) => PART_LABEL[n]).join(', ');
         problems.push(
-          `the body's center of mass is about ${cm(excess)}cm outside the support area (parts on the floor: ${contactList}), ${direction}. `
-          + 'If this is a deliberately dynamic pose (running, mid-motion), keep it as is.',
+          `the body's center of mass is about ${cm(excess)}cm outside the support area (parts on the floor: ${contactList}), ${direction}. ` +
+            'If this is a deliberately dynamic pose (running, mid-motion), keep it as is.',
         );
       }
     }
@@ -295,7 +350,7 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
   // Extend the torso capsule past the hips joint to cover the pelvis — a
   // hand buried in the crotch sits BELOW the hips–chest axis and would
   // otherwise never come near the segment.
-  const torso = segments.find(s => s?.label === 'torso');
+  const torso = segments.find((s) => s?.label === 'torso');
   if (torso) {
     const dx = torso.a.x - torso.b.x;
     const dy = torso.a.y - torso.b.y;
@@ -317,10 +372,10 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
       // the cross to separate them and destroys the intended shape.
       const bothForearms = s1.label.endsWith('forearm') && s2.label.endsWith('forearm');
       problems.push(
-        `the ${s1.label} passes through the ${s2.label} (their center lines are only ${cm(d)}cm apart).`
-        + (bothForearms
-          ? ' If the forearms are meant to cross or touch (crossed arms, a cross-shaped guard), KEEP the crossing and instead layer them in depth — offset the crossing forearm about 6-8cm further out in z than the other so they touch without merging; do not swing the arms apart.'
-          : ''),
+        `the ${s1.label} passes through the ${s2.label} (their center lines are only ${cm(d)}cm apart).` +
+          (bothForearms
+            ? ' If the forearms are meant to cross or touch (crossed arms, a cross-shaped guard), KEEP the crossing and instead layer them in depth — offset the crossing forearm about 6-8cm further out in z than the other so they touch without merging; do not swing the arms apart.'
+            : ''),
       );
     }
   }
@@ -339,7 +394,9 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
       if (!a || !b) continue;
       const d = segmentDistance(a, b, headP, headP);
       if (d < HEAD_INTERSECTION_DISTANCE) {
-        problems.push(`the ${label} passes through the head (its center line is only ${cm(d)}cm from the head joint).`);
+        problems.push(
+          `the ${label} passes through the head (its center line is only ${cm(d)}cm from the head joint).`,
+        );
       }
     }
   }
@@ -363,9 +420,9 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
         const ownSide = side === 1 ? 'LEFT' : 'RIGHT';
         const wrongSide = side === 1 ? 'RIGHT' : 'LEFT';
         problems.push(
-          `the ${PART_LABEL[name]} ends up about ${cm(left)}cm on the figure's ${wrongSide} side of the body's midline. `
-          + `If the pose intentionally crosses this limb over the body (e.g. crossed arms), keep it as is; `
-          + `otherwise this is a left/right mix-up — move it to the figure's own ${ownSide} side (flip the sign of the target's x, or swap the swapped left/right values).`,
+          `the ${PART_LABEL[name]} ends up about ${cm(left)}cm on the figure's ${wrongSide} side of the body's midline. ` +
+            `If the pose intentionally crosses this limb over the body (e.g. crossed arms), keep it as is; ` +
+            `otherwise this is a left/right mix-up — move it to the figure's own ${ownSide} side (flip the sign of the target's x, or swap the swapped left/right values).`,
         );
       }
     }
@@ -378,15 +435,21 @@ export function diagnosePose(measurement: PoseMeasurement, pose: PoseJson): stri
  * Build the correction message sent back to the model in the same
  * conversation, or null when the pose passes all checks.
  */
-export function buildValidationFeedback(measurement: PoseMeasurement, pose: PoseJson): string | null {
+export function buildValidationFeedback(
+  measurement: PoseMeasurement,
+  pose: PoseJson,
+): string | null {
   const problems = diagnosePose(measurement, pose);
   if (problems.length === 0) return null;
   const headY = measurement.rest.head?.y;
-  const height = headY !== undefined ? ` The standing figure is about ${cm(headY + 0.12)}cm tall.` : '';
-  return `I applied your pose JSON to the 3D mannequin and measured the result against the floor plane.${height} Problems detected:\n`
-    + problems.map((p, i) => `${i + 1}. ${p}`).join('\n')
-    + '\nAdjust the pose JSON to fix these problems while PRESERVING the intended pose — correct the numeric values, do not redesign the pose. '
-    + 'For floor-contact problems, switching the limb to a placement target (handAt / footAt, see PLACEMENT TARGETS in the schema) is usually the most reliable fix. '
-    + 'If a reported problem is actually intentional for this pose, keep the relevant values unchanged. '
-    + 'Reply with the corrected COMPLETE pose JSON object (same schema, no markdown fences) as the LAST thing in your reply.';
+  const height =
+    headY !== undefined ? ` The standing figure is about ${cm(headY + 0.12)}cm tall.` : '';
+  return (
+    `I applied your pose JSON to the 3D mannequin and measured the result against the floor plane.${height} Problems detected:\n` +
+    problems.map((p, i) => `${i + 1}. ${p}`).join('\n') +
+    '\nAdjust the pose JSON to fix these problems while PRESERVING the intended pose — correct the numeric values, do not redesign the pose. ' +
+    'For floor-contact problems, switching the limb to a placement target (handAt / footAt, see PLACEMENT TARGETS in the schema) is usually the most reliable fix. ' +
+    'If a reported problem is actually intentional for this pose, keep the relevant values unchanged. ' +
+    'Reply with the corrected COMPLETE pose JSON object (same schema, no markdown fences) as the LAST thing in your reply.'
+  );
 }

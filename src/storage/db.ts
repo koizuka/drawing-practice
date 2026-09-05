@@ -3,7 +3,11 @@ import type { Stroke } from '../drawing/types';
 import type { GuideLine, GridSettings } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
-import type { SketchfabCategorySlug, SketchfabSearchContext, SketchfabTimeFilter } from '../utils/sketchfab';
+import type {
+  SketchfabCategorySlug,
+  SketchfabSearchContext,
+  SketchfabTimeFilter,
+} from '../utils/sketchfab';
 import type { PoseJson } from '../pose/poseTypes';
 
 /**
@@ -339,8 +343,7 @@ export async function cleanupStalePrDatabases(): Promise<void> {
         indexedDB.deleteDatabase(name);
       }
     }
-  }
-  catch {
+  } catch {
     // indexedDB.databases() may not be available in all browsers
   }
 }

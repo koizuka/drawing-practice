@@ -39,7 +39,9 @@ describe('GestureHUD', () => {
   });
 
   it('shows the current pose index, completed count, and queued count', () => {
-    render(<GestureHUD {...makeProps({ currentIndex: 3, completedCount: 2, queueRemaining: 7 })} />);
+    render(
+      <GestureHUD {...makeProps({ currentIndex: 3, completedCount: 2, queueRemaining: 7 })} />,
+    );
     expect(screen.getByText(/Pose 3 \(2 ✓\)/)).toBeInTheDocument();
     // Plain count when no more pages on backend.
     expect(screen.getByText(/queued 7/)).toBeInTheDocument();

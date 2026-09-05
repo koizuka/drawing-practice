@@ -9,7 +9,12 @@ import type { TraceStroke } from '../trace/types';
  */
 const DEFAULT_SEGMENTS = 96;
 
-export function circle(cx: number, cy: number, r: number, segments = DEFAULT_SEGMENTS): TraceStroke {
+export function circle(
+  cx: number,
+  cy: number,
+  r: number,
+  segments = DEFAULT_SEGMENTS,
+): TraceStroke {
   const pts: Point[] = [];
   for (let i = 0; i < segments; i++) {
     const a = (i / segments) * 2 * Math.PI;
@@ -54,8 +59,10 @@ export function cubicBezier(
   for (let i = 0; i <= segments; i++) {
     const t = i / segments;
     const omt = 1 - t;
-    const x = omt * omt * omt * p0.x + 3 * omt * omt * t * p1.x + 3 * omt * t * t * p2.x + t * t * t * p3.x;
-    const y = omt * omt * omt * p0.y + 3 * omt * omt * t * p1.y + 3 * omt * t * t * p2.y + t * t * t * p3.y;
+    const x =
+      omt * omt * omt * p0.x + 3 * omt * omt * t * p1.x + 3 * omt * t * t * p2.x + t * t * t * p3.x;
+    const y =
+      omt * omt * omt * p0.y + 3 * omt * omt * t * p1.y + 3 * omt * t * t * p2.y + t * t * t * p3.y;
     pts.push({ x, y });
   }
   return { points: pts, length: polylineLength(pts), closed: false };
@@ -66,7 +73,7 @@ export function cubicBezier(
  * (which scoring treats as a circular ring).
  */
 export function polyline(points: readonly Point[], closed = false): TraceStroke {
-  const pts = points.map(p => ({ ...p }));
+  const pts = points.map((p) => ({ ...p }));
   if (closed && pts.length > 0) pts.push({ x: pts[0].x, y: pts[0].y });
   return { points: pts, length: polylineLength(pts), closed };
 }
@@ -76,15 +83,26 @@ export function polyline(points: readonly Point[], closed = false): TraceStroke 
  * that join at the given anchor points. Used for S-curves and hair lines
  * where natural curvature matters more than precise tangent control.
  */
-export function smoothCurve(controlGroups: { p0: Point; p1: Point; p2: Point; p3: Point }[], segPerCurve = 24): TraceStroke {
+export function smoothCurve(
+  controlGroups: { p0: Point; p1: Point; p2: Point; p3: Point }[],
+  segPerCurve = 24,
+): TraceStroke {
   const pts: Point[] = [];
   controlGroups.forEach((g, idx) => {
     for (let i = 0; i <= segPerCurve; i++) {
       if (i === 0 && idx > 0) continue; // dedup join
       const t = i / segPerCurve;
       const omt = 1 - t;
-      const x = omt * omt * omt * g.p0.x + 3 * omt * omt * t * g.p1.x + 3 * omt * t * t * g.p2.x + t * t * t * g.p3.x;
-      const y = omt * omt * omt * g.p0.y + 3 * omt * omt * t * g.p1.y + 3 * omt * t * t * g.p2.y + t * t * t * g.p3.y;
+      const x =
+        omt * omt * omt * g.p0.x +
+        3 * omt * omt * t * g.p1.x +
+        3 * omt * t * t * g.p2.x +
+        t * t * t * g.p3.x;
+      const y =
+        omt * omt * omt * g.p0.y +
+        3 * omt * omt * t * g.p1.y +
+        3 * omt * t * t * g.p2.y +
+        t * t * t * g.p3.y;
       pts.push({ x, y });
     }
   });

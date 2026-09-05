@@ -148,10 +148,7 @@ function matchClosed(
  * across all candidates, or null when nothing qualified (user should be
  * shown no feedback and the stroke should be discarded).
  */
-export function scoreAttempt(
-  user: Stroke,
-  templates: readonly TraceStroke[],
-): TraceMatch | null {
+export function scoreAttempt(user: Stroke, templates: readonly TraceStroke[]): TraceMatch | null {
   if (user.points.length < 2) return null;
   // Defensively reject zero-length strokes.
   if (polylineLength(user.points) === 0) return null;

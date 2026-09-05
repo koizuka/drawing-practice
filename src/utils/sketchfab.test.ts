@@ -10,7 +10,9 @@ describe('parseSketchfabModelUrl', () => {
   const uid = 'a1b2c3d4e5f6789012345678abcdef99';
 
   it('parses /3d-models/<slug>-<uid>', () => {
-    expect(parseSketchfabModelUrl(`https://sketchfab.com/3d-models/cool-name-${uid}`)).toEqual({ uid });
+    expect(parseSketchfabModelUrl(`https://sketchfab.com/3d-models/cool-name-${uid}`)).toEqual({
+      uid,
+    });
   });
 
   it('parses /models/<uid>', () => {
@@ -18,7 +20,9 @@ describe('parseSketchfabModelUrl', () => {
   });
 
   it('accepts www. and trailing slash and trims whitespace', () => {
-    expect(parseSketchfabModelUrl(`  https://www.sketchfab.com/3d-models/foo-${uid}/  `)).toEqual({ uid });
+    expect(parseSketchfabModelUrl(`  https://www.sketchfab.com/3d-models/foo-${uid}/  `)).toEqual({
+      uid,
+    });
   });
 
   it('returns null when uid is malformed', () => {
@@ -56,7 +60,11 @@ describe('getSketchfabLastSearch / setSketchfabLastSearch', () => {
 
   it('round-trips a query+timeFilter+category context', () => {
     setSketchfabLastSearch({ query: 'pose', timeFilter: 'week', category: 'characters-creatures' });
-    expect(getSketchfabLastSearch()).toEqual({ query: 'pose', timeFilter: 'week', category: 'characters-creatures' });
+    expect(getSketchfabLastSearch()).toEqual({
+      query: 'pose',
+      timeFilter: 'week',
+      category: 'characters-creatures',
+    });
   });
 
   it('round-trips without category', () => {
@@ -67,9 +75,15 @@ describe('getSketchfabLastSearch / setSketchfabLastSearch', () => {
   it('returns null on garbage payload', () => {
     localStorage.setItem('sketchfab.lastSearch', 'not-json');
     expect(getSketchfabLastSearch()).toBeNull();
-    localStorage.setItem('sketchfab.lastSearch', JSON.stringify({ query: 'q', timeFilter: 'never' }));
+    localStorage.setItem(
+      'sketchfab.lastSearch',
+      JSON.stringify({ query: 'q', timeFilter: 'never' }),
+    );
     expect(getSketchfabLastSearch()).toBeNull();
-    localStorage.setItem('sketchfab.lastSearch', JSON.stringify({ query: 'q', timeFilter: 'all', category: 'made-up' }));
+    localStorage.setItem(
+      'sketchfab.lastSearch',
+      JSON.stringify({ query: 'q', timeFilter: 'all', category: 'made-up' }),
+    );
     expect(getSketchfabLastSearch()).toBeNull();
   });
 });

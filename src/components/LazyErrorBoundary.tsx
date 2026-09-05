@@ -25,11 +25,11 @@ export class LazyErrorBoundary extends Component<Props, State> {
       return (
         <Alert
           severity="error"
-          action={(
+          action={
             <Button color="inherit" size="small" onClick={() => window.location.reload()}>
               {t('reload')}
             </Button>
-          )}
+          }
           sx={{ m: 2 }}
         >
           {t('lazyChunkLoadFailed')}

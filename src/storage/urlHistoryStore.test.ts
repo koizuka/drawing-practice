@@ -18,7 +18,13 @@ vi.mock('./db', () => ({
   },
 }));
 
-import { addUrlHistory, getUrlHistory, deleteUrlHistory, URL_HISTORY_LIMIT, URL_HISTORY_IMAGE_LIMIT } from './urlHistoryStore';
+import {
+  addUrlHistory,
+  getUrlHistory,
+  deleteUrlHistory,
+  URL_HISTORY_LIMIT,
+  URL_HISTORY_IMAGE_LIMIT,
+} from './urlHistoryStore';
 import { db } from './db';
 
 const mockToArray = () => db.urlHistory.toArray as Mock;
@@ -206,7 +212,9 @@ describe('urlHistoryStore', () => {
       });
       const arg = mockPut().mock.calls[0][0] as UrlHistoryEntry;
       expect(arg.type).toBe('pexels');
-      expect(arg.thumbnailUrl).toBe('https://images.pexels.com/photos/123/x?auto=compress&cs=tinysrgb&h=130');
+      expect(arg.thumbnailUrl).toBe(
+        'https://images.pexels.com/photos/123/x?auto=compress&cs=tinysrgb&h=130',
+      );
       expect(arg.title).toBe('A photo');
     });
 
@@ -247,16 +255,22 @@ describe('urlHistoryStore', () => {
         type: 'url',
         lastUsedAt: new Date(10_000 + i),
       }));
-      const images: UrlHistoryEntry[] = Array.from({ length: URL_HISTORY_IMAGE_LIMIT + 1 }, (_, i) => ({
-        url: `local:${i}`,
-        type: 'image',
-        fileName: `img${i}.jpg`,
-        imageBlob: new Blob(['x']),
-        lastUsedAt: new Date(1000 + i), // i=0 is oldest image
-      }));
+      const images: UrlHistoryEntry[] = Array.from(
+        { length: URL_HISTORY_IMAGE_LIMIT + 1 },
+        (_, i) => ({
+          url: `local:${i}`,
+          type: 'image',
+          fileName: `img${i}.jpg`,
+          imageBlob: new Blob(['x']),
+          lastUsedAt: new Date(1000 + i), // i=0 is oldest image
+        }),
+      );
       mockToArray().mockResolvedValue([...urls, ...images]);
 
-      await addUrlHistory('local:new', 'image', { fileName: 'new.jpg', imageBlob: new Blob(['new']) });
+      await addUrlHistory('local:new', 'image', {
+        fileName: 'new.jpg',
+        imageBlob: new Blob(['new']),
+      });
 
       expect(mockBulkDelete()).toHaveBeenCalledTimes(1);
       const deletedUrls = mockBulkDelete().mock.calls[0][0] as string[];
@@ -316,7 +330,10 @@ describe('urlHistoryStore', () => {
           lastUsedAt: new Date(bumpedTs + 100),
         },
       ]);
-      await addUrlHistory('local:new', 'image', { fileName: 'new.jpg', imageBlob: new Blob(['new']) });
+      await addUrlHistory('local:new', 'image', {
+        fileName: 'new.jpg',
+        imageBlob: new Blob(['new']),
+      });
 
       expect(mockBulkDelete()).toHaveBeenCalledTimes(1);
       expect(mockBulkDelete().mock.calls[0][0]).toEqual(['local:1']);

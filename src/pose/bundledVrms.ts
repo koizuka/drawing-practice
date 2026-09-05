@@ -26,7 +26,7 @@ export const DEFAULT_VRM_ID = BUNDLED_VRMS[0].id;
 export const USER_VRM_ID = 'user';
 
 export function getBundledVrm(id: string): BundledVrm | undefined {
-  return BUNDLED_VRMS.find(v => v.id === id);
+  return BUNDLED_VRMS.find((v) => v.id === id);
 }
 
 export function bundledVrmUrl(vrm: BundledVrm): string {

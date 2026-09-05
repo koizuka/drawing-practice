@@ -82,7 +82,9 @@ export function isFreezeHintEligible(
 ): boolean {
   const silence = now - lastInputAt;
   const streak = lastInputAt - streakStartAt;
-  return streak >= th.streakMs && silence >= th.silenceMs && silence < th.silenceMs + th.maxVisibleMs;
+  return (
+    streak >= th.streakMs && silence >= th.silenceMs && silence < th.silenceMs + th.maxVisibleMs
+  );
 }
 
 /**
@@ -95,16 +97,26 @@ export function evaluateFreezeHint(
   th: FreezeHintThresholds = DEFAULT_THRESHOLDS,
 ): FreezeHintResult {
   const { lastInputAt, streakStartAt, client, containerRect } = input;
-  const visible
-    = client != null
-      && containerRect != null
-      && isFreezeHintEligible(lastInputAt, streakStartAt, now, th);
+  const visible =
+    client != null &&
+    containerRect != null &&
+    isFreezeHintEligible(lastInputAt, streakStartAt, now, th);
 
   if (!visible) return { visible: false, x: 0, y: 0 };
 
   const relX = client.x - containerRect.left;
   const relY = client.y - containerRect.top;
-  const x = clampOrCenter(relX, EST_HALF_W + MARGIN, containerRect.width - EST_HALF_W - MARGIN, containerRect.width / 2);
-  const y = clampOrCenter(relY, EST_ABOVE + MARGIN, containerRect.height - MARGIN, containerRect.height / 2);
+  const x = clampOrCenter(
+    relX,
+    EST_HALF_W + MARGIN,
+    containerRect.width - EST_HALF_W - MARGIN,
+    containerRect.width / 2,
+  );
+  const y = clampOrCenter(
+    relY,
+    EST_ABOVE + MARGIN,
+    containerRect.height - MARGIN,
+    containerRect.height / 2,
+  );
   return { visible: true, x, y };
 }

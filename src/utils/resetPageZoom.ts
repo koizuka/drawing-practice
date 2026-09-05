@@ -1,6 +1,7 @@
-const meta = typeof document !== 'undefined'
-  ? document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
-  : null;
+const meta =
+  typeof document !== 'undefined'
+    ? document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
+    : null;
 // モジュール初期化時に元の content を1回だけ捕捉する。これで連続呼び出し時にも
 // stale な (maximum-scale=1.0 を含む) 値を「original」と誤認することがない。
 const ORIGINAL = meta?.getAttribute('content') ?? null;

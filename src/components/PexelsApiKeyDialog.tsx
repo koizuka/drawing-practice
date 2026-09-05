@@ -45,8 +45,7 @@ function PexelsApiKeyDialogBody({ onClose, onKeyChanged }: PexelsApiKeyDialogCon
       <DialogTitle>{t('pexelsApiKeyTitle')}</DialogTitle>
       <DialogContent>
         <DialogContentText sx={{ mb: 2 }}>
-          {t('pexelsApiKeyDescription')}
-          {' '}
+          {t('pexelsApiKeyDescription')}{' '}
           <Link href="https://www.pexels.com/api/" target="_blank" rel="noreferrer noopener">
             pexels.com/api
           </Link>
@@ -57,13 +56,17 @@ function PexelsApiKeyDialogBody({ onClose, onKeyChanged }: PexelsApiKeyDialogCon
           type="password"
           label={t('pexelsApiKeyInput')}
           value={value}
-          onChange={e => setValue(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') handleSave();
+          }}
           size="small"
         />
       </DialogContent>
       <DialogActions>
-        <Button onClick={handleClear} color="warning">{t('pexelsApiKeyClear')}</Button>
+        <Button onClick={handleClear} color="warning">
+          {t('pexelsApiKeyClear')}
+        </Button>
         <Button onClick={onClose}>{t('cancel')}</Button>
         <Button onClick={handleSave} variant="contained" disabled={value.trim() === ''}>
           {t('pexelsApiKeySave')}

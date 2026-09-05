@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import type { KeyboardEvent } from 'react';
 import { isSubmitEnter } from './imeSafeEnter';
 
-function makeEvent(key: string, opts: { isComposing?: boolean; keyCode?: number } = {}): KeyboardEvent {
+function makeEvent(
+  key: string,
+  opts: { isComposing?: boolean; keyCode?: number } = {},
+): KeyboardEvent {
   return {
     key,
     nativeEvent: {

@@ -19,7 +19,13 @@ vi.mock('./db', () => ({
   },
 }));
 
-import { addPoseHistory, getPoseHistory, touchPoseHistory, deletePoseHistory, POSE_HISTORY_LIMIT } from './poseHistoryStore';
+import {
+  addPoseHistory,
+  getPoseHistory,
+  touchPoseHistory,
+  deletePoseHistory,
+  POSE_HISTORY_LIMIT,
+} from './poseHistoryStore';
 import { db } from './db';
 
 const mockAdd = () => db.poseHistory.add as Mock;
@@ -44,7 +50,12 @@ describe('addPoseHistory', () => {
   it('adds the entry with lastUsedAt initialized to createdAt', async () => {
     const createdAt = new Date(1000);
     await addPoseHistory({ pose: somePose, hint: 'running', createdAt });
-    expect(mockAdd()).toHaveBeenCalledWith({ pose: somePose, hint: 'running', createdAt, lastUsedAt: createdAt });
+    expect(mockAdd()).toHaveBeenCalledWith({
+      pose: somePose,
+      hint: 'running',
+      createdAt,
+      lastUsedAt: createdAt,
+    });
   });
 
   it('does not evict while at or under the limit', async () => {

@@ -89,7 +89,9 @@ function clamp(value: number, min: number, max: number): number {
 
 /** Clamp each field to its valid range, falling back to defaults for non-finite values. */
 export function sanitizePerspectiveSettings(p: unknown): PerspectiveSettings {
-  const src = (p && typeof p === 'object' ? p : {}) as Partial<Record<keyof PerspectiveSettings, unknown>>;
+  const src = (p && typeof p === 'object' ? p : {}) as Partial<
+    Record<keyof PerspectiveSettings, unknown>
+  >;
   const num = (v: unknown, fallback: number): number =>
     typeof v === 'number' && Number.isFinite(v) ? v : fallback;
   return {
@@ -105,11 +107,13 @@ const MEMORY_EPSILON = 1e-6;
 
 /** Field-wise comparison with a float tolerance, for memory dedupe and recall-button highlighting. */
 export function perspectiveSettingsEqual(a: PerspectiveSettings, b: PerspectiveSettings): boolean {
-  return Math.abs(a.yaw - b.yaw) < MEMORY_EPSILON
-    && Math.abs(a.pitch - b.pitch) < MEMORY_EPSILON
-    && Math.abs(a.strength - b.strength) < MEMORY_EPSILON
-    && Math.abs(a.centerX - b.centerX) < MEMORY_EPSILON
-    && Math.abs(a.centerY - b.centerY) < MEMORY_EPSILON;
+  return (
+    Math.abs(a.yaw - b.yaw) < MEMORY_EPSILON &&
+    Math.abs(a.pitch - b.pitch) < MEMORY_EPSILON &&
+    Math.abs(a.strength - b.strength) < MEMORY_EPSILON &&
+    Math.abs(a.centerX - b.centerX) < MEMORY_EPSILON &&
+    Math.abs(a.centerY - b.centerY) < MEMORY_EPSILON
+  );
 }
 
 /** Smallest label in 1..MAX_PERSPECTIVE_MEMORIES not yet taken. */
@@ -130,12 +134,19 @@ export function sanitizePerspectiveMemories(memories: unknown): PerspectiveMemor
   const used = new Set<number>();
   return memories.slice(0, MAX_PERSPECTIVE_MEMORIES).map((m) => {
     const obj = (m && typeof m === 'object' ? m : {}) as { seq?: unknown; settings?: unknown };
-    const valid = typeof obj.seq === 'number' && Number.isInteger(obj.seq)
-      && obj.seq >= 1 && obj.seq <= MAX_PERSPECTIVE_MEMORIES && !used.has(obj.seq);
-    const seq = valid ? obj.seq as number : smallestFreeMemorySeq(used);
+    const valid =
+      typeof obj.seq === 'number' &&
+      Number.isInteger(obj.seq) &&
+      obj.seq >= 1 &&
+      obj.seq <= MAX_PERSPECTIVE_MEMORIES &&
+      !used.has(obj.seq);
+    const seq = valid ? (obj.seq as number) : smallestFreeMemorySeq(used);
     used.add(seq);
     // Legacy entries are the settings object itself; current ones nest it.
-    return { seq, settings: sanitizePerspectiveSettings(obj.settings === undefined ? m : obj.settings) };
+    return {
+      seq,
+      settings: sanitizePerspectiveSettings(obj.settings === undefined ? m : obj.settings),
+    };
   });
 }
 
@@ -146,8 +157,7 @@ interface LegacyGridSettings {
 }
 
 function isGridSettings(grid: object): grid is GridSettings {
-  return 'mode' in grid
-    && GRID_MODES.includes((grid as GridSettings).mode);
+  return 'mode' in grid && GRID_MODES.includes((grid as GridSettings).mode);
 }
 
 function isLegacyGridSettings(grid: object): grid is LegacyGridSettings {

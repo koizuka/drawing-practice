@@ -8,7 +8,8 @@ import { t } from '../i18n';
 
 /** Enters perspective mode and exposes the live guide state for assertions. */
 function Probe() {
-  const { grid, setGridMode, lastChangeTransient, placingCenter, recordPerspectiveMemory } = useGuides();
+  const { grid, setGridMode, lastChangeTransient, placingCenter, recordPerspectiveMemory } =
+    useGuides();
   useEffect(() => {
     setGridMode('perspective');
   }, [setGridMode]);
@@ -40,7 +41,17 @@ function padElement(): HTMLElement {
   const pad = screen.getByLabelText(t('perspectiveRotation'));
   // jsdom reports a zero-size rect; give the pad its real geometry.
   pad.getBoundingClientRect = () =>
-    ({ left: 0, top: 0, width: 96, height: 96, right: 96, bottom: 96, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
+    ({
+      left: 0,
+      top: 0,
+      width: 96,
+      height: 96,
+      right: 96,
+      bottom: 96,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }) as DOMRect;
   return pad;
 }
 
@@ -70,7 +81,7 @@ describe('PerspectiveController', () => {
 
     fireEvent.pointerDown(pad, { clientX: 48, clientY: 96, pointerId: 1 });
     // Let the rAF-throttled flush run.
-    await act(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
+    await act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
     const probe = screen.getByTestId('probe');
     expect(Number(probe.dataset.pitch)).toBe(90);

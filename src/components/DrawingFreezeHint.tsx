@@ -2,7 +2,12 @@ import { useEffect, useState, type RefObject } from 'react';
 import { Box, Typography } from '@mui/material';
 import { Pause } from 'lucide-react';
 import { t } from '../i18n';
-import { evaluateFreezeHint, isFreezeHintEligible, EST_HALF_W, type FreezeHintResult } from './freezeHintLogic';
+import {
+  evaluateFreezeHint,
+  isFreezeHintEligible,
+  EST_HALF_W,
+  type FreezeHintResult,
+} from './freezeHintLogic';
 
 const POLL_MS = 300;
 const HIDDEN: FreezeHintResult = { visible: false, x: 0, y: 0 };
@@ -56,10 +61,13 @@ export function DrawingFreezeHint({
       let next = HIDDEN;
       if (isFreezeHintEligible(lastInputAt, streakStartAt, now)) {
         const rect = containerRef.current?.getBoundingClientRect() ?? null;
-        next = evaluateFreezeHint({ lastInputAt, streakStartAt, client: lastClientRef.current, containerRect: rect }, now);
+        next = evaluateFreezeHint(
+          { lastInputAt, streakStartAt, client: lastClientRef.current, containerRect: rect },
+          now,
+        );
       }
       // Only re-render on an actual change (visibility flip or moved anchor).
-      setHint(prev =>
+      setHint((prev) =>
         prev.visible === next.visible && prev.x === next.x && prev.y === next.y ? prev : next,
       );
     }, POLL_MS);

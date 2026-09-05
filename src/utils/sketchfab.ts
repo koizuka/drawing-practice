@@ -13,9 +13,9 @@ export const SKETCHFAB_CATEGORIES = [
   { slug: 'science-technology', labelKey: 'technology' as const },
 ] as const;
 
-export type SketchfabCategorySlug = typeof SKETCHFAB_CATEGORIES[number]['slug'];
+export type SketchfabCategorySlug = (typeof SKETCHFAB_CATEGORIES)[number]['slug'];
 
-const CATEGORY_SLUGS: readonly string[] = SKETCHFAB_CATEGORIES.map(c => c.slug);
+const CATEGORY_SLUGS: readonly string[] = SKETCHFAB_CATEGORIES.map((c) => c.slug);
 
 export interface SketchfabSearchContext {
   query: string;
@@ -49,8 +49,7 @@ export function parseSketchfabModelUrl(rawUrl: string): { uid: string } | null {
   let url: URL;
   try {
     url = new URL(rawUrl.trim());
-  }
-  catch {
+  } catch {
     return null;
   }
   const host = url.hostname.toLowerCase().replace(/^www\./, '');
@@ -89,20 +88,19 @@ export function getSketchfabLastSearch(): SketchfabSearchContext | null {
     if (!parsed || typeof parsed !== 'object') return null;
     const { query, category, timeFilter } = parsed as Record<string, unknown>;
     if (typeof query !== 'string') return null;
-    if (typeof timeFilter !== 'string' || !TIME_FILTERS.includes(timeFilter as SketchfabTimeFilter)) return null;
+    if (typeof timeFilter !== 'string' || !TIME_FILTERS.includes(timeFilter as SketchfabTimeFilter))
+      return null;
     let cat: SketchfabCategorySlug | undefined;
     if (typeof category === 'string') {
       if (!CATEGORY_SLUGS.includes(category)) return null;
       cat = category as SketchfabCategorySlug;
-    }
-    else if (category != null) {
+    } else if (category != null) {
       return null;
     }
     const result: SketchfabSearchContext = { query, timeFilter: timeFilter as SketchfabTimeFilter };
     if (cat) result.category = cat;
     return result;
-  }
-  catch {
+  } catch {
     return null;
   }
 }
@@ -110,8 +108,7 @@ export function getSketchfabLastSearch(): SketchfabSearchContext | null {
 export function setSketchfabLastSearch(ctx: SketchfabSearchContext): void {
   try {
     localStorage.setItem(LAST_SEARCH_STORAGE_KEY, JSON.stringify(ctx));
-  }
-  catch {
+  } catch {
     // localStorage disabled / unavailable
   }
 }
@@ -128,12 +125,15 @@ interface SketchfabModelApiResponse {
  * user pastes a Sketchfab URL — we need title/author/thumbnail before the
  * iframe finishes loading so the URL-history entry is populated correctly.
  */
-export async function getSketchfabModel(uid: string, signal?: AbortSignal): Promise<SketchfabModelMeta> {
+export async function getSketchfabModel(
+  uid: string,
+  signal?: AbortSignal,
+): Promise<SketchfabModelMeta> {
   const res = await fetch(`https://api.sketchfab.com/v3/models/${uid}`, { signal });
   if (!res.ok) throw new Error(`Sketchfab model fetch failed: ${res.status}`);
-  const data = await res.json() as SketchfabModelApiResponse;
+  const data = (await res.json()) as SketchfabModelApiResponse;
   const images = data.thumbnails?.images ?? [];
-  const thumbnail = images.find(t => (t.width ?? 0) >= 200)?.url ?? images[0]?.url ?? '';
+  const thumbnail = images.find((t) => (t.width ?? 0) >= 200)?.url ?? images[0]?.url ?? '';
   return {
     uid: data.uid ?? uid,
     title: data.name ?? '',

@@ -18,7 +18,9 @@ import { SketchfabViewer } from './SketchfabViewer';
 
 const NOW = new Date();
 
-function makeEntry(overrides: Partial<SketchfabSearchHistoryEntry> = {}): SketchfabSearchHistoryEntry {
+function makeEntry(
+  overrides: Partial<SketchfabSearchHistoryEntry> = {},
+): SketchfabSearchHistoryEntry {
   return {
     key: 'tree|',
     query: 'tree',
@@ -31,9 +33,9 @@ function makeEntry(overrides: Partial<SketchfabSearchHistoryEntry> = {}): Sketch
 beforeEach(() => {
   getSketchfabSearchHistoryMock.mockReset();
   addSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined);
-  deleteSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined)
+  deleteSketchfabSearchHistoryMock.mockReset().mockResolvedValue(undefined);
   // Default: no Sketchfab API loaded — keeps the viewer in browse mode.
-  ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = undefined;
+  (window as unknown as { Sketchfab?: unknown }).Sketchfab = undefined;
 });
 
 describe('SketchfabViewer search history dropdown', () => {
@@ -83,9 +85,11 @@ describe('SketchfabViewer search history dropdown', () => {
     ]);
     // The viewer reads window.fetch for the actual category browse — block it
     // so a spurious selection would surface as an unexpected fetch call.
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
@@ -107,9 +111,11 @@ describe('SketchfabViewer search history dropdown', () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
     ]);
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
@@ -129,9 +135,11 @@ describe('SketchfabViewer search history dropdown', () => {
 
   it('restores search context when initialQuery/initialCategory props are provided (URL-history reopen flow)', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
 
     // Simulate the parent passing the saved searchContext after a URL-history
     // sketchfab entry was selected — this is what makes the "Animals" button
@@ -161,9 +169,11 @@ describe('SketchfabViewer search history dropdown', () => {
 
   it('clicking the All button after a category click clears the active category and fetches /v3/models without category filter', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
@@ -171,14 +181,18 @@ describe('SketchfabViewer search history dropdown', () => {
     // First click Animals → activeCategory becomes 'animals-pets'
     fireEvent.click(screen.getByRole('button', { name: 'Animals' }));
     await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
-    expect(screen.getByRole('button', { name: 'Animals' }).className).toMatch(/MuiButton-contained/);
+    expect(screen.getByRole('button', { name: 'Animals' }).className).toMatch(
+      /MuiButton-contained/,
+    );
 
     // Then click All → activeCategory cleared, All becomes contained
     fireEvent.click(screen.getByRole('button', { name: 'All' }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'All' }).className).toMatch(/MuiButton-contained/);
     });
-    expect(screen.getByRole('button', { name: 'Animals' }).className).not.toMatch(/MuiButton-contained/);
+    expect(screen.getByRole('button', { name: 'Animals' }).className).not.toMatch(
+      /MuiButton-contained/,
+    );
 
     // The most recent fetch should be /v3/models WITHOUT a `categories=` param
     const lastUrl = fetchSpy.mock.calls.at(-1)?.[0] as string;
@@ -201,9 +215,11 @@ describe('SketchfabViewer search history dropdown', () => {
       makeEntry({ key: '|animals-pets', query: '', category: 'animals-pets' }),
     ]);
 
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalledTimes(1));
@@ -240,8 +256,8 @@ describe('SketchfabViewer unified search/UID input', () => {
   // Stubs the Sketchfab client so loadModel doesn't throw when the iframe path
   // would normally instantiate a viewer.
   function stubSketchfabClient() {
-    const init = vi.fn()
-    ;(window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }));
+    const init = vi.fn();
+    (window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }));
     return { init };
   }
 
@@ -267,16 +283,20 @@ describe('SketchfabViewer unified search/UID input', () => {
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
     const input = screen.getByPlaceholderText('Search models or paste UID / URL...');
-    fireEvent.change(input, { target: { value: `https://sketchfab.com/3d-models/some-model-${VALID_UID}` } });
+    fireEvent.change(input, {
+      target: { value: `https://sketchfab.com/3d-models/some-model-${VALID_UID}` },
+    });
     expect(await screen.findByRole('button', { name: 'Load' })).toBeInTheDocument();
   });
 
   it('clicking Load with a UID input does not trigger a search fetch and does not save to history', async () => {
     stubSketchfabClient();
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
@@ -288,8 +308,10 @@ describe('SketchfabViewer unified search/UID input', () => {
     // loadModel triggers an async getSketchfabModel fetch for metadata; let it
     // resolve, then assert no /v3/search or /v3/models endpoint was hit.
     await waitFor(() => {
-      const calls = fetchSpy.mock.calls.map(c => c[0] as string);
-      const searchOrModelsCalls = calls.filter(u => u.includes('/v3/search') || u.match(/\/v3\/models\?/));
+      const calls = fetchSpy.mock.calls.map((c) => c[0] as string);
+      const searchOrModelsCalls = calls.filter(
+        (u) => u.includes('/v3/search') || u.match(/\/v3\/models\?/),
+      );
       expect(searchOrModelsCalls).toHaveLength(0);
     });
     expect(addSketchfabSearchHistoryMock).not.toHaveBeenCalled();
@@ -298,9 +320,11 @@ describe('SketchfabViewer unified search/UID input', () => {
 
   it('pressing Enter with a keyword still runs a search', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
-    );
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(new Response(JSON.stringify({ results: [], next: null }))),
+      );
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());
 
@@ -321,7 +345,10 @@ describe('SketchfabViewer search loading and error feedback', () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
     let resolveFetch: ((value: Response) => void) | undefined;
     const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      () => new Promise<Response>((resolve) => { resolveFetch = resolve; }),
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
     );
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
@@ -363,7 +390,8 @@ describe('SketchfabViewer search loading and error feedback', () => {
   it('clears a previous error when a category browse starts', async () => {
     getSketchfabSearchHistoryMock.mockResolvedValue([]);
     // First call rejects (produces an error), second call resolves cleanly.
-    const fetchSpy = vi.spyOn(window, 'fetch')
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
       .mockRejectedValueOnce(new TypeError('Network down'))
       .mockResolvedValueOnce(new Response(JSON.stringify({ results: [], next: null })));
 
@@ -386,8 +414,9 @@ describe('SketchfabViewer search loading and error feedback', () => {
     // Track abort signals so we can verify the first request is canceled.
     const signals: AbortSignal[] = [];
     let resolveSecond: ((value: Response) => void) | undefined;
-    const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(
-      (_input: RequestInfo | URL, init?: RequestInit) => {
+    const fetchSpy = vi
+      .spyOn(window, 'fetch')
+      .mockImplementation((_input: RequestInfo | URL, init?: RequestInit) => {
         if (init?.signal) signals.push(init.signal);
         // First call: never resolves on its own; will be aborted.
         if (signals.length === 1) {
@@ -398,9 +427,10 @@ describe('SketchfabViewer search loading and error feedback', () => {
           });
         }
         // Second call: resolves when test triggers it.
-        return new Promise<Response>((resolve) => { resolveSecond = resolve; });
-      },
-    );
+        return new Promise<Response>((resolve) => {
+          resolveSecond = resolve;
+        });
+      });
 
     render(<SketchfabViewer onFixAngle={vi.fn()} />);
     await waitFor(() => expect(getSketchfabSearchHistoryMock).toHaveBeenCalled());

@@ -1,5 +1,26 @@
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, type MouseEvent, type Ref } from 'react';
-import { Alert, Box, Button, ButtonBase, CircularProgress, IconButton, Popover, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type Ref,
+} from 'react';
+import {
+  Alert,
+  Box,
+  Button,
+  ButtonBase,
+  CircularProgress,
+  IconButton,
+  Popover,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material';
 import { History, PersonStanding, Trash2 } from 'lucide-react';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
@@ -8,10 +29,26 @@ import type { PoseJson } from '../pose/poseTypes';
 import { PoseParseError } from '../pose/poseTypes';
 import { DEFAULT_VRM_ID, USER_VRM_ID } from '../pose/bundledVrms';
 import { refinePoseUntilValid } from '../pose/poseRefineLoop';
-import { anthropicErrorDetail, generatePose, getAnthropicApiKey, isAnthropicAuthError, mapAnthropicErrorKey, refinePose } from '../utils/anthropic';
+import {
+  anthropicErrorDetail,
+  generatePose,
+  getAnthropicApiKey,
+  isAnthropicAuthError,
+  mapAnthropicErrorKey,
+  refinePose,
+} from '../utils/anthropic';
 import { isAbortError } from '../utils/pexels';
 import { isSubmitEnter } from '../utils/imeSafeEnter';
-import { addPoseHistory, deletePoseHistory, getPoseHistory, getUserVrm, saveUserVrm, touchPoseHistory, VrmTooLargeError, type PoseHistoryRecord } from '../storage';
+import {
+  addPoseHistory,
+  deletePoseHistory,
+  getPoseHistory,
+  getUserVrm,
+  saveUserVrm,
+  touchPoseHistory,
+  VrmTooLargeError,
+  type PoseHistoryRecord,
+} from '../storage';
 import { dataUrlToJpegBlob } from '../utils/imageResize';
 import PoseViewer, { type PoseViewerActions, type PoseVrmSource } from './PoseViewer';
 import { PoseSketchPad, type PoseSketchPadHandle } from './PoseSketchPad';
@@ -75,7 +112,11 @@ export default function PoseSourcePanel({
   // True while a validation-correction round is in flight (subset of
   // `generating`) — switches the button label to the refining message.
   const [refining, setRefining] = useState(false);
-  const [error, setError] = useState<{ message: string; detail?: string; keyAction: boolean } | null>(null);
+  const [error, setError] = useState<{
+    message: string;
+    detail?: string;
+    keyAction: boolean;
+  } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [vrmLoadFailed, setVrmLoadFailed] = useState(false);
   const [vrmRetryToken, setVrmRetryToken] = useState(0);
@@ -109,8 +150,7 @@ export default function PoseSourcePanel({
       // restores the SAME object instance, so without clearing, redo back to
       // this pose would also skip and keep a stale hint/model toggle.
       setSelfCommitted(null);
-    }
-    else if (poseInfo) {
+    } else if (poseInfo) {
       setHint(poseInfo.hint ?? '');
       setVrmId(poseInfo.vrmId);
     }
@@ -136,21 +176,24 @@ export default function PoseSourcePanel({
     let cancelled = false;
     const fallbackToBundled = () => {
       setNotice(t('poseVrmUserMissing'));
-      setVrmId(current => (current === USER_VRM_ID ? DEFAULT_VRM_ID : current));
+      setVrmId((current) => (current === USER_VRM_ID ? DEFAULT_VRM_ID : current));
     };
-    getUserVrm().then((record) => {
-      if (cancelled) return;
-      if (record) {
-        setUserVrmBlob(record.blob);
-      }
-      else if (vrmId === USER_VRM_ID) {
-        fallbackToBundled();
-      }
-    }).catch(() => {
-      if (cancelled) return;
-      if (vrmId === USER_VRM_ID) fallbackToBundled();
-    });
-    return () => { cancelled = true; };
+    getUserVrm()
+      .then((record) => {
+        if (cancelled) return;
+        if (record) {
+          setUserVrmBlob(record.blob);
+        } else if (vrmId === USER_VRM_ID) {
+          fallbackToBundled();
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        if (vrmId === USER_VRM_ID) fallbackToBundled();
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [vrmId, userVrmBlob]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -190,22 +233,33 @@ export default function PoseSourcePanel({
       // to the mannequin, measure it, and let the model correct physically
       // implausible results in the same conversation. measure() returning
       // null on a superseded/aborted run stops the loop without extra calls.
-      .then(generation => refinePoseUntilValid(generation, {
-        measure: candidate => (controller.signal.aborted || abortRef.current !== controller)
-          ? null
-          : viewerActionsRef.current?.measurePose(candidate) ?? null,
-        refine: (prior, feedback) => refinePose(prior, feedback, controller.signal),
-        onRefineStart: () => setRefining(true),
-        onRefineError: (e) => {
-          if (controller.signal.aborted || abortRef.current !== controller) return;
-          if (e instanceof PoseParseError) {
-            setError({ message: t('posePoseParseError'), detail: clipReplyText(e.replyText), keyAction: false });
-            return;
-          }
-          const key = mapAnthropicErrorKey(e);
-          setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
-        },
-      }))
+      .then((generation) =>
+        refinePoseUntilValid(generation, {
+          measure: (candidate) =>
+            controller.signal.aborted || abortRef.current !== controller
+              ? null
+              : (viewerActionsRef.current?.measurePose(candidate) ?? null),
+          refine: (prior, feedback) => refinePose(prior, feedback, controller.signal),
+          onRefineStart: () => setRefining(true),
+          onRefineError: (e) => {
+            if (controller.signal.aborted || abortRef.current !== controller) return;
+            if (e instanceof PoseParseError) {
+              setError({
+                message: t('posePoseParseError'),
+                detail: clipReplyText(e.replyText),
+                keyAction: false,
+              });
+              return;
+            }
+            const key = mapAnthropicErrorKey(e);
+            setError({
+              message: t(key),
+              detail: anthropicErrorDetail(e),
+              keyAction: isAnthropicAuthError(e),
+            });
+          },
+        }),
+      )
       .then(({ pose: generated }) => {
         // A superseded run can still resolve (fetch may complete before
         // abort lands) — never let a stale pose overwrite a newer one, and
@@ -236,7 +290,7 @@ export default function PoseSourcePanel({
         const shot = viewerActionsRef.current?.captureScreenshot() ?? null;
         void (async () => {
           const thumbnail = shot
-            ? await dataUrlToJpegBlob(shot, POSE_HISTORY_THUMB_EDGE, 0.8) ?? undefined
+            ? ((await dataUrlToJpegBlob(shot, POSE_HISTORY_THUMB_EDGE, 0.8)) ?? undefined)
             : undefined;
           await addPoseHistory({
             pose: generated,
@@ -244,17 +298,27 @@ export default function PoseSourcePanel({
             thumbnail,
             createdAt: new Date(),
           });
-        })().catch(() => { /* history is best-effort — never surface */ });
+        })().catch(() => {
+          /* history is best-effort — never surface */
+        });
       })
       .catch((e: unknown) => {
         if (isAbortError(e)) return;
         if (controller.signal.aborted || abortRef.current !== controller) return;
         if (e instanceof PoseParseError) {
-          setError({ message: t('posePoseParseError'), detail: clipReplyText(e.replyText), keyAction: false });
+          setError({
+            message: t('posePoseParseError'),
+            detail: clipReplyText(e.replyText),
+            keyAction: false,
+          });
           return;
         }
         const key = mapAnthropicErrorKey(e);
-        setError({ message: t(key), detail: anthropicErrorDetail(e), keyAction: isAnthropicAuthError(e) });
+        setError({
+          message: t(key),
+          detail: anthropicErrorDetail(e),
+          keyAction: isAnthropicAuthError(e),
+        });
       })
       .finally(() => {
         if (abortRef.current === controller) {
@@ -318,7 +382,9 @@ export default function PoseSourcePanel({
           setVrmLoadFailed(false);
           setVrmId(USER_VRM_ID);
         })
-        .catch(() => { /* size error already surfaced */ });
+        .catch(() => {
+          /* size error already surfaced */
+        });
     };
     input.click();
   }, []);
@@ -332,41 +398,50 @@ export default function PoseSourcePanel({
   const handleOpenHistory = useCallback((e: MouseEvent<HTMLElement>) => {
     setHistoryAnchor(e.currentTarget);
     setHistoryEntries(null);
-    getPoseHistory().then(setHistoryEntries).catch(() => setHistoryEntries([]));
+    getPoseHistory()
+      .then(setHistoryEntries)
+      .catch(() => setHistoryEntries([]));
   }, []);
 
   const handleCloseHistory = useCallback(() => setHistoryAnchor(null), []);
 
-  const handleSelectHistory = useCallback((entry: PoseHistoryRecord) => {
-    setHistoryAnchor(null);
-    setError(null);
-    setNotice(null);
-    // LRU bump — re-applied poses sort to the top and survive eviction.
-    if (entry.id !== undefined) {
-      touchPoseHistory(entry.id).catch(() => { /* best-effort */ });
-    }
-    // Committed exactly like a fresh generation result (one undo entry),
-    // onto the CURRENTLY selected model — the stored pose is model-
-    // independent. Deliberately NOT marked selfCommitted: the poseInfo
-    // re-seed should update the hint field to the restored pose's hint, and
-    // the swap's abort of any in-flight generation is intended.
-    onReferenceChange((s) => {
-      s.setReferenceInfo({
-        source: 'pose',
-        title: entry.hint?.trim() || t('pose'),
-        author: '',
-        vrmId: vrmIdRef.current,
-        pose: entry.pose,
-        hint: entry.hint,
+  const handleSelectHistory = useCallback(
+    (entry: PoseHistoryRecord) => {
+      setHistoryAnchor(null);
+      setError(null);
+      setNotice(null);
+      // LRU bump — re-applied poses sort to the top and survive eviction.
+      if (entry.id !== undefined) {
+        touchPoseHistory(entry.id).catch(() => {
+          /* best-effort */
+        });
+      }
+      // Committed exactly like a fresh generation result (one undo entry),
+      // onto the CURRENTLY selected model — the stored pose is model-
+      // independent. Deliberately NOT marked selfCommitted: the poseInfo
+      // re-seed should update the hint field to the restored pose's hint, and
+      // the swap's abort of any in-flight generation is intended.
+      onReferenceChange((s) => {
+        s.setReferenceInfo({
+          source: 'pose',
+          title: entry.hint?.trim() || t('pose'),
+          author: '',
+          vrmId: vrmIdRef.current,
+          pose: entry.pose,
+          hint: entry.hint,
+        });
       });
-    });
-  }, [onReferenceChange]);
+    },
+    [onReferenceChange],
+  );
 
   const handleDeleteHistory = useCallback((id: number | undefined) => {
     if (id === undefined) return;
     // Optimistic removal — the popover stays open for further picks/deletes.
-    setHistoryEntries(entries => entries?.filter(e => e.id !== id) ?? entries);
-    deletePoseHistory(id).catch(() => { /* best-effort */ });
+    setHistoryEntries((entries) => entries?.filter((e) => e.id !== id) ?? entries);
+    deletePoseHistory(id).catch(() => {
+      /* best-effort */
+    });
   }, []);
 
   // ObjectURLs for the stored thumbnail Blobs; revoked when the list changes
@@ -380,9 +455,12 @@ export default function PoseSourcePanel({
     }
     return map;
   }, [historyEntries]);
-  useEffect(() => () => {
-    for (const url of historyThumbUrls.values()) URL.revokeObjectURL(url);
-  }, [historyThumbUrls]);
+  useEffect(
+    () => () => {
+      for (const url of historyThumbUrls.values()) URL.revokeObjectURL(url);
+    },
+    [historyThumbUrls],
+  );
 
   const handleViewerReady = useCallback(() => {
     setVrmLoadFailed(false);
@@ -394,43 +472,48 @@ export default function PoseSourcePanel({
     onViewerReadyChange?.(false);
   }, [onViewerReadyChange]);
 
-  useImperativeHandle(actionsRef, () => ({
-    fixAngle: () => {
-      // A mid-refinement measurePose may have an uncommitted candidate on
-      // screen — capture must show the COMMITTED pose that gets recorded.
-      viewerActionsRef.current?.restorePose();
-      const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
-      if (!screenshot) return;
-      // Fixing commits to the CURRENT view: cancel any in-flight generation
-      // AND any key-dialog-deferred one, so a late result can't swap
-      // referenceInfo (new pose, no imageUrl) underneath the just-captured
-      // screenshot.
-      abortRef.current?.abort();
-      pendingGenerateRef.current = false;
-      setGenerating(false);
-      // Record the model actually on screen — while a user VRM is still
-      // resolving, the viewer shows the bundled fallback, not 'user'.
-      const effectiveVrmId = vrmId === USER_VRM_ID && !userVrmBlob ? DEFAULT_VRM_ID : vrmId;
-      onReferenceChange((s) => {
-        s.setFixedImageUrl(screenshot);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo({
-          source: 'pose',
-          title: (poseInfo?.hint ?? hint).trim() || t('pose'),
-          author: '',
-          vrmId: effectiveVrmId,
-          pose: pose ?? undefined,
-          hint: poseInfo?.hint ?? (hint.trim() || undefined),
-          imageUrl: screenshot,
+  useImperativeHandle(
+    actionsRef,
+    () => ({
+      fixAngle: () => {
+        // A mid-refinement measurePose may have an uncommitted candidate on
+        // screen — capture must show the COMMITTED pose that gets recorded.
+        viewerActionsRef.current?.restorePose();
+        const screenshot = viewerActionsRef.current?.captureScreenshot() ?? null;
+        if (!screenshot) return;
+        // Fixing commits to the CURRENT view: cancel any in-flight generation
+        // AND any key-dialog-deferred one, so a late result can't swap
+        // referenceInfo (new pose, no imageUrl) underneath the just-captured
+        // screenshot.
+        abortRef.current?.abort();
+        pendingGenerateRef.current = false;
+        setGenerating(false);
+        // Record the model actually on screen — while a user VRM is still
+        // resolving, the viewer shows the bundled fallback, not 'user'.
+        const effectiveVrmId = vrmId === USER_VRM_ID && !userVrmBlob ? DEFAULT_VRM_ID : vrmId;
+        onReferenceChange((s) => {
+          s.setFixedImageUrl(screenshot);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo({
+            source: 'pose',
+            title: (poseInfo?.hint ?? hint).trim() || t('pose'),
+            author: '',
+            vrmId: effectiveVrmId,
+            pose: pose ?? undefined,
+            hint: poseInfo?.hint ?? (hint.trim() || undefined),
+            imageUrl: screenshot,
+          });
+          s.setReferenceMode('fixed');
         });
-        s.setReferenceMode('fixed');
-      });
-    },
-  }), [onReferenceChange, poseInfo, hint, vrmId, userVrmBlob, pose]);
+      },
+    }),
+    [onReferenceChange, poseInfo, hint, vrmId, userVrmBlob, pose],
+  );
 
-  const vrmSource: PoseVrmSource = vrmId === USER_VRM_ID && userVrmBlob
-    ? { kind: 'user', blob: userVrmBlob }
-    : { kind: 'bundled', vrmId: vrmId === USER_VRM_ID ? DEFAULT_VRM_ID : vrmId };
+  const vrmSource: PoseVrmSource =
+    vrmId === USER_VRM_ID && userVrmBlob
+      ? { kind: 'user', blob: userVrmBlob }
+      : { kind: 'bundled', vrmId: vrmId === USER_VRM_ID ? DEFAULT_VRM_ID : vrmId };
 
   // Disable Fix-Angle whenever the effective model source changes (toggle,
   // file load, undo/redo swapping vrmId) — a capture in the loading window
@@ -446,7 +529,7 @@ export default function PoseSourcePanel({
     onViewerReadyChange?.(false);
     // Re-run only on source-identity change; the callback identity is stable
     // in practice (parent useState setter wrapper).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [vrmSourceKey, activeUserBlob]);
 
   return (
@@ -460,8 +543,10 @@ export default function PoseSourcePanel({
             label={t('poseHintLabel')}
             placeholder={t('poseHintPlaceholder')}
             value={hint}
-            onChange={e => setHint(e.target.value)}
-            onKeyDown={(e) => { if (isSubmitEnter(e) && !generating) handleGenerate(); }}
+            onChange={(e) => setHint(e.target.value)}
+            onKeyDown={(e) => {
+              if (isSubmitEnter(e) && !generating) handleGenerate();
+            }}
             fullWidth
           />
           <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -474,12 +559,7 @@ export default function PoseSourcePanel({
             >
               {generating ? t(refining ? 'poseRefining' : 'poseGenerating') : t('poseGenerate')}
             </Button>
-            <ToggleButtonGroup
-              size="small"
-              exclusive
-              value={vrmId}
-              onChange={handleVrmChoice}
-            >
+            <ToggleButtonGroup size="small" exclusive value={vrmId} onChange={handleVrmChoice}>
               <ToggleButton value={DEFAULT_VRM_ID}>{t('poseModelBundled')}</ToggleButton>
               <ToggleButton value={USER_VRM_ID} disabled={!userVrmBlob && vrmId !== USER_VRM_ID}>
                 {t('poseModelUser')}
@@ -488,7 +568,12 @@ export default function PoseSourcePanel({
             <Button size="small" variant="outlined" onClick={handleLoadVrmFile}>
               {t('poseLoadVrm')}
             </Button>
-            <Button size="small" variant="outlined" startIcon={<History size={16} />} onClick={handleOpenHistory}>
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<History size={16} />}
+              onClick={handleOpenHistory}
+            >
               {t('poseHistory')}
             </Button>
           </Box>
@@ -499,121 +584,197 @@ export default function PoseSourcePanel({
             anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
           >
             <Box sx={{ p: 1, width: 320, maxHeight: 360, overflowY: 'auto' }}>
-              {historyEntries === null
-                ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
-                      <CircularProgress size={24} />
-                    </Box>
-                  )
-                : historyEntries.length === 0
-                  ? (
-                      <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
-                        {t('poseHistoryEmpty')}
-                      </Typography>
-                    )
-                  : (
-                      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))', gap: 1 }}>
-                        {historyEntries.map((entry) => {
-                          const thumbUrl = entry.id !== undefined ? historyThumbUrls.get(entry.id) : undefined;
-                          return (
-                            // ButtonBase (same rationale as BundledTemplatePicker)
-                            // so the card is Tab-reachable and Enter/Space-
-                            // activatable — but as component="div": the card
-                            // CONTAINS the delete IconButton, and a native
-                            // <button> may not nest another <button>. MUI still
-                            // supplies role="button"/tabIndex/keyboard handling.
-                            <ButtonBase
-                              key={entry.id}
-                              component="div"
-                              focusRipple
-                              aria-label={entry.hint || t('pose')}
-                              onClick={() => handleSelectHistory(entry)}
-                              sx={{
-                                'display': 'block',
-                                'textAlign': 'left',
-                                'border': '1px solid #ddd',
-                                'borderRadius': 1,
-                                'overflow': 'hidden',
-                                'cursor': 'pointer',
-                                'position': 'relative',
-                                '&:hover': { borderColor: 'primary.main' },
-                                '&:focus-visible': { borderColor: 'primary.main', outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 },
-                              }}
-                            >
-                              {thumbUrl
-                                ? <Box component="img" src={thumbUrl} alt={entry.hint || t('pose')} sx={{ width: '100%', aspectRatio: '1', objectFit: 'cover', display: 'block' }} />
-                                : (
-                                    <Box sx={{ width: '100%', aspectRatio: '1', display: 'flex', alignItems: 'center', justifyContent: 'center', bgcolor: '#f0f0f0', color: 'text.secondary' }}>
-                                      <PersonStanding size={32} />
-                                    </Box>
-                                  )}
-                              <ToolbarTooltip title={t('poseHistoryDelete')}>
-                                <IconButton
-                                  size="small"
-                                  aria-label={t('poseHistoryDelete')}
-                                  // Touch devices commit selection on pointerdown
-                                  // (before click), so stop propagation there too.
-                                  onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteHistory(entry.id); }}
-                                  sx={{ 'position': 'absolute', 'top': 2, 'right': 2, 'bgcolor': 'rgba(255,255,255,0.7)', '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' } }}
-                                >
-                                  <Trash2 size={14} />
-                                </IconButton>
-                              </ToolbarTooltip>
-                              <Typography variant="caption" noWrap sx={{ display: 'block', px: 0.5 }}>
-                                {entry.hint || t('pose')}
-                              </Typography>
-                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', px: 0.5, pb: 0.5 }}>
-                                {entry.createdAt.toLocaleDateString()}
-                              </Typography>
-                            </ButtonBase>
-                          );
-                        })}
-                      </Box>
-                    )}
+              {historyEntries === null ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                  <CircularProgress size={24} />
+                </Box>
+              ) : historyEntries.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ p: 1 }}>
+                  {t('poseHistoryEmpty')}
+                </Typography>
+              ) : (
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(88px, 1fr))',
+                    gap: 1,
+                  }}
+                >
+                  {historyEntries.map((entry) => {
+                    const thumbUrl =
+                      entry.id !== undefined ? historyThumbUrls.get(entry.id) : undefined;
+                    return (
+                      // ButtonBase (same rationale as BundledTemplatePicker)
+                      // so the card is Tab-reachable and Enter/Space-
+                      // activatable — but as component="div": the card
+                      // CONTAINS the delete IconButton, and a native
+                      // <button> may not nest another <button>. MUI still
+                      // supplies role="button"/tabIndex/keyboard handling.
+                      <ButtonBase
+                        key={entry.id}
+                        component="div"
+                        focusRipple
+                        aria-label={entry.hint || t('pose')}
+                        onClick={() => handleSelectHistory(entry)}
+                        sx={{
+                          display: 'block',
+                          textAlign: 'left',
+                          border: '1px solid #ddd',
+                          borderRadius: 1,
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          position: 'relative',
+                          '&:hover': { borderColor: 'primary.main' },
+                          '&:focus-visible': {
+                            borderColor: 'primary.main',
+                            outline: '2px solid',
+                            outlineColor: 'primary.main',
+                            outlineOffset: 2,
+                          },
+                        }}
+                      >
+                        {thumbUrl ? (
+                          <Box
+                            component="img"
+                            src={thumbUrl}
+                            alt={entry.hint || t('pose')}
+                            sx={{
+                              width: '100%',
+                              aspectRatio: '1',
+                              objectFit: 'cover',
+                              display: 'block',
+                            }}
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              width: '100%',
+                              aspectRatio: '1',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              bgcolor: '#f0f0f0',
+                              color: 'text.secondary',
+                            }}
+                          >
+                            <PersonStanding size={32} />
+                          </Box>
+                        )}
+                        <ToolbarTooltip title={t('poseHistoryDelete')}>
+                          <IconButton
+                            size="small"
+                            aria-label={t('poseHistoryDelete')}
+                            // Touch devices commit selection on pointerdown
+                            // (before click), so stop propagation there too.
+                            onPointerDown={(e) => {
+                              e.stopPropagation();
+                              e.preventDefault();
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteHistory(entry.id);
+                            }}
+                            sx={{
+                              position: 'absolute',
+                              top: 2,
+                              right: 2,
+                              bgcolor: 'rgba(255,255,255,0.7)',
+                              '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+                            }}
+                          >
+                            <Trash2 size={14} />
+                          </IconButton>
+                        </ToolbarTooltip>
+                        <Typography variant="caption" noWrap sx={{ display: 'block', px: 0.5 }}>
+                          {entry.hint || t('pose')}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{ display: 'block', px: 0.5, pb: 0.5 }}
+                        >
+                          {entry.createdAt.toLocaleDateString()}
+                        </Typography>
+                      </ButtonBase>
+                    );
+                  })}
+                </Box>
+              )}
             </Box>
           </Popover>
           {error && (
             <Alert
               severity="error"
-              action={error.keyAction
-                ? <Button color="inherit" size="small" onClick={onRequestApiKey}>{t('pexelsApiKeySettings')}</Button>
-                : undefined}
+              action={
+                error.keyAction ? (
+                  <Button color="inherit" size="small" onClick={onRequestApiKey}>
+                    {t('pexelsApiKeySettings')}
+                  </Button>
+                ) : undefined
+              }
             >
               {error.message}
               {error.detail && (
-                <Box component="div" sx={{ mt: 0.5, fontSize: '0.75rem', fontFamily: 'monospace', opacity: 0.8, overflowWrap: 'anywhere' }}>
+                <Box
+                  component="div"
+                  sx={{
+                    mt: 0.5,
+                    fontSize: '0.75rem',
+                    fontFamily: 'monospace',
+                    opacity: 0.8,
+                    overflowWrap: 'anywhere',
+                  }}
+                >
                   {error.detail}
                 </Box>
               )}
             </Alert>
           )}
-          {notice && <Alert severity="info" onClose={() => setNotice(null)}>{notice}</Alert>}
+          {notice && (
+            <Alert severity="info" onClose={() => setNotice(null)}>
+              {notice}
+            </Alert>
+          )}
         </Box>
       </Box>
 
       {/* 3D viewer — free orbit, independent from the shared camera. */}
       <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
-        {vrmLoadFailed
-          ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 1, p: 2 }}>
-                <Alert severity="error">{t('poseVrmLoadFailed')}</Alert>
-                <Button size="small" variant="outlined" onClick={() => { setVrmLoadFailed(false); setVrmRetryToken(v => v + 1); }}>
-                  {t('poseRetry')}
-                </Button>
-              </Box>
-            )
-          : (
-              <PoseViewer
-                key={vrmRetryToken}
-                pose={pose}
-                vrmSource={vrmSource}
-                active={active}
-                onReady={handleViewerReady}
-                onLoadError={handleViewerLoadError}
-                actionsRef={viewerActionsRef}
-              />
-            )}
+        {vrmLoadFailed ? (
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              gap: 1,
+              p: 2,
+            }}
+          >
+            <Alert severity="error">{t('poseVrmLoadFailed')}</Alert>
+            <Button
+              size="small"
+              variant="outlined"
+              onClick={() => {
+                setVrmLoadFailed(false);
+                setVrmRetryToken((v) => v + 1);
+              }}
+            >
+              {t('poseRetry')}
+            </Button>
+          </Box>
+        ) : (
+          <PoseViewer
+            key={vrmRetryToken}
+            pose={pose}
+            vrmSource={vrmSource}
+            active={active}
+            onReady={handleViewerReady}
+            onLoadError={handleViewerLoadError}
+            actionsRef={viewerActionsRef}
+          />
+        )}
       </Box>
     </Box>
   );

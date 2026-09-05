@@ -13,7 +13,12 @@ import { getBundledTemplate } from '../templates/bundled';
 import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
-import { computeFitLeader, isSameReferenceContent, resolveDrawingFitSize, shouldFullscreenReferenceBrowse } from './splitLayoutHelpers';
+import {
+  computeFitLeader,
+  isSameReferenceContent,
+  resolveDrawingFitSize,
+  shouldFullscreenReferenceBrowse,
+} from './splitLayoutHelpers';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { ViewTransform } from '../drawing/ViewTransform';
 import { loadDraft } from '../storage/sessionStore';
@@ -26,7 +31,12 @@ import { generateThumbnail } from '../storage/generateThumbnail';
 import { buildYouTubeCanonicalUrl } from '../utils/youtube';
 import { canonicalSketchfabUrl } from '../utils/sketchfab';
 import { dataUrlToJpegBlob } from '../utils/imageResize';
-import { buildPexelsReferenceInfo, searchPhotos, type PexelsOrientationFilter, type PexelsPhoto } from '../utils/pexels';
+import {
+  buildPexelsReferenceInfo,
+  searchPhotos,
+  type PexelsOrientationFilter,
+  type PexelsPhoto,
+} from '../utils/pexels';
 import type { SketchfabModelMeta } from './SketchfabViewer';
 import type { PexelsGestureSessionConfig } from './PexelsSearcher';
 import { t } from '../i18n';
@@ -49,7 +59,9 @@ function SplitLayoutInner() {
   const currentStrokeRef = useRef<Stroke | null>(null);
   const overlayRedrawFnRef = useRef<(() => void) | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(null);
+  const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(
+    null,
+  );
   // Mirror for callbacks that need the current size without re-memoizing on
   // every size change (gallery drawing-load's same-content migration).
   // Updated synchronously in handleReferenceImageSize — NOT via a post-render
@@ -129,7 +141,14 @@ function SplitLayoutInner() {
   });
 
   // Guide state (from context)
-  const { grid, lines, version: guideVersion, lastChangeTransient: guideChangeTransient, restoreGuides, guideManagerRef } = useGuides();
+  const {
+    grid,
+    lines,
+    version: guideVersion,
+    lastChangeTransient: guideChangeTransient,
+    restoreGuides,
+    guideManagerRef,
+  } = useGuides();
 
   // Trace-template scoring (from context). Driven by referenceInfo: when the
   // user selects a bundled trace template the matching strokes are loaded into
@@ -137,7 +156,8 @@ function SplitLayoutInner() {
   // scores. Strokes the user already drew are left alone (the user might want
   // to keep them as part of a free drawing).
   const traceScoring = useTraceScoring();
-  const traceTemplateId = referenceInfo?.source === 'trace-template' ? referenceInfo.templateId : null;
+  const traceTemplateId =
+    referenceInfo?.source === 'trace-template' ? referenceInfo.templateId : null;
   useEffect(() => {
     if (!traceTemplateId) {
       traceScoring.setTemplate(null);
@@ -147,12 +167,15 @@ function SplitLayoutInner() {
     traceScoring.setTemplate(tmpl?.strokes ?? null);
     // traceScoring.setTemplate is stable per-provider; listing it would just
     // bloat the dep array.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [traceTemplateId]);
 
-  const handleTraceStrokeFinalized = useCallback((stroke: Stroke) => {
-    traceScoring.handleStrokeFinalized(stroke, strokeManager);
-  }, [traceScoring, strokeManager]);
+  const handleTraceStrokeFinalized = useCallback(
+    (stroke: Stroke) => {
+      traceScoring.handleStrokeFinalized(stroke, strokeManager);
+    },
+    [traceScoring, strokeManager],
+  );
 
   // handleStrokesChanged is declared further down; forward via a ref so
   // handleTraceResetScores can fire it without a circular dep.
@@ -188,7 +211,9 @@ function SplitLayoutInner() {
   }, [traceScoring]);
 
   // Ref for loading Sketchfab model by UID (registered by ReferencePanel)
-  const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(null);
+  const loadSketchfabModelFnRef = useRef<((uid: string, meta?: SketchfabModelMeta) => void) | null>(
+    null,
+  );
   // Ref for refreshing the URL history dropdown after parent-initiated adds
   // (e.g. Gallery "use this reference" reload).
   const reloadUrlHistoryFnRef = useRef<(() => void) | null>(null);
@@ -207,15 +232,15 @@ function SplitLayoutInner() {
   // change). DrawingPanel listens to this to refresh its canUndo/canRedo UI.
   const [historySyncVersion, setHistorySyncVersion] = useState(0);
   const incrementChangeVersion = useCallback(() => {
-    setChangeVersion(v => v + 1);
+    setChangeVersion((v) => v + 1);
   }, []);
 
   const incrementFlushVersion = useCallback(() => {
-    setFlushVersion(v => v + 1);
+    setFlushVersion((v) => v + 1);
   }, []);
 
   const handleToggleReferenceCollapsed = useCallback(() => {
-    setReferenceCollapsed(v => !v);
+    setReferenceCollapsed((v) => !v);
     incrementFlushVersion();
     // setReferenceCollapsed listed only to satisfy React Compiler's
     // preserve-manual-memoization check; setState identities are stable so
@@ -238,7 +263,7 @@ function SplitLayoutInner() {
   const pauseAndIncrementVersion = useCallback(() => {
     referenceGenerationRef.current = referenceGenerationRef.current + 1;
     timer.pause();
-    setChangeVersion(v => v + 1);
+    setChangeVersion((v) => v + 1);
   }, [timer]);
 
   // Autosave suppression: stays true while restore is in flight AND while
@@ -270,14 +295,29 @@ function SplitLayoutInner() {
 
   // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
   // remain a stable callback (prevents unnecessary child re-renders).
-  const referenceStateRef = useRef({ source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo });
+  const referenceStateRef = useRef({
+    source,
+    referenceMode,
+    fixedImageUrl,
+    localImageUrl,
+    referenceInfo,
+  });
   useEffect(() => {
-    referenceStateRef.current = { source, referenceMode, fixedImageUrl, localImageUrl, referenceInfo };
+    referenceStateRef.current = {
+      source,
+      referenceMode,
+      fixedImageUrl,
+      localImageUrl,
+      referenceInfo,
+    };
   });
 
-  const captureReferenceSnapshot = useCallback((): ReferenceSnapshot => ({
-    ...referenceStateRef.current,
-  }), []);
+  const captureReferenceSnapshot = useCallback(
+    (): ReferenceSnapshot => ({
+      ...referenceStateRef.current,
+    }),
+    [],
+  );
 
   // Forward declaration for the gesture-session exit callback. Wired up in
   // an effect once `gestureSession` exists below; changeReference uses it
@@ -350,7 +390,11 @@ function SplitLayoutInner() {
   // Camera state captured from the autosave draft, applied AFTER the active
   // viewer fires its `loadContent(0,0,1)` on first reference load (which
   // would otherwise stomp the restored camera). Cleared on first apply.
-  const pendingCameraRef = useRef<{ viewCenterX: number; viewCenterY: number; zoom: number } | null>(null);
+  const pendingCameraRef = useRef<{
+    viewCenterX: number;
+    viewCenterY: number;
+    zoom: number;
+  } | null>(null);
 
   /**
    * Record the current reference state as an undoable entry, then apply the
@@ -363,47 +407,54 @@ function SplitLayoutInner() {
    * an undoable swap would let Undo walk back through arbitrary photos and
    * also blow past the 20-entry reference-history cap within seconds).
    */
-  const changeReference = useCallback((
-    mutate: (setters: ReferenceSetters) => void,
-    opts?: { recordUndo?: boolean },
-  ) => {
-    // Cancel any pending coord migration: the legacy strokes were sized to
-    // the OUTGOING reference. The next onReferenceImageSize will report the
-    // new reference's dimensions, which would shift the legacy strokes by
-    // the wrong amount. Same for a queued gallery-load camera; navigating
-    // away also aborts any in-flight gallery load, so lift its input freeze.
-    pendingMigrationRef.current = null;
-    pendingGalleryCameraRef.current = null;
-    setDrawingLoadInFlight(false);
-    const recordUndo = opts?.recordUndo !== false;
-    if (recordUndo) {
-      // User-initiated reference change → end any active gesture session so
-      // the user isn't left with the HUD over an unrelated reference. The
-      // hook's exit() is a no-op when nothing is active.
-      gestureSessionExitRef.current();
-      const prev = captureReferenceSnapshot();
-      strokeManager.recordReferenceChange(prev);
-      // Tentatively clear strokes too: switching reference usually means the
-      // user is moving on, but a tentative clear lets them Undo to come back
-      // if they were only sampling. No-op when there are no strokes or a
-      // tentative clear is already active (see StrokeManager.tentativeClear).
-      // gestureSession paths use `recordUndo: false` and bypass this so each
-      // pose advance keeps the in-progress strokes.
-      strokeManager.tentativeClear();
-      setHistorySyncVersion(v => v + 1);
-    }
-    mutate({
-      setSource,
-      setReferenceMode,
-      setFixedImageUrl,
-      setLocalImageUrl,
-      setReferenceInfo,
-    });
-    pauseAndIncrementVersion();
-    incrementFlushVersion();
-    // setState identities are stable; listed only to satisfy React Compiler's
-    // preserve-manual-memoization check.
-  }, [strokeManager, captureReferenceSnapshot, pauseAndIncrementVersion, incrementFlushVersion, setHistorySyncVersion, setDrawingLoadInFlight]);
+  const changeReference = useCallback(
+    (mutate: (setters: ReferenceSetters) => void, opts?: { recordUndo?: boolean }) => {
+      // Cancel any pending coord migration: the legacy strokes were sized to
+      // the OUTGOING reference. The next onReferenceImageSize will report the
+      // new reference's dimensions, which would shift the legacy strokes by
+      // the wrong amount. Same for a queued gallery-load camera; navigating
+      // away also aborts any in-flight gallery load, so lift its input freeze.
+      pendingMigrationRef.current = null;
+      pendingGalleryCameraRef.current = null;
+      setDrawingLoadInFlight(false);
+      const recordUndo = opts?.recordUndo !== false;
+      if (recordUndo) {
+        // User-initiated reference change → end any active gesture session so
+        // the user isn't left with the HUD over an unrelated reference. The
+        // hook's exit() is a no-op when nothing is active.
+        gestureSessionExitRef.current();
+        const prev = captureReferenceSnapshot();
+        strokeManager.recordReferenceChange(prev);
+        // Tentatively clear strokes too: switching reference usually means the
+        // user is moving on, but a tentative clear lets them Undo to come back
+        // if they were only sampling. No-op when there are no strokes or a
+        // tentative clear is already active (see StrokeManager.tentativeClear).
+        // gestureSession paths use `recordUndo: false` and bypass this so each
+        // pose advance keeps the in-progress strokes.
+        strokeManager.tentativeClear();
+        setHistorySyncVersion((v) => v + 1);
+      }
+      mutate({
+        setSource,
+        setReferenceMode,
+        setFixedImageUrl,
+        setLocalImageUrl,
+        setReferenceInfo,
+      });
+      pauseAndIncrementVersion();
+      incrementFlushVersion();
+      // setState identities are stable; listed only to satisfy React Compiler's
+      // preserve-manual-memoization check.
+    },
+    [
+      strokeManager,
+      captureReferenceSnapshot,
+      pauseAndIncrementVersion,
+      incrementFlushVersion,
+      setHistorySyncVersion,
+      setDrawingLoadInFlight,
+    ],
+  );
 
   /**
    * Error-path reset. NOT recorded as an undoable entry — undoing back to a
@@ -428,85 +479,100 @@ function SplitLayoutInner() {
     incrementFlushVersion();
   }, [pauseAndIncrementVersion, incrementFlushVersion, setDrawingLoadInFlight]);
 
-  const handleReferenceImageSize = useCallback((width: number, height: number) => {
-    // Bail when the size hasn't actually changed. YouTubeViewer fires
-    // onFitSize with the constant 1920x1080 on every mount, so without this
-    // guard a remount triggers a wasted setState + re-render.
-    setReferenceSize(prev => (prev && prev.width === width && prev.height === height) ? prev : { width, height });
-    if (width > 0 && height > 0) {
-      referenceSizeRef.current = { width, height };
-    }
-
-    // Promote a queued gallery-load camera now that the fresh reference has
-    // loaded: the pendingCameraRef effect runs after the viewer's
-    // loadContent(0,0,1), so the strokes-centered camera wins. The
-    // restoreVersion bump guarantees the effect re-runs even when the new
-    // content happens to have the same dimensions as the old.
-    const pendingCam = pendingGalleryCameraRef.current;
-    if (pendingCam && width > 0 && height > 0) {
-      pendingGalleryCameraRef.current = null;
-      pendingCameraRef.current = { viewCenterX: pendingCam.x, viewCenterY: pendingCam.y, zoom: 1 };
-      setRestoreVersion(v => v + 1);
-    }
-
-    const pending = pendingMigrationRef.current;
-    if (pending && width > 0 && height > 0) {
-      pendingMigrationRef.current = null;
-      // If the user has already started drawing in the gap between draft
-      // restore and the size callback (e.g. image load lagged), abandon the
-      // migration rather than overwrite their work. Their session has
-      // effectively diverged from the legacy draft; the next autosave will
-      // tag the new state with the current coord version. Read via refs so
-      // this callback's identity doesn't churn on every guide update.
-      const userHasStarted
-        = strokeManager.canUndo()
-          || (guideManagerRef.current?.getLines().length ?? 0) > 0;
-      // Gallery loads skip the guard: changeReference has already pushed
-      // reference/tentative-clear undo entries (so canUndo() is always true
-      // here), and the user explicitly confirmed replacing the canvas.
-      if (userHasStarted && !pending.skipUserStartGuard) return;
-      const dx = -width / 2;
-      const dy = -height / 2;
-      const migratedStrokes = shiftStrokes(pending.strokes, dx, dy);
-      const migratedRedo = shiftStrokes(pending.redoStack, dx, dy);
-      if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
-        strokeManager.loadState(migratedStrokes, migratedRedo);
-        if (!pending.gallerySaveDirty) {
-          strokeManager.markSavedToGallery();
-        }
+  const handleReferenceImageSize = useCallback(
+    (width: number, height: number) => {
+      // Bail when the size hasn't actually changed. YouTubeViewer fires
+      // onFitSize with the constant 1920x1080 on every mount, so without this
+      // guard a remount triggers a wasted setState + re-render.
+      setReferenceSize((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      );
+      if (width > 0 && height > 0) {
+        referenceSizeRef.current = { width, height };
       }
-      if (pending.guides) {
-        restoreGuides(shiftGuideState(pending.guides, dx, dy));
-      }
-      if (pending.centerCameraOnStrokes && migratedStrokes.length > 0) {
-        // Gallery load: end with the drawing on screen, not the content home.
-        // Queued via pendingCameraRef so it applies after the viewer's
-        // loadContent (the restoreVersion bump below triggers the effect).
-        const box = computeStrokesBoundingBox(migratedStrokes);
+
+      // Promote a queued gallery-load camera now that the fresh reference has
+      // loaded: the pendingCameraRef effect runs after the viewer's
+      // loadContent(0,0,1), so the strokes-centered camera wins. The
+      // restoreVersion bump guarantees the effect re-runs even when the new
+      // content happens to have the same dimensions as the old.
+      const pendingCam = pendingGalleryCameraRef.current;
+      if (pendingCam && width > 0 && height > 0) {
+        pendingGalleryCameraRef.current = null;
         pendingCameraRef.current = {
-          viewCenterX: box.minX + box.width / 2,
-          viewCenterY: box.minY + box.height / 2,
+          viewCenterX: pendingCam.x,
+          viewCenterY: pendingCam.y,
           zoom: 1,
         };
+        setRestoreVersion((v) => v + 1);
       }
-      setRestoreVersion(v => v + 1);
-      if (pending.skipUserStartGuard) {
-        // Gallery load: the strokes just landed, and the reference was
-        // already flushed with an EMPTY stroke set when changeReference ran —
-        // flush now so a quick reload keeps the loaded drawing. Also lift the
-        // load-in-flight input freeze held since handleLoadDrawing.
-        setDrawingLoadInFlight(false);
-        incrementFlushVersion();
+
+      const pending = pendingMigrationRef.current;
+      if (pending && width > 0 && height > 0) {
+        pendingMigrationRef.current = null;
+        // If the user has already started drawing in the gap between draft
+        // restore and the size callback (e.g. image load lagged), abandon the
+        // migration rather than overwrite their work. Their session has
+        // effectively diverged from the legacy draft; the next autosave will
+        // tag the new state with the current coord version. Read via refs so
+        // this callback's identity doesn't churn on every guide update.
+        const userHasStarted =
+          strokeManager.canUndo() || (guideManagerRef.current?.getLines().length ?? 0) > 0;
+        // Gallery loads skip the guard: changeReference has already pushed
+        // reference/tentative-clear undo entries (so canUndo() is always true
+        // here), and the user explicitly confirmed replacing the canvas.
+        if (userHasStarted && !pending.skipUserStartGuard) return;
+        const dx = -width / 2;
+        const dy = -height / 2;
+        const migratedStrokes = shiftStrokes(pending.strokes, dx, dy);
+        const migratedRedo = shiftStrokes(pending.redoStack, dx, dy);
+        if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
+          strokeManager.loadState(migratedStrokes, migratedRedo);
+          if (!pending.gallerySaveDirty) {
+            strokeManager.markSavedToGallery();
+          }
+        }
+        if (pending.guides) {
+          restoreGuides(shiftGuideState(pending.guides, dx, dy));
+        }
+        if (pending.centerCameraOnStrokes && migratedStrokes.length > 0) {
+          // Gallery load: end with the drawing on screen, not the content home.
+          // Queued via pendingCameraRef so it applies after the viewer's
+          // loadContent (the restoreVersion bump below triggers the effect).
+          const box = computeStrokesBoundingBox(migratedStrokes);
+          pendingCameraRef.current = {
+            viewCenterX: box.minX + box.width / 2,
+            viewCenterY: box.minY + box.height / 2,
+            zoom: 1,
+          };
+        }
+        setRestoreVersion((v) => v + 1);
+        if (pending.skipUserStartGuard) {
+          // Gallery load: the strokes just landed, and the reference was
+          // already flushed with an EMPTY stroke set when changeReference ran —
+          // flush now so a quick reload keeps the loaded drawing. Also lift the
+          // load-in-flight input freeze held since handleLoadDrawing.
+          setDrawingLoadInFlight(false);
+          incrementFlushVersion();
+        } else {
+          // Draft restore: debounced autosave is fine — the next user
+          // interaction will persist the migrated coords.
+          incrementChangeVersion();
+        }
       }
-      else {
-        // Draft restore: debounced autosave is fine — the next user
-        // interaction will persist the migrated coords.
-        incrementChangeVersion();
-      }
-    }
-    // setRestoreVersion listed only for React Compiler's
-    // preserve-manual-memoization check (stable identity, harmless).
-  }, [strokeManager, restoreGuides, incrementChangeVersion, incrementFlushVersion, guideManagerRef, setRestoreVersion, setDrawingLoadInFlight]);
+      // setRestoreVersion listed only for React Compiler's
+      // preserve-manual-memoization check (stable identity, harmless).
+    },
+    [
+      strokeManager,
+      restoreGuides,
+      incrementChangeVersion,
+      incrementFlushVersion,
+      guideManagerRef,
+      setRestoreVersion,
+      setDrawingLoadInFlight,
+    ],
+  );
 
   // DrawingCanvas fits only when a viewer is actively the fit leader; raw
   // referenceSize would otherwise leak the previous reference's dimensions
@@ -520,7 +586,7 @@ function SplitLayoutInner() {
   const collapseLocked = sketchfabViewerActive && referenceMode === 'browse';
 
   const handleToggleFlip = useCallback(() => {
-    setIsFlipped(prev => !prev);
+    setIsFlipped((prev) => !prev);
     incrementFlushVersion();
   }, [incrementFlushVersion]);
 
@@ -529,8 +595,7 @@ function SplitLayoutInner() {
       const next = !prev;
       if (next) {
         setOverlayStrokes([...strokeManager.getStrokes()]);
-      }
-      else {
+      } else {
         setOverlayStrokes(null);
       }
       return next;
@@ -541,26 +606,28 @@ function SplitLayoutInner() {
   // reads applyReferenceSnapshotRef.current at call time so it picks up the
   // latest closure without re-registering on every render.
   useEffect(() => {
-    strokeManager.setReferenceRestorer(snap => applyReferenceSnapshotRef.current(snap));
+    strokeManager.setReferenceRestorer((snap) => applyReferenceSnapshotRef.current(snap));
   }, [strokeManager]);
 
-  const handleStrokesChanged = useCallback((opts?: { flush?: boolean }) => {
-    if (overlayActive) {
-      setOverlayStrokes([...strokeManager.getStrokes()]);
-    }
-    // Discrete editing buttons (undo / redo / clear / delete-highlighted) flush
-    // immediately — same user intent as the other discrete UI operations
-    // (flip / grid / collapse / reference change), so a reload right after the
-    // click keeps the result. Freehand stroke completion passes no flag and
-    // stays on the 2s debounce (high-frequency input that benefits from
-    // batching). See `.claude/rules/timer-autosave.md`.
-    if (opts?.flush) {
-      incrementFlushVersion();
-    }
-    else {
-      incrementChangeVersion();
-    }
-  }, [strokeManager, overlayActive, incrementChangeVersion, incrementFlushVersion]);
+  const handleStrokesChanged = useCallback(
+    (opts?: { flush?: boolean }) => {
+      if (overlayActive) {
+        setOverlayStrokes([...strokeManager.getStrokes()]);
+      }
+      // Discrete editing buttons (undo / redo / clear / delete-highlighted) flush
+      // immediately — same user intent as the other discrete UI operations
+      // (flip / grid / collapse / reference change), so a reload right after the
+      // click keeps the result. Freehand stroke completion passes no flag and
+      // stays on the 2s debounce (high-frequency input that benefits from
+      // batching). See `.claude/rules/timer-autosave.md`.
+      if (opts?.flush) {
+        incrementFlushVersion();
+      } else {
+        incrementChangeVersion();
+      }
+    },
+    [strokeManager, overlayActive, incrementChangeVersion, incrementFlushVersion],
+  );
 
   // Keep the forward ref pointing at the latest closure so handleTraceResetScores
   // (declared earlier in the file) can invoke it.
@@ -588,8 +655,8 @@ function SplitLayoutInner() {
     timer.reset();
     setOverlayStrokes(null);
     overlayRedrawFnRef.current?.();
-    setRestoreVersion(v => v + 1);
-    setHistorySyncVersion(v => v + 1);
+    setRestoreVersion((v) => v + 1);
+    setHistorySyncVersion((v) => v + 1);
   }, [strokeManager, timer, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes]);
 
   /** referenceInfo is the source of truth for what we save: the hook awaits
@@ -604,39 +671,43 @@ function SplitLayoutInner() {
       const thumbnail = generateThumbnail(strokes);
       await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timerElapsedRef.current);
       strokeManager.markSavedToGallery();
-    }
-    catch (err) {
+    } catch (err) {
       console.error('Gesture session save failed:', err);
     }
   }, [strokeManager, referenceInfo]);
 
-  const handleGesturePhotoChange = useCallback((photo: PexelsPhoto) => {
-    const info = buildPexelsReferenceInfo(photo);
-    changeReference((s) => {
-      s.setSource('pexels');
-      s.setReferenceMode('fixed');
-      s.setFixedImageUrl(info.pexelsImageUrl);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(info);
-    }, { recordUndo: false });
-  }, [changeReference]);
+  const handleGesturePhotoChange = useCallback(
+    (photo: PexelsPhoto) => {
+      const info = buildPexelsReferenceInfo(photo);
+      changeReference(
+        (s) => {
+          s.setSource('pexels');
+          s.setReferenceMode('fixed');
+          s.setFixedImageUrl(info.pexelsImageUrl);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+        },
+        { recordUndo: false },
+      );
+    },
+    [changeReference],
+  );
 
-  const handleGestureFetchMore = useCallback(async (
-    query: string,
-    orientation: PexelsOrientationFilter,
-    nextPage: number,
-  ) => {
-    const res = await searchPhotos({
-      query,
-      page: nextPage,
-      orientation: orientation === 'all' ? undefined : orientation,
-    });
-    return {
-      photos: res.photos,
-      page: nextPage,
-      hasMore: !!res.next_page && res.photos.length > 0,
-    };
-  }, []);
+  const handleGestureFetchMore = useCallback(
+    async (query: string, orientation: PexelsOrientationFilter, nextPage: number) => {
+      const res = await searchPhotos({
+        query,
+        page: nextPage,
+        orientation: orientation === 'all' ? undefined : orientation,
+      });
+      return {
+        photos: res.photos,
+        page: nextPage,
+        hasMore: !!res.next_page && res.photos.length > 0,
+      };
+    },
+    [],
+  );
 
   const gestureSession = useGestureSession({
     onPhotoChange: handleGesturePhotoChange,
@@ -654,25 +725,34 @@ function SplitLayoutInner() {
   // Destructure stable callbacks (useCallback'd inside the hook) so they
   // don't keep handleStartGestureSession's deps changing every render.
   const { start: startGestureSessionRaw } = gestureSession;
-  const handleStartGestureSession = useCallback((config: PexelsGestureSessionConfig) => {
-    resetForNextPose();
-    startGestureSessionRaw(config);
-  }, [startGestureSessionRaw, resetForNextPose]);
+  const handleStartGestureSession = useCallback(
+    (config: PexelsGestureSessionConfig) => {
+      resetForNextPose();
+      startGestureSessionRaw(config);
+    },
+    [startGestureSessionRaw, resetForNextPose],
+  );
 
-  const handleCurrentStrokeChange = useCallback((stroke: Stroke | null) => {
-    currentStrokeRef.current = stroke;
-    if (overlayActive) {
-      overlayRedrawFnRef.current?.();
-    }
-  }, [overlayActive]);
+  const handleCurrentStrokeChange = useCallback(
+    (stroke: Stroke | null) => {
+      currentStrokeRef.current = stroke;
+      if (overlayActive) {
+        overlayRedrawFnRef.current?.();
+      }
+    },
+    [overlayActive],
+  );
 
   const handleRegisterOverlayRedraw = useCallback((fn: () => void) => {
     overlayRedrawFnRef.current = fn;
   }, []);
 
-  const handleRegisterLoadSketchfabModel = useCallback((fn: (uid: string, meta?: SketchfabModelMeta) => void) => {
-    loadSketchfabModelFnRef.current = fn;
-  }, []);
+  const handleRegisterLoadSketchfabModel = useCallback(
+    (fn: (uid: string, meta?: SketchfabModelMeta) => void) => {
+      loadSketchfabModelFnRef.current = fn;
+    },
+    [],
+  );
 
   const handleRegisterReloadUrlHistory = useCallback((fn: () => void) => {
     reloadUrlHistoryFnRef.current = fn;
@@ -691,157 +771,158 @@ function SplitLayoutInner() {
   // `true` — or once it's known the reference can't be applied (evicted image
   // Blob) — `false`. Ordering matters: callers that set pendingMigrationRef
   // must do so AFTER changeReference, which resets it.
-  const handleLoadReference = useCallback((info: ReferenceInfo, onApplied?: (applied: boolean) => void) => {
-    if (info.source === 'image' && info.url) {
-      // Async lookup — the button was only enabled because info.url exists at
-      // gallery render time, but the URL-history entry may have been evicted
-      // since then. Surface a toast so the user understands why nothing loaded.
-      void (async () => {
-        const historyKey = info.url;
-        if (!historyKey) return;
-        // Abort if this load was superseded while an await was in flight —
-        // applying a stale result (reference AND, on the gallery path,
-        // strokes via onApplied) would overwrite the newer state. The bump
-        // at capture time makes STARTING a load a generation change too, so
-        // when two async loads race, the earlier one loses even if it
-        // resolves last-to-first. Checked after every await.
-        const generation = ++referenceGenerationRef.current;
-        const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined);
-        if (generation !== referenceGenerationRef.current) return;
-        if (!entry?.imageBlob) {
-          setToast(t('imageReferenceEvicted'));
-          onApplied?.(false);
-          return;
-        }
-        const dataUrl = await new Promise<string | null>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(entry.imageBlob as Blob);
-        });
-        if (generation !== referenceGenerationRef.current) return;
-        if (!dataUrl) {
-          setToast(t('imageReferenceEvicted'));
-          onApplied?.(false);
-          return;
-        }
-        changeReference((s) => {
-          s.setSource('image');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(null);
-          s.setLocalImageUrl(dataUrl);
-          s.setReferenceInfo(info);
-        });
-        onApplied?.(true);
-        // Upsert with the Blob we already loaded so the call is self-
-        // contained: no redundant DB read, and an evicted row between reads
-        // can't recreate a blobless entry.
-        await addUrlHistory(historyKey, 'image', {
-          fileName: entry.fileName ?? info.fileName,
-          imageBlob: entry.imageBlob,
-        });
-        reloadUrlHistoryFnRef.current?.();
-      })();
-      return;
-    }
+  const handleLoadReference = useCallback(
+    (info: ReferenceInfo, onApplied?: (applied: boolean) => void) => {
+      if (info.source === 'image' && info.url) {
+        // Async lookup — the button was only enabled because info.url exists at
+        // gallery render time, but the URL-history entry may have been evicted
+        // since then. Surface a toast so the user understands why nothing loaded.
+        void (async () => {
+          const historyKey = info.url;
+          if (!historyKey) return;
+          // Abort if this load was superseded while an await was in flight —
+          // applying a stale result (reference AND, on the gallery path,
+          // strokes via onApplied) would overwrite the newer state. The bump
+          // at capture time makes STARTING a load a generation change too, so
+          // when two async loads race, the earlier one loses even if it
+          // resolves last-to-first. Checked after every await.
+          const generation = ++referenceGenerationRef.current;
+          const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined);
+          if (generation !== referenceGenerationRef.current) return;
+          if (!entry?.imageBlob) {
+            setToast(t('imageReferenceEvicted'));
+            onApplied?.(false);
+            return;
+          }
+          const dataUrl = await new Promise<string | null>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(entry.imageBlob as Blob);
+          });
+          if (generation !== referenceGenerationRef.current) return;
+          if (!dataUrl) {
+            setToast(t('imageReferenceEvicted'));
+            onApplied?.(false);
+            return;
+          }
+          changeReference((s) => {
+            s.setSource('image');
+            s.setReferenceMode('fixed');
+            s.setFixedImageUrl(null);
+            s.setLocalImageUrl(dataUrl);
+            s.setReferenceInfo(info);
+          });
+          onApplied?.(true);
+          // Upsert with the Blob we already loaded so the call is self-
+          // contained: no redundant DB read, and an evicted row between reads
+          // can't recreate a blobless entry.
+          await addUrlHistory(historyKey, 'image', {
+            fileName: entry.fileName ?? info.fileName,
+            imageBlob: entry.imageBlob,
+          });
+          reloadUrlHistoryFnRef.current?.();
+        })();
+        return;
+      }
 
-    changeReference((s) => {
-      if (info.source === 'sketchfab' && info.sketchfabUid) {
-        s.setSource('sketchfab');
-        s.setLocalImageUrl(null);
-        if (info.imageUrl) {
-          // The Sketchfab iframe stays mounted in fixed mode (display:none),
-          // so loadSketchfabModelFnRef below still readies "Change angle".
+      changeReference((s) => {
+        if (info.source === 'sketchfab' && info.sketchfabUid) {
+          s.setSource('sketchfab');
+          s.setLocalImageUrl(null);
+          if (info.imageUrl) {
+            // The Sketchfab iframe stays mounted in fixed mode (display:none),
+            // so loadSketchfabModelFnRef below still readies "Change angle".
+            s.setReferenceMode('fixed');
+            s.setFixedImageUrl(info.imageUrl);
+            s.setReferenceInfo(info);
+          } else {
+            s.setReferenceMode('browse');
+            s.setFixedImageUrl(null);
+            s.setReferenceInfo(null);
+          }
+          // Pass title/author to the viewer so Fix Angle from "Change angle"
+          // produces a non-empty ReferenceInfo even on legacy records.
+          const sfMeta: SketchfabModelMeta | undefined =
+            info.title || info.author ? { name: info.title, author: info.author } : undefined;
+          loadSketchfabModelFnRef.current?.(info.sketchfabUid, sfMeta);
+        } else if (info.source === 'url' && info.imageUrl) {
+          s.setSource('url');
           s.setReferenceMode('fixed');
           s.setFixedImageUrl(info.imageUrl);
+          s.setLocalImageUrl(null);
           s.setReferenceInfo(info);
-        }
-        else {
+        } else if (info.source === 'youtube' && info.youtubeVideoId) {
+          s.setSource('youtube');
           s.setReferenceMode('browse');
           s.setFixedImageUrl(null);
-          s.setReferenceInfo(null);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+        } else if (info.source === 'pexels' && info.pexelsImageUrl) {
+          s.setSource('pexels');
+          s.setReferenceMode('fixed');
+          s.setFixedImageUrl(info.pexelsImageUrl);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+        } else if (info.source === 'trace-template' && info.templateId) {
+          s.setSource('trace-template');
+          s.setReferenceMode('fixed');
+          s.setFixedImageUrl(null);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
+        } else if (info.source === 'pose' && info.imageUrl) {
+          // Restore the Fix-Angle screenshot directly into fixed mode. The
+          // pose/hint on the record also revive the mannequin state, so
+          // "Change angle" drops back into browse with the pose applied.
+          s.setSource('pose');
+          s.setReferenceMode('fixed');
+          s.setFixedImageUrl(info.imageUrl);
+          s.setLocalImageUrl(null);
+          s.setReferenceInfo(info);
         }
-        // Pass title/author to the viewer so Fix Angle from "Change angle"
-        // produces a non-empty ReferenceInfo even on legacy records.
-        const sfMeta: SketchfabModelMeta | undefined = (info.title || info.author)
-          ? { name: info.title, author: info.author }
-          : undefined;
-        loadSketchfabModelFnRef.current?.(info.sketchfabUid, sfMeta);
-      }
-      else if (info.source === 'url' && info.imageUrl) {
-        s.setSource('url');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(info.imageUrl);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      }
-      else if (info.source === 'youtube' && info.youtubeVideoId) {
-        s.setSource('youtube');
-        s.setReferenceMode('browse');
-        s.setFixedImageUrl(null);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      }
-      else if (info.source === 'pexels' && info.pexelsImageUrl) {
-        s.setSource('pexels');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(info.pexelsImageUrl);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      }
-      else if (info.source === 'trace-template' && info.templateId) {
-        s.setSource('trace-template');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(null);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      }
-      else if (info.source === 'pose' && info.imageUrl) {
-        // Restore the Fix-Angle screenshot directly into fixed mode. The
-        // pose/hint on the record also revive the mannequin state, so
-        // "Change angle" drops back into browse with the pose applied.
-        s.setSource('pose');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(info.imageUrl);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      }
-    });
-    onApplied?.(true);
+      });
+      onApplied?.(true);
 
-    let historyAdd: Promise<void> | null = null;
-    if (info.source === 'url' && info.imageUrl) {
-      historyAdd = addUrlHistory(info.imageUrl, 'url', info.title);
-    }
-    else if (info.source === 'youtube' && info.youtubeVideoId) {
-      historyAdd = addUrlHistory(buildYouTubeCanonicalUrl(info.youtubeVideoId), 'youtube', info.title);
-    }
-    else if (info.source === 'pexels' && info.pexelsPageUrl) {
-      historyAdd = addUrlHistory(info.pexelsPageUrl, 'pexels', info.title);
-    }
-    else if (info.source === 'sketchfab' && info.sketchfabUid) {
-      // Bump lastUsedAt so reopening the same Sketchfab reference from the
-      // gallery surfaces it at the top of the URL-history dropdown. If the
-      // gallery record has a screenshot, convert it to a Blob and persist
-      // — this lets a later URL-history selection restore directly into
-      // fixed mode (matching the gallery "Use this reference" UX) even for
-      // entries that were never opened via Fix Angle in this device's
-      // history.
-      const sketchfabKey = canonicalSketchfabUrl(info.sketchfabUid);
-      const galleryImageUrl = info.imageUrl;
-      historyAdd = (galleryImageUrl
-        ? dataUrlToJpegBlob(galleryImageUrl).then(blob => addUrlHistory(
-            sketchfabKey,
-            'sketchfab',
-            { title: info.title, ...(blob ? { imageBlob: blob } : {}) },
-          ))
-        : addUrlHistory(sketchfabKey, 'sketchfab', info.title)
-      );
-    }
-    if (historyAdd) {
-      historyAdd.then(() => reloadUrlHistoryFnRef.current?.()).catch(() => { /* ignore */ });
-    }
-  }, [changeReference]);
+      let historyAdd: Promise<void> | null = null;
+      if (info.source === 'url' && info.imageUrl) {
+        historyAdd = addUrlHistory(info.imageUrl, 'url', info.title);
+      } else if (info.source === 'youtube' && info.youtubeVideoId) {
+        historyAdd = addUrlHistory(
+          buildYouTubeCanonicalUrl(info.youtubeVideoId),
+          'youtube',
+          info.title,
+        );
+      } else if (info.source === 'pexels' && info.pexelsPageUrl) {
+        historyAdd = addUrlHistory(info.pexelsPageUrl, 'pexels', info.title);
+      } else if (info.source === 'sketchfab' && info.sketchfabUid) {
+        // Bump lastUsedAt so reopening the same Sketchfab reference from the
+        // gallery surfaces it at the top of the URL-history dropdown. If the
+        // gallery record has a screenshot, convert it to a Blob and persist
+        // — this lets a later URL-history selection restore directly into
+        // fixed mode (matching the gallery "Use this reference" UX) even for
+        // entries that were never opened via Fix Angle in this device's
+        // history.
+        const sketchfabKey = canonicalSketchfabUrl(info.sketchfabUid);
+        const galleryImageUrl = info.imageUrl;
+        historyAdd = galleryImageUrl
+          ? dataUrlToJpegBlob(galleryImageUrl).then((blob) =>
+              addUrlHistory(sketchfabKey, 'sketchfab', {
+                title: info.title,
+                ...(blob ? { imageBlob: blob } : {}),
+              }),
+            )
+          : addUrlHistory(sketchfabKey, 'sketchfab', info.title);
+      }
+      if (historyAdd) {
+        historyAdd
+          .then(() => reloadUrlHistoryFnRef.current?.())
+          .catch(() => {
+            /* ignore */
+          });
+      }
+    },
+    [changeReference],
+  );
 
   /**
    * Load a gallery record's strokes into the StrokeManager so the user can
@@ -853,153 +934,186 @@ function SplitLayoutInner() {
    * changeReference (see handleLoadReference's onApplied contract) so the
    * pendingMigrationRef set here isn't wiped by it.
    */
-  const applyLoadedDrawingStrokes = useCallback((
-    drawing: DrawingRecord,
-    referenceApplied: boolean,
-    knownSize?: { width: number; height: number } | null,
-  ) => {
-    // A gallery load supersedes any restore still waiting on a size callback
-    // (e.g. a legacy autosave draft whose reference hasn't loaded yet). The
-    // referenced-load path clears these via changeReference, but a record
-    // with no reference — or an evicted one — never calls it, and the stale
-    // pending draft strokes/camera would later land on top of this load.
-    pendingMigrationRef.current = null;
-    pendingGalleryCameraRef.current = null;
-    pendingCameraRef.current = null;
-    const ref = drawing.reference;
-    const isLegacyCoords = (drawing.coordVersion ?? 1) < COORD_VERSION_CURRENT;
-    // Mirrors the draft-restore referenceWillSize logic: sources whose viewer
-    // reports onReferenceImageSize once content loads.
-    const referenceWillSize = referenceApplied && !!ref && (
-      ref.source === 'image'
-      || ref.source === 'url'
-      || ref.source === 'pexels'
-      || ref.source === 'youtube'
-      || ref.source === 'trace-template'
-      || ((ref.source === 'sketchfab' || ref.source === 'pose') && !!ref.imageUrl)
-    );
-    if (isLegacyCoords && referenceWillSize && !knownSize) {
-      // Legacy strokes need the (-W/2, -H/2) shift, and the reference's size
-      // is only known once the viewer loads it — defer via pendingMigrationRef.
-      // The camera is centered on the migrated strokes at the same moment.
-      pendingMigrationRef.current = {
-        strokes: drawing.strokes,
-        redoStack: [],
-        gallerySaveDirty: false,
-        skipUserStartGuard: true,
-        centerCameraOnStrokes: true,
-      };
-      // Strokes land only when the viewer reports its size — keep input
-      // frozen until then so nothing drawn meanwhile gets wiped by the
-      // arriving loadState.
-      setDrawingLoadInFlight(true);
-    }
-    else {
-      // `knownSize` is set when the record's reference is the content already
-      // on screen (see handleLoadDrawing): the viewer won't reload identical
-      // content, so no onReferenceImageSize would ever arrive to apply a
-      // deferred migration — shift immediately with the size we already have.
-      const strokes = (isLegacyCoords && knownSize)
-        ? shiftStrokes(drawing.strokes, -knownSize.width / 2, -knownSize.height / 2)
-        : drawing.strokes;
-      strokeManager.loadState(strokes, []);
-      // The loaded strokes are bit-identical to the gallery record — mark
-      // clean so the Save button can't immediately write a duplicate.
-      strokeManager.markSavedToGallery();
-
-      // Bring the loaded drawing into view. Home (= world origin = reference
-      // center) is not enough: off-center drawings — and legacy strokes whose
-      // shift couldn't be determined (evicted reference) — can sit entirely
-      // outside the home viewport, making the load look like a no-op. Center
-      // on the strokes' bounding box instead; the reset-zoom button still
-      // offers the reference-centered home one tap away.
-      const box = strokes.length > 0 ? computeStrokesBoundingBox(strokes) : null;
-      if (!box) {
-        viewTransform.userResetToHome();
-      }
-      else if (referenceWillSize && !knownSize) {
-        // Fresh reference incoming: its loadContent(0,0,1) would stomp a
-        // camera set now — stash the target and let handleReferenceImageSize
-        // promote it to pendingCameraRef once the content has loaded. (With
-        // knownSize the content is already displayed and won't reload — that
-        // case must apply directly below or it would wait forever.)
-        pendingGalleryCameraRef.current = {
-          x: box.minX + box.width / 2,
-          y: box.minY + box.height / 2,
+  const applyLoadedDrawingStrokes = useCallback(
+    (
+      drawing: DrawingRecord,
+      referenceApplied: boolean,
+      knownSize?: { width: number; height: number } | null,
+    ) => {
+      // A gallery load supersedes any restore still waiting on a size callback
+      // (e.g. a legacy autosave draft whose reference hasn't loaded yet). The
+      // referenced-load path clears these via changeReference, but a record
+      // with no reference — or an evicted one — never calls it, and the stale
+      // pending draft strokes/camera would later land on top of this load.
+      pendingMigrationRef.current = null;
+      pendingGalleryCameraRef.current = null;
+      pendingCameraRef.current = null;
+      const ref = drawing.reference;
+      const isLegacyCoords = (drawing.coordVersion ?? 1) < COORD_VERSION_CURRENT;
+      // Mirrors the draft-restore referenceWillSize logic: sources whose viewer
+      // reports onReferenceImageSize once content loads.
+      const referenceWillSize =
+        referenceApplied &&
+        !!ref &&
+        (ref.source === 'image' ||
+          ref.source === 'url' ||
+          ref.source === 'pexels' ||
+          ref.source === 'youtube' ||
+          ref.source === 'trace-template' ||
+          ((ref.source === 'sketchfab' || ref.source === 'pose') && !!ref.imageUrl));
+      if (isLegacyCoords && referenceWillSize && !knownSize) {
+        // Legacy strokes need the (-W/2, -H/2) shift, and the reference's size
+        // is only known once the viewer loads it — defer via pendingMigrationRef.
+        // The camera is centered on the migrated strokes at the same moment.
+        pendingMigrationRef.current = {
+          strokes: drawing.strokes,
+          redoStack: [],
+          gallerySaveDirty: false,
+          skipUserStartGuard: true,
+          centerCameraOnStrokes: true,
         };
+        // Strokes land only when the viewer reports its size — keep input
+        // frozen until then so nothing drawn meanwhile gets wiped by the
+        // arriving loadState.
+        setDrawingLoadInFlight(true);
+      } else {
+        // `knownSize` is set when the record's reference is the content already
+        // on screen (see handleLoadDrawing): the viewer won't reload identical
+        // content, so no onReferenceImageSize would ever arrive to apply a
+        // deferred migration — shift immediately with the size we already have.
+        const strokes =
+          isLegacyCoords && knownSize
+            ? shiftStrokes(drawing.strokes, -knownSize.width / 2, -knownSize.height / 2)
+            : drawing.strokes;
+        strokeManager.loadState(strokes, []);
+        // The loaded strokes are bit-identical to the gallery record — mark
+        // clean so the Save button can't immediately write a duplicate.
+        strokeManager.markSavedToGallery();
+
+        // Bring the loaded drawing into view. Home (= world origin = reference
+        // center) is not enough: off-center drawings — and legacy strokes whose
+        // shift couldn't be determined (evicted reference) — can sit entirely
+        // outside the home viewport, making the load look like a no-op. Center
+        // on the strokes' bounding box instead; the reset-zoom button still
+        // offers the reference-centered home one tap away.
+        const box = strokes.length > 0 ? computeStrokesBoundingBox(strokes) : null;
+        if (!box) {
+          viewTransform.userResetToHome();
+        } else if (referenceWillSize && !knownSize) {
+          // Fresh reference incoming: its loadContent(0,0,1) would stomp a
+          // camera set now — stash the target and let handleReferenceImageSize
+          // promote it to pendingCameraRef once the content has loaded. (With
+          // knownSize the content is already displayed and won't reload — that
+          // case must apply directly below or it would wait forever.)
+          pendingGalleryCameraRef.current = {
+            x: box.minX + box.width / 2,
+            y: box.minY + box.height / 2,
+          };
+        } else {
+          // No viewer reload coming (same content already displayed, reference
+          // evicted, or no reference at all) — apply directly.
+          viewTransform.restoreCamera(box.minX + box.width / 2, box.minY + box.height / 2, 1);
+        }
+        // Strokes are on the canvas — lift the load-in-flight input freeze.
+        setDrawingLoadInFlight(false);
       }
-      else {
-        // No viewer reload coming (same content already displayed, reference
-        // evicted, or no reference at all) — apply directly.
-        viewTransform.restoreCamera(box.minX + box.width / 2, box.minY + box.height / 2, 1);
-      }
-      // Strokes are on the canvas — lift the load-in-flight input freeze.
-      setDrawingLoadInFlight(false);
-    }
-    currentStrokeRef.current = null;
-    setOverlayStrokes(null);
-    setOverlayActive(false);
-    // Continue the record's drawing time; restore() leaves the timer stopped,
-    // and the next pen-down starts it (loadState cleared any tentative-clear
-    // state, so no reset fires).
-    timer.restore(drawing.elapsedMs);
-    setRestoreVersion(v => v + 1);
-    setHistorySyncVersion(v => v + 1);
-    incrementFlushVersion();
-  }, [strokeManager, timer, viewTransform, incrementFlushVersion, setRestoreVersion, setHistorySyncVersion, setOverlayStrokes, setOverlayActive, setDrawingLoadInFlight]);
+      currentStrokeRef.current = null;
+      setOverlayStrokes(null);
+      setOverlayActive(false);
+      // Continue the record's drawing time; restore() leaves the timer stopped,
+      // and the next pen-down starts it (loadState cleared any tentative-clear
+      // state, so no reset fires).
+      timer.restore(drawing.elapsedMs);
+      setRestoreVersion((v) => v + 1);
+      setHistorySyncVersion((v) => v + 1);
+      incrementFlushVersion();
+    },
+    [
+      strokeManager,
+      timer,
+      viewTransform,
+      incrementFlushVersion,
+      setRestoreVersion,
+      setHistorySyncVersion,
+      setOverlayStrokes,
+      setOverlayActive,
+      setDrawingLoadInFlight,
+    ],
+  );
 
   // Gallery "continue this drawing" — restore the reference first (its
   // changeReference resets pendingMigrationRef and records the undo entry),
   // then load the strokes on top. Records without a structured reference
   // (free drawing / legacy) keep the current reference untouched.
-  const handleLoadDrawing = useCallback((drawing: DrawingRecord) => {
-    // Freeze drawing input for the whole load: the local-image path resolves
-    // its Blob asynchronously, and a stroke drawn in that window would be
-    // wiped by the loadState that follows. applyLoadedDrawingStrokes (always
-    // reached, including the eviction-failure path) settles the final state.
-    setDrawingLoadInFlight(true);
-    const ref = drawing.reference;
-    if (ref) {
-      // Snapshot BEFORE the load: if the record's reference is the content
-      // already displayed (and sized), the viewer won't fire a fresh
-      // onReferenceImageSize, so a deferred legacy migration would hang —
-      // pass the known size to migrate immediately instead.
-      const prev = captureReferenceSnapshot();
-      handleLoadReference(ref, (applied) => {
-        const knownSize = (applied && isSameReferenceContent(prev, ref))
-          ? referenceSizeRef.current
-          : null;
-        applyLoadedDrawingStrokes(drawing, applied, knownSize);
-      });
-    }
-    else {
-      applyLoadedDrawingStrokes(drawing, false);
-    }
-  }, [handleLoadReference, applyLoadedDrawingStrokes, captureReferenceSnapshot, setDrawingLoadInFlight]);
+  const handleLoadDrawing = useCallback(
+    (drawing: DrawingRecord) => {
+      // Freeze drawing input for the whole load: the local-image path resolves
+      // its Blob asynchronously, and a stroke drawn in that window would be
+      // wiped by the loadState that follows. applyLoadedDrawingStrokes (always
+      // reached, including the eviction-failure path) settles the final state.
+      setDrawingLoadInFlight(true);
+      const ref = drawing.reference;
+      if (ref) {
+        // Snapshot BEFORE the load: if the record's reference is the content
+        // already displayed (and sized), the viewer won't fire a fresh
+        // onReferenceImageSize, so a deferred legacy migration would hang —
+        // pass the known size to migrate immediately instead.
+        const prev = captureReferenceSnapshot();
+        handleLoadReference(ref, (applied) => {
+          const knownSize =
+            applied && isSameReferenceContent(prev, ref) ? referenceSizeRef.current : null;
+          applyLoadedDrawingStrokes(drawing, applied, knownSize);
+        });
+      } else {
+        applyLoadedDrawingStrokes(drawing, false);
+      }
+    },
+    [
+      handleLoadReference,
+      applyLoadedDrawingStrokes,
+      captureReferenceSnapshot,
+      setDrawingLoadInFlight,
+    ],
+  );
 
   // Autosave: read timer.elapsedMs via ref to avoid recreating this callback every frame
-  const getAutosaveState = useCallback(() => ({
-    strokes: strokeManager.getStrokes(),
-    redoStack: strokeManager.getRedoStack(),
-    elapsedMs: timerElapsedRef.current,
-    source,
-    referenceInfo,
-    referenceImageData: (source === 'image' && localImageUrl)
-      ? localImageUrl
-      : ((source === 'sketchfab' || source === 'pose') && fixedImageUrl)
-          ? fixedImageUrl
-          : null,
-    grid,
-    lines,
-    referenceCollapsed,
-    camera: viewTransform.getCamera(),
-    flipped: isFlipped,
-    // Read at call time — the dirty flag deliberately is not in the deps.
-    // `useAutosave` re-invokes this getter when `changeVersion` (bumped by
-    // stroke mutations) or `flushVersion` (bumped by `onGallerySaved`)
-    // advances, so the latest value is captured without re-memoizing.
-    gallerySaveDirty: strokeManager.isDirtySinceGallerySave(),
-  }), [strokeManager, source, referenceInfo, localImageUrl, fixedImageUrl, grid, lines, referenceCollapsed, viewTransform, isFlipped]);
+  const getAutosaveState = useCallback(
+    () => ({
+      strokes: strokeManager.getStrokes(),
+      redoStack: strokeManager.getRedoStack(),
+      elapsedMs: timerElapsedRef.current,
+      source,
+      referenceInfo,
+      referenceImageData:
+        source === 'image' && localImageUrl
+          ? localImageUrl
+          : (source === 'sketchfab' || source === 'pose') && fixedImageUrl
+            ? fixedImageUrl
+            : null,
+      grid,
+      lines,
+      referenceCollapsed,
+      camera: viewTransform.getCamera(),
+      flipped: isFlipped,
+      // Read at call time — the dirty flag deliberately is not in the deps.
+      // `useAutosave` re-invokes this getter when `changeVersion` (bumped by
+      // stroke mutations) or `flushVersion` (bumped by `onGallerySaved`)
+      // advances, so the latest value is captured without re-memoizing.
+      gallerySaveDirty: strokeManager.isDirtySinceGallerySave(),
+    }),
+    [
+      strokeManager,
+      source,
+      referenceInfo,
+      localImageUrl,
+      fixedImageUrl,
+      grid,
+      lines,
+      referenceCollapsed,
+      viewTransform,
+      isFlipped,
+    ],
+  );
 
   useAutosave(getAutosaveState, changeVersion, flushVersion, suppressAutosaveRef);
 
@@ -1050,8 +1164,7 @@ function SplitLayoutInner() {
     if (guideVersion > 0) {
       if (guideChangeTransient) {
         incrementChangeVersion();
-      }
-      else {
+      } else {
         incrementFlushVersion();
       }
     }
@@ -1087,132 +1200,130 @@ function SplitLayoutInner() {
     restoredRef.current = true;
 
     let cancelled = false;
-    loadDraft().then((draft) => {
-      if (cancelled) return;
-      if (!draft) {
-        setRestoreCompleted(true);
-        return;
-      }
+    loadDraft()
+      .then((draft) => {
+        if (cancelled) return;
+        if (!draft) {
+          setRestoreCompleted(true);
+          return;
+        }
 
-      // True when the active source will mount a viewer that both reports
-      // onReferenceImageSize and calls loadContent(0, 0, 1) on first load.
-      // Used for two purposes downstream: (1) deferring legacy stroke
-      // migration until the viewer's size is known, (2) deferring camera
-      // restore until after the viewer's loadContent would have stomped a
-      // directly-applied camera. Sketchfab browse without a captured
-      // screenshot does neither, and its strokes were drawn against an
-      // unscaled panel coord space that already matches the new convention.
-      const referenceWillSize
-        = draft.source === 'image'
-          || draft.source === 'url'
-          || draft.source === 'pexels'
-          || draft.source === 'youtube'
-          || draft.source === 'trace-template'
-          || (draft.source === 'sketchfab' && draft.referenceImageData !== null)
+        // True when the active source will mount a viewer that both reports
+        // onReferenceImageSize and calls loadContent(0, 0, 1) on first load.
+        // Used for two purposes downstream: (1) deferring legacy stroke
+        // migration until the viewer's size is known, (2) deferring camera
+        // restore until after the viewer's loadContent would have stomped a
+        // directly-applied camera. Sketchfab browse without a captured
+        // screenshot does neither, and its strokes were drawn against an
+        // unscaled panel coord space that already matches the new convention.
+        const referenceWillSize =
+          draft.source === 'image' ||
+          draft.source === 'url' ||
+          draft.source === 'pexels' ||
+          draft.source === 'youtube' ||
+          draft.source === 'trace-template' ||
+          (draft.source === 'sketchfab' && draft.referenceImageData !== null) ||
           // Pose browse mounts the free-orbit 3D viewer (no size, no
           // loadContent); only the fixed screenshot goes through ImageViewer.
-          || (draft.source === 'pose' && draft.referenceImageData !== null);
-      const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
-      const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
+          (draft.source === 'pose' && draft.referenceImageData !== null);
+        const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
+        const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
 
-      // Pre-feature drafts have no `gallerySaveDirty` field. Default to dirty
-      // so a returning user can still save (matches behavior before the
-      // dirty-tracking feature shipped — never silently disable Save). Only
-      // an explicit `false` disables the button across reload.
-      const restoredDirty = draft.gallerySaveDirty ?? true;
+        // Pre-feature drafts have no `gallerySaveDirty` field. Default to dirty
+        // so a returning user can still save (matches behavior before the
+        // dirty-tracking feature shipped — never silently disable Save). Only
+        // an explicit `false` disables the button across reload.
+        const restoredDirty = draft.gallerySaveDirty ?? true;
 
-      if (deferStrokesForMigration) {
-        pendingMigrationRef.current = {
-          strokes: draft.strokes,
-          redoStack: draft.redoStack,
-          guides: draft.guideState ?? { grid: { mode: 'none' }, lines: [] },
-          gallerySaveDirty: restoredDirty,
-        };
-      }
-      else {
-        if (draft.strokes.length > 0 || draft.redoStack.length > 0) {
-          strokeManager.loadState(draft.strokes, draft.redoStack);
-          // loadState bumps mutationCount, so isDirtySinceGallerySave() is
-          // true here unless we explicitly mark the restored state as saved.
-          if (!restoredDirty) {
-            strokeManager.markSavedToGallery();
+        if (deferStrokesForMigration) {
+          pendingMigrationRef.current = {
+            strokes: draft.strokes,
+            redoStack: draft.redoStack,
+            guides: draft.guideState ?? { grid: { mode: 'none' }, lines: [] },
+            gallerySaveDirty: restoredDirty,
+          };
+        } else {
+          if (draft.strokes.length > 0 || draft.redoStack.length > 0) {
+            strokeManager.loadState(draft.strokes, draft.redoStack);
+            // loadState bumps mutationCount, so isDirtySinceGallerySave() is
+            // true here unless we explicitly mark the restored state as saved.
+            if (!restoredDirty) {
+              strokeManager.markSavedToGallery();
+            }
+          }
+          if (draft.guideState) {
+            restoreGuides(draft.guideState);
           }
         }
-        if (draft.guideState) {
-          restoreGuides(draft.guideState);
-        }
-      }
 
-      // Restore timer
-      if (draft.elapsedMs > 0) {
-        timer.restore(draft.elapsedMs);
-      }
+        // Restore timer
+        if (draft.elapsedMs > 0) {
+          timer.restore(draft.elapsedMs);
+        }
 
-      // Restore collapsed layout state
-      setReferenceCollapsed(draft.referenceCollapsed ?? false);
+        // Restore collapsed layout state
+        setReferenceCollapsed(draft.referenceCollapsed ?? false);
 
-      // Restore flipped state
-      if (draft.flipped !== undefined) {
-        setIsFlipped(draft.flipped);
-      }
+        // Restore flipped state
+        if (draft.flipped !== undefined) {
+          setIsFlipped(draft.flipped);
+        }
 
-      // Restore camera. When a viewer with loadContent will mount, defer;
-      // the pending-camera effect re-applies it after the viewer's
-      // loadContent has run. Otherwise apply directly — nothing later will
-      // overwrite it. restoreCamera emits intent 'restore', ignored by the
-      // flush listener while suppressAutosaveRef is up (set below).
-      if (draft.camera) {
-        const cam = draft.camera;
-        if (referenceWillSize) {
-          pendingCameraRef.current = cam;
+        // Restore camera. When a viewer with loadContent will mount, defer;
+        // the pending-camera effect re-applies it after the viewer's
+        // loadContent has run. Otherwise apply directly — nothing later will
+        // overwrite it. restoreCamera emits intent 'restore', ignored by the
+        // flush listener while suppressAutosaveRef is up (set below).
+        if (draft.camera) {
+          const cam = draft.camera;
+          if (referenceWillSize) {
+            pendingCameraRef.current = cam;
+          } else {
+            viewTransform.restoreCamera(cam.viewCenterX, cam.viewCenterY, cam.zoom);
+          }
         }
-        else {
-          viewTransform.restoreCamera(cam.viewCenterX, cam.viewCenterY, cam.zoom);
-        }
-      }
 
-      // Restore reference state
-      if (draft.source !== 'none') {
-        setSource(draft.source);
-        setReferenceInfo(draft.referenceInfo);
+        // Restore reference state
+        if (draft.source !== 'none') {
+          setSource(draft.source);
+          setReferenceInfo(draft.referenceInfo);
 
-        const info = draft.referenceInfo;
-        if (draft.source === 'image' && draft.referenceImageData) {
-          setLocalImageUrl(draft.referenceImageData);
-          setReferenceMode('fixed');
+          const info = draft.referenceInfo;
+          if (draft.source === 'image' && draft.referenceImageData) {
+            setLocalImageUrl(draft.referenceImageData);
+            setReferenceMode('fixed');
+          } else if (
+            (draft.source === 'sketchfab' || draft.source === 'pose') &&
+            draft.referenceImageData
+          ) {
+            setFixedImageUrl(draft.referenceImageData);
+            setReferenceMode('fixed');
+          } else if (info?.source === 'url') {
+            setFixedImageUrl(info.imageUrl);
+            setReferenceMode('fixed');
+          } else if (info?.source === 'youtube') {
+            setReferenceMode('browse');
+          } else if (info?.source === 'pexels') {
+            setFixedImageUrl(info.pexelsImageUrl);
+            setReferenceMode('fixed');
+          } else if (info?.source === 'trace-template') {
+            // No fixed/local URL to restore — the templateId on referenceInfo is
+            // enough for ReferencePanel to look up the bundled template. Just
+            // make sure we land in fixed mode (otherwise the picker shows).
+            setReferenceMode('fixed');
+          }
         }
-        else if ((draft.source === 'sketchfab' || draft.source === 'pose') && draft.referenceImageData) {
-          setFixedImageUrl(draft.referenceImageData);
-          setReferenceMode('fixed');
-        }
-        else if (info?.source === 'url') {
-          setFixedImageUrl(info.imageUrl);
-          setReferenceMode('fixed');
-        }
-        else if (info?.source === 'youtube') {
-          setReferenceMode('browse');
-        }
-        else if (info?.source === 'pexels') {
-          setFixedImageUrl(info.pexelsImageUrl);
-          setReferenceMode('fixed');
-        }
-        else if (info?.source === 'trace-template') {
-          // No fixed/local URL to restore — the templateId on referenceInfo is
-          // enough for ReferencePanel to look up the bundled template. Just
-          // make sure we land in fixed mode (otherwise the picker shows).
-          setReferenceMode('fixed');
-        }
-      }
 
-      setRestoreVersion(v => v + 1);
-      setRestoreCompleted(true);
-    }).catch((err) => {
-      // loadDraft is async IndexedDB — if it rejects, surface the panels
-      // anyway so the user isn't stuck on a blank screen.
-      console.error('loadDraft failed:', err);
-      if (cancelled) return;
-      setRestoreCompleted(true);
-    });
+        setRestoreVersion((v) => v + 1);
+        setRestoreCompleted(true);
+      })
+      .catch((err) => {
+        // loadDraft is async IndexedDB — if it rejects, surface the panels
+        // anyway so the user isn't stuck on a blank screen.
+        console.error('loadDraft failed:', err);
+        if (cancelled) return;
+        setRestoreCompleted(true);
+      });
 
     return () => {
       cancelled = true;
@@ -1222,7 +1333,7 @@ function SplitLayoutInner() {
       // remount short-circuits, leaving the visibility gate permanently hidden.
       restoredRef.current = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [hasSessionLock]);
 
   return (
@@ -1265,11 +1376,26 @@ function SplitLayoutInner() {
           Mounting the panels fresh after restore ensures every prop is at its
           final value at first paint, so no transition kicks off. */}
       {restored && (
-        <Box sx={{ display: 'flex', flexDirection: isLandscape ? 'row' : 'column', flex: 1, minHeight: 0 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: isLandscape ? 'row' : 'column',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {/* `collapseLocked` keeps the reference panel visible even when the user
           asked to collapse it; the toggle button is also disabled in that
           state so the user gets a tooltip instead of a no-op click. */}
-          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: (referenceCollapsed && !isBrowseFullscreen && !collapseLocked) ? 'none' : 'block' }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display:
+                referenceCollapsed && !isBrowseFullscreen && !collapseLocked ? 'none' : 'block',
+            }}
+          >
             <ReferencePanel
               overlayStrokes={overlayStrokes}
               overlayCurrentStrokeRef={currentStrokeRef}
@@ -1297,7 +1423,14 @@ function SplitLayoutInner() {
               traceFeedback={traceScoring.latestFeedback}
             />
           </Box>
-          <Box sx={{ flex: 1, minWidth: 0, minHeight: 0, display: isBrowseFullscreen ? 'none' : 'block' }}>
+          <Box
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: isBrowseFullscreen ? 'none' : 'block',
+            }}
+          >
             <DrawingPanel
               referenceSize={drawingFitSize}
               referenceInfo={referenceInfo}
@@ -1305,7 +1438,9 @@ function SplitLayoutInner() {
               onStrokesChanged={handleStrokesChanged}
               onGallerySaved={incrementFlushVersion}
               onCurrentStrokeChange={handleCurrentStrokeChange}
-              onOverlayClear={() => { setOverlayStrokes(null); }}
+              onOverlayClear={() => {
+                setOverlayStrokes(null);
+              }}
               onLoadReference={handleLoadReference}
               onLoadDrawing={handleLoadDrawing}
               captureReferenceSnapshot={captureReferenceSnapshot}

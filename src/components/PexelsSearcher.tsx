@@ -73,10 +73,14 @@ interface PexelsSearcherProps {
 
 function durationLabel(ms: PexelsSessionDurationMs): string {
   switch (ms) {
-    case 30_000: return t('gestureSessionDuration30');
-    case 60_000: return t('gestureSessionDuration60');
-    case 90_000: return t('gestureSessionDuration90');
-    case 120_000: return t('gestureSessionDuration120');
+    case 30_000:
+      return t('gestureSessionDuration30');
+    case 60_000:
+      return t('gestureSessionDuration60');
+    case 90_000:
+      return t('gestureSessionDuration90');
+    case 120_000:
+      return t('gestureSessionDuration120');
     default: {
       // Compile-time exhaustiveness: if PEXELS_SESSION_DURATIONS_MS adds a
       // value without a label here, this assignment fails to type-check.
@@ -88,10 +92,14 @@ function durationLabel(ms: PexelsSessionDurationMs): string {
 
 function orientationLabel(o: Orientation): string {
   switch (o) {
-    case 'landscape': return t('pexelsOrientationLandscape');
-    case 'portrait': return t('pexelsOrientationPortrait');
-    case 'square': return t('pexelsOrientationSquare');
-    case 'all': return t('pexelsOrientationAll');
+    case 'landscape':
+      return t('pexelsOrientationLandscape');
+    case 'portrait':
+      return t('pexelsOrientationPortrait');
+    case 'square':
+      return t('pexelsOrientationSquare');
+    case 'all':
+      return t('pexelsOrientationAll');
   }
 }
 
@@ -108,14 +116,24 @@ const SUGGESTED_QUERIES: { label: string; query: string }[] = [
   { label: 'hand', query: 'hand' },
 ];
 
-export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, initialQuery, initialOrientation, apiKeyVersion = 0, onStartSession }: PexelsSearcherProps) {
+export function PexelsSearcher({
+  onSelectPhoto,
+  onApiKeyMissing,
+  active = true,
+  initialQuery,
+  initialOrientation,
+  apiKeyVersion = 0,
+  onStartSession,
+}: PexelsSearcherProps) {
   // Restore the prior search so navigating back to the searcher shows results
   // rather than an empty grid. initial* props (passed by the parent when
   // loading from URL history with per-photo context) take precedence over the
   // global last-search snapshot in localStorage.
   const lastSearch = useMemo(() => getPexelsLastSearch(), []);
   const [query, setQuery] = useState(initialQuery ?? lastSearch?.query ?? '');
-  const [orientation, setOrientation] = useState<Orientation>(initialOrientation ?? lastSearch?.orientation ?? 'all');
+  const [orientation, setOrientation] = useState<Orientation>(
+    initialOrientation ?? lastSearch?.orientation ?? 'all',
+  );
   const [photos, setPhotos] = useState<PexelsPhoto[]>([]);
   const [activeQuery, setActiveQuery] = useState('');
   const [activeOrientation, setActiveOrientation] = useState<Orientation>('all');
@@ -127,7 +145,9 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
   const [needsKey, setNeedsKey] = useState(() => getPexelsApiKey() === '');
   // Per-pose duration for the gesture session "Start" control. Persisted so
   // the user's last choice survives reloads and source toggles.
-  const [sessionDurationMs, setSessionDurationMs] = useState<PexelsSessionDurationMs>(() => getPexelsSessionDuration());
+  const [sessionDurationMs, setSessionDurationMs] = useState<PexelsSessionDurationMs>(() =>
+    getPexelsSessionDuration(),
+  );
   // Re-check needsKey when the parent bumps apiKeyVersion (e.g. after the
   // settings dialog stores a new key). Using the render-time prev-prop pattern
   // instead of an effect so we don't violate react-hooks/set-state-in-effect.
@@ -143,7 +163,9 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
   useEffect(() => () => inflightRef.current?.abort(), []);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { searchInputRef.current?.focus(); }, []);
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (active && needsKey) onApiKeyMissing();
@@ -151,9 +173,15 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
 
   const [searchHistory, setSearchHistory] = useState<PexelsSearchHistoryEntry[]>([]);
   const reloadHistory = useCallback(() => {
-    getPexelsSearchHistory().then(setSearchHistory).catch(() => { /* ignore */ });
+    getPexelsSearchHistory()
+      .then(setSearchHistory)
+      .catch(() => {
+        /* ignore */
+      });
   }, []);
-  useEffect(() => { reloadHistory(); }, [reloadHistory]);
+  useEffect(() => {
+    reloadHistory();
+  }, [reloadHistory]);
 
   /** Map a Pexels error to user-visible error text. Returns null for key-related
    *  errors — those flip needsKey, which fires onApiKeyMissing for parent recovery. */
@@ -170,42 +198,50 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
   // orientation is taken as an explicit argument so history-row selection can
   // search with the saved orientation in the same tick, instead of waiting
   // for setOrientation's render before the closure picks it up.
-  const runSearch = useCallback(async (q: string, o: Orientation) => {
-    const trimmed = q.trim();
-    if (!trimmed) return;
-    inflightRef.current?.abort();
-    const ctrl = new AbortController();
-    inflightRef.current = ctrl;
+  const runSearch = useCallback(
+    async (q: string, o: Orientation) => {
+      const trimmed = q.trim();
+      if (!trimmed) return;
+      inflightRef.current?.abort();
+      const ctrl = new AbortController();
+      inflightRef.current = ctrl;
 
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await searchPhotos({
-        query: trimmed,
-        page: 1,
-        orientation: o === 'all' ? undefined : o,
-      }, ctrl.signal);
-      setPhotos(res.photos);
-      setActiveQuery(trimmed);
-      setActiveOrientation(o);
-      setCurrentPage(1);
-      setHasMore(!!res.next_page && res.photos.length > 0);
-      setPexelsLastSearch(trimmed, o);
-      void addPexelsSearchHistory(trimmed, o).then(reloadHistory).catch(() => { /* ignore */ });
-    }
-    catch (e) {
-      if (isAbortError(e)) return;
-      setError(handleError(e));
-      setPhotos([]);
-      setHasMore(false);
-    }
-    finally {
-      if (inflightRef.current === ctrl) {
-        inflightRef.current = null;
-        setLoading(false);
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await searchPhotos(
+          {
+            query: trimmed,
+            page: 1,
+            orientation: o === 'all' ? undefined : o,
+          },
+          ctrl.signal,
+        );
+        setPhotos(res.photos);
+        setActiveQuery(trimmed);
+        setActiveOrientation(o);
+        setCurrentPage(1);
+        setHasMore(!!res.next_page && res.photos.length > 0);
+        setPexelsLastSearch(trimmed, o);
+        void addPexelsSearchHistory(trimmed, o)
+          .then(reloadHistory)
+          .catch(() => {
+            /* ignore */
+          });
+      } catch (e) {
+        if (isAbortError(e)) return;
+        setError(handleError(e));
+        setPhotos([]);
+        setHasMore(false);
+      } finally {
+        if (inflightRef.current === ctrl) {
+          inflightRef.current = null;
+          setLoading(false);
+        }
       }
-    }
-  }, [handleError, reloadHistory]);
+    },
+    [handleError, reloadHistory],
+  );
 
   // On first mount, if a saved query was restored (and the API key is set),
   // re-run that search so "back to search" from a URL-history-loaded fixed
@@ -213,8 +249,10 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
   // so runSearch's setLoading() doesn't fire synchronously inside the effect.
   useEffect(() => {
     if (!query.trim() || needsKey) return;
-    queueMicrotask(() => { void runSearch(query, orientation); });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only auto-restore
+    queueMicrotask(() => {
+      void runSearch(query, orientation);
+    });
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- mount-only auto-restore
   }, []);
 
   const handleLoadMore = useCallback(async () => {
@@ -226,20 +264,21 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
     setLoadingMore(true);
     try {
       const nextPage = currentPage + 1;
-      const res = await searchPhotos({
-        query: activeQuery,
-        page: nextPage,
-        orientation: activeOrientation === 'all' ? undefined : activeOrientation,
-      }, ctrl.signal);
-      setPhotos(prev => [...prev, ...res.photos]);
+      const res = await searchPhotos(
+        {
+          query: activeQuery,
+          page: nextPage,
+          orientation: activeOrientation === 'all' ? undefined : activeOrientation,
+        },
+        ctrl.signal,
+      );
+      setPhotos((prev) => [...prev, ...res.photos]);
       setCurrentPage(nextPage);
       setHasMore(!!res.next_page && res.photos.length > 0);
-    }
-    catch (e) {
+    } catch (e) {
       if (isAbortError(e)) return;
       setError(handleError(e));
-    }
-    finally {
+    } finally {
       if (inflightRef.current === ctrl) {
         inflightRef.current = null;
         setLoadingMore(false);
@@ -247,15 +286,21 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
     }
   }, [hasMore, loadingMore, activeQuery, activeOrientation, currentPage, handleError]);
 
-  const handleSelect = useCallback((photo: PexelsPhoto) => {
-    resetPageZoom();
-    onSelectPhoto(buildPexelsReferenceInfo(photo), photo.src.tiny);
-  }, [onSelectPhoto]);
+  const handleSelect = useCallback(
+    (photo: PexelsPhoto) => {
+      resetPageZoom();
+      onSelectPhoto(buildPexelsReferenceInfo(photo), photo.src.tiny);
+    },
+    [onSelectPhoto],
+  );
 
-  const handleChip = useCallback((preset: string) => {
-    setQuery(preset);
-    void runSearch(preset, orientation);
-  }, [runSearch, orientation]);
+  const handleChip = useCallback(
+    (preset: string) => {
+      setQuery(preset);
+      void runSearch(preset, orientation);
+    },
+    [runSearch, orientation],
+  );
 
   const handleStartSession = useCallback(() => {
     if (!onStartSession || photos.length === 0 || !activeQuery) return;
@@ -268,25 +313,54 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
       hasMore,
       durationMs: sessionDurationMs,
     });
-  }, [onStartSession, photos, activeQuery, activeOrientation, currentPage, hasMore, sessionDurationMs]);
+  }, [
+    onStartSession,
+    photos,
+    activeQuery,
+    activeOrientation,
+    currentPage,
+    hasMore,
+    sessionDurationMs,
+  ]);
 
   const handleChangeSessionDuration = useCallback((value: PexelsSessionDurationMs) => {
     setSessionDurationMs(value);
     setPexelsSessionDuration(value);
   }, []);
 
-  const handleSelectHistory = useCallback((entry: PexelsSearchHistoryEntry) => {
-    setQuery(entry.query);
-    setOrientation(entry.orientation);
-    void runSearch(entry.query, entry.orientation);
-  }, [runSearch]);
+  const handleSelectHistory = useCallback(
+    (entry: PexelsSearchHistoryEntry) => {
+      setQuery(entry.query);
+      setOrientation(entry.orientation);
+      void runSearch(entry.query, entry.orientation);
+    },
+    [runSearch],
+  );
 
-  const handleDeleteHistory = useCallback((key: string) => {
-    void deletePexelsSearchHistory(key).then(reloadHistory).catch(() => { /* ignore */ });
-  }, [reloadHistory]);
+  const handleDeleteHistory = useCallback(
+    (key: string) => {
+      void deletePexelsSearchHistory(key)
+        .then(reloadHistory)
+        .catch(() => {
+          /* ignore */
+        });
+    },
+    [reloadHistory],
+  );
 
   return (
-    <Box data-allow-page-zoom="true" sx={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'auto', p: 1, touchAction: 'pan-x pan-y pinch-zoom' }}>
+    <Box
+      data-allow-page-zoom="true"
+      sx={{
+        width: '100%',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'auto',
+        p: 1,
+        touchAction: 'pan-x pan-y pinch-zoom',
+      }}
+    >
       {/* Search row — Autocomplete shows the past-searches dropdown. */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
         <Autocomplete<PexelsSearchHistoryEntry, false, false, true>
@@ -295,9 +369,11 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
           sx={{ flex: 1 }}
           fullWidth
           options={searchHistory}
-          filterOptions={x => x}
-          getOptionLabel={option => typeof option === 'string' ? option : option.query}
-          isOptionEqualToValue={(a, b) => typeof a !== 'string' && typeof b !== 'string' && a.key === b.key}
+          filterOptions={(x) => x}
+          getOptionLabel={(option) => (typeof option === 'string' ? option : option.query)}
+          isOptionEqualToValue={(a, b) =>
+            typeof a !== 'string' && typeof b !== 'string' && a.key === b.key
+          }
           inputValue={query}
           onInputChange={(_, value, reason) => {
             if (reason === 'input' || reason === 'clear') setQuery(value);
@@ -313,11 +389,23 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
             const { key, ...rest } = props as typeof props & { key: string };
             return (
               <li key={key} {...rest} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Box
+                  sx={{
+                    flex: 1,
+                    minWidth: 0,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {option.query}
                 </Box>
                 {option.orientation !== 'all' && (
-                  <Chip size="small" variant="outlined" label={orientationLabel(option.orientation)} />
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label={orientationLabel(option.orientation)}
+                  />
                 )}
                 <ToolbarTooltip title={t('pexelsSearchHistoryDelete')}>
                   <IconButton
@@ -325,8 +413,14 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
                     aria-label={t('pexelsSearchHistoryDelete')}
                     // Touch devices commit option selection on pointerdown
                     // (before click), so stop propagation there too.
-                    onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
-                    onClick={(e) => { e.stopPropagation(); handleDeleteHistory(option.key); }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteHistory(option.key);
+                    }}
                   >
                     <Trash2 size={14} />
                   </IconButton>
@@ -334,7 +428,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
               </li>
             );
           }}
-          renderInput={params => (
+          renderInput={(params) => (
             <TextField
               {...params}
               inputRef={searchInputRef}
@@ -378,7 +472,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
 
       {/* Suggested chips */}
       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1 }}>
-        {SUGGESTED_QUERIES.map(s => (
+        {SUGGESTED_QUERIES.map((s) => (
           <Chip
             key={s.label}
             label={s.label}
@@ -391,7 +485,9 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
       </Box>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 1 }}>{error}</Alert>
+        <Alert severity="error" sx={{ mb: 1 }}>
+          {error}
+        </Alert>
       )}
 
       {loading && (
@@ -427,7 +523,7 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
             }}
             aria-label={t('gestureSessionDurationLabel')}
           >
-            {PEXELS_SESSION_DURATIONS_MS.map(ms => (
+            {PEXELS_SESSION_DURATIONS_MS.map((ms) => (
               <ToggleButton key={ms} value={ms} aria-label={durationLabel(ms)}>
                 {durationLabel(ms)}
               </ToggleButton>
@@ -447,21 +543,22 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
 
       {!loading && photos.length > 0 && (
         <>
-          <Box sx={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-            gap: 1,
-          }}
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
+              gap: 1,
+            }}
           >
-            {photos.map(photo => (
+            {photos.map((photo) => (
               <Box
                 key={photo.id}
                 onClick={() => handleSelect(photo)}
                 sx={{
-                  'cursor': 'pointer',
-                  'border': '1px solid #ddd',
-                  'borderRadius': 1,
-                  'overflow': 'hidden',
+                  cursor: 'pointer',
+                  border: '1px solid #ddd',
+                  borderRadius: 1,
+                  overflow: 'hidden',
                   '&:hover': { borderColor: 'primary.main' },
                 }}
               >
@@ -471,7 +568,17 @@ export function PexelsSearcher({ onSelectPhoto, onApiKeyMissing, active = true, 
                   style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
                   loading="lazy"
                 />
-                <Typography variant="caption" sx={{ display: 'block', px: 0.5, py: 0.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    display: 'block',
+                    px: 0.5,
+                    py: 0.25,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
                   {photo.photographer}
                 </Typography>
               </Box>

@@ -9,14 +9,16 @@ export const POSE_HISTORY_LIMIT = 50;
  * least-recently-used entries are evicted past POSE_HISTORY_LIMIT.
  * `lastUsedAt` is initialized to the entry's createdAt.
  */
-export async function addPoseHistory(entry: Omit<PoseHistoryRecord, 'id' | 'lastUsedAt'>): Promise<void> {
+export async function addPoseHistory(
+  entry: Omit<PoseHistoryRecord, 'id' | 'lastUsedAt'>,
+): Promise<void> {
   await db.poseHistory.add({ ...entry, lastUsedAt: entry.createdAt } as PoseHistoryRecord);
   const rows = await db.poseHistory.toArray();
   const evictKeys = selectKeysToEvict(
     rows,
     POSE_HISTORY_LIMIT,
-    row => row.id,
-    row => row.lastUsedAt.getTime(),
+    (row) => row.id,
+    (row) => row.lastUsedAt.getTime(),
   ).filter((id): id is number => id !== undefined);
   if (evictKeys.length > 0) {
     await db.poseHistory.bulkDelete(evictKeys);

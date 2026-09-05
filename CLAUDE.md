@@ -14,14 +14,15 @@ Drawing Practice is a line-drawing practice tool for **iPad + Apple Pencil**. Us
 npm run dev        # Development server
 npm run build      # Build for production
 npm run preview    # Preview production build
-npm run lint       # Lint
+npm run lint       # Lint (oxlint) + format check (oxfmt)
+npm run format     # Format with oxfmt
 npm run test       # Run tests once
 npm run test:watch # Run tests in watch mode (prefer `npm run test` in CI/agent runs)
 ```
 
 ## Tech Stack
 
-Vite + React + TypeScript (strict mode), Material-UI, Vitest + React Testing Library, Dexie.js (IndexedDB schema v16), GitHub Pages via GitHub Actions.
+Vite + React + TypeScript 7 (strict mode), Material-UI, oxlint + oxfmt, Vitest + React Testing Library, Dexie.js (IndexedDB schema v16), GitHub Pages via GitHub Actions.
 
 ## High-level Architecture
 
