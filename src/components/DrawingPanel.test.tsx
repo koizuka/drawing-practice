@@ -1,4 +1,4 @@
-import { render, fireEvent, act, waitFor } from '@testing-library/react';
+import { render, fireEvent, act, waitFor, within } from '@testing-library/react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { DrawingPanel } from './DrawingPanel';
@@ -231,7 +231,7 @@ describe('DrawingPanel autosave flush on discrete edits', () => {
     });
     onStrokesChanged.mockClear();
     act(() => {
-      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+      fireEvent.click(within(container).getByRole('button', { name: 'Clear all & reset timer' }));
     });
     expect(onStrokesChanged).toHaveBeenCalledWith({ flush: true });
   });
@@ -376,7 +376,7 @@ describe('DrawingPanel toolbar state', () => {
   it('disables the clear button when there are no strokes, enables it after drawing', () => {
     const { container, harness } = setup();
 
-    const clearBtn = findIconButton(container, 'lucide-trash-2');
+    const clearBtn = within(container).getByRole('button', { name: 'Clear all & reset timer' });
     expect(clearBtn).toBeDisabled();
 
     act(() => {
@@ -401,7 +401,7 @@ describe('DrawingPanel toolbar state', () => {
       harness.timer.restore(2_500);
     });
 
-    const clearBtn = findIconButton(container, 'lucide-trash-2');
+    const clearBtn = within(container).getByRole('button', { name: 'Clear all & reset timer' });
     act(() => {
       fireEvent.click(clearBtn);
     });
@@ -435,7 +435,7 @@ describe('DrawingPanel toolbar state', () => {
     });
 
     act(() => {
-      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+      fireEvent.click(within(container).getByRole('button', { name: 'Clear all & reset timer' }));
     });
     expect(harness.sm!.isTentativeClearActive()).toBe(true);
     expect(harness.timer.elapsedMs).toBe(5_000);
@@ -531,7 +531,7 @@ describe('DrawingPanel toolbar state', () => {
       canvasPropsRef.current!.onStrokeCountChange();
     });
 
-    const clearBtn = findIconButton(container, 'lucide-trash-2');
+    const clearBtn = within(container).getByRole('button', { name: 'Clear all & reset timer' });
     act(() => {
       fireEvent.click(clearBtn);
     });
@@ -573,7 +573,7 @@ describe('DrawingPanel toolbar state', () => {
     });
 
     act(() => {
-      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+      fireEvent.click(within(container).getByRole('button', { name: 'Clear all & reset timer' }));
     });
 
     expect(strokesAtResetTime).toBe(1);
@@ -866,7 +866,7 @@ describe('DrawingPanel freeze-hint streak signal (strokeEditVersion)', () => {
     const editV = canvasPropsRef.current!.strokeEditVersion ?? 0;
 
     act(() => {
-      fireEvent.click(findIconButton(container, 'lucide-trash-2'));
+      fireEvent.click(within(container).getByRole('button', { name: 'Clear all & reset timer' }));
     });
 
     expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV + 1);

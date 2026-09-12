@@ -743,7 +743,12 @@ export function DrawingPanel({
 
         <ToolbarTooltip title={t('clearAll')}>
           <span>
-            <IconButton size="small" onClick={handleClear} disabled={strokeCount === 0}>
+            <IconButton
+              size="small"
+              aria-label={t('clearAll')}
+              onClick={handleClear}
+              disabled={strokeCount === 0}
+            >
               <Trash2 size={20} />
             </IconButton>
           </span>
