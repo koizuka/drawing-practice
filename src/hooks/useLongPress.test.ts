@@ -248,4 +248,66 @@ describe('useLongPress', () => {
       expect(onLongPress).not.toHaveBeenCalled();
     });
   });
+
+  describe('concurrent pointers', () => {
+    it('ignores a second pointer: it neither ends the hold nor clicks twice', () => {
+      const onLongPress = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const onClick = vi.fn();
+      const { result } = renderHook(() =>
+        useLongPress({ onLongPress, onLongPressEnd, onClick, ms: 300 }),
+      );
+
+      act(() => result.current.onPointerDown(fakePointerEvent({ pointerId: 1, isPrimary: true })));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+
+      // Second finger lands and lifts while the first is still holding.
+      act(() => result.current.onPointerDown(fakePointerEvent({ pointerId: 2, isPrimary: false })));
+      act(() => result.current.onPointerUp(fakePointerEvent({ pointerId: 2, isPrimary: false })));
+      expect(onLongPressEnd).not.toHaveBeenCalled();
+
+      // The initiating pointer ends the hold exactly once.
+      act(() => result.current.onPointerUp(fakePointerEvent({ pointerId: 1, isPrimary: true })));
+      expect(onLongPressEnd).toHaveBeenCalledTimes(1);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('two taps from overlapping pointers produce a single click', () => {
+      const onLongPress = vi.fn();
+      const onClick = vi.fn();
+      const { result } = renderHook(() => useLongPress({ onLongPress, onClick, ms: 500 }));
+
+      act(() => result.current.onPointerDown(fakePointerEvent({ pointerId: 1, isPrimary: true })));
+      act(() => result.current.onPointerDown(fakePointerEvent({ pointerId: 2, isPrimary: false })));
+      act(() => result.current.onPointerUp(fakePointerEvent({ pointerId: 1, isPrimary: true })));
+      // The second pointer's up arrives after the first released.
+      act(() => result.current.onPointerUp(fakePointerEvent({ pointerId: 2, isPrimary: false })));
+
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(onLongPress).not.toHaveBeenCalled();
+    });
+
+    it('a second pointer moving far does not cancel the first press', () => {
+      const onLongPress = vi.fn();
+      const { result } = renderHook(() => useLongPress({ onLongPress, ms: 300 }));
+
+      act(() =>
+        result.current.onPointerDown(
+          fakePointerEvent({ pointerId: 1, isPrimary: true, clientX: 0, clientY: 0 }),
+        ),
+      );
+      act(() =>
+        result.current.onPointerMove(
+          fakePointerEvent({ pointerId: 2, isPrimary: false, clientX: 100, clientY: 100 }),
+        ),
+      );
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onLongPress).toHaveBeenCalledTimes(1);
+    });
+  });
 });

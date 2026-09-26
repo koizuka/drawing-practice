@@ -19,6 +19,20 @@ import {
 
 let nextId = 1;
 
+/**
+ * Advance the shared id counter past every `guide-N` / `mask-N` id in the
+ * given items so newly added lines / masks never collide with existing ones.
+ */
+function reserveIds(items: readonly { id: string }[]): void {
+  for (const item of items) {
+    const match = item.id.match(/^(?:guide|mask)-(\d+)$/);
+    if (match) {
+      const id = parseInt(match[1], 10);
+      if (id >= nextId) nextId = id + 1;
+    }
+  }
+}
+
 export class GuideManager {
   private state: GuideState;
 
@@ -31,6 +45,7 @@ export class GuideManager {
           masksHidden: initial.masksHidden ?? true,
         }
       : { ...DEFAULT_GUIDE_STATE, lines: [], masks: [], masksHidden: true };
+    reserveIds([...this.state.lines, ...(this.state.masks ?? [])]);
   }
 
   getState(): GuideState {
@@ -173,13 +188,7 @@ export class GuideManager {
     };
     // Update nextId to avoid collisions with imported line / mask ids (both
     // share the same counter).
-    for (const item of [...this.state.lines, ...(this.state.masks ?? [])]) {
-      const match = item.id.match(/^(?:guide|mask)-(\d+)$/);
-      if (match) {
-        const id = parseInt(match[1], 10);
-        if (id >= nextId) nextId = id + 1;
-      }
-    }
+    reserveIds([...this.state.lines, ...(this.state.masks ?? [])]);
   }
 
   findNearestLine(x: number, y: number, threshold: number): GuideLine | null {
@@ -207,6 +216,20 @@ export function findMaskAt(masks: readonly MaskRect[], x: number, y: number): Ma
   return null;
 }
 
+/**
+ * Whether a drag from `start` to `end` (world coords) is large enough to add a
+ * mask: both extents must exceed `minSize`. Shared by the commit path
+ * (`resolveMaskGesture`) and the viewers' drag preview so the preview is shown
+ * exactly when releasing would add a mask.
+ */
+export function isMaskDragAddable(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  minSize: number,
+): boolean {
+  return Math.abs(end.x - start.x) > minSize && Math.abs(end.y - start.y) > minSize;
+}
+
 export type MaskGestureResult = { kind: 'add' } | { kind: 'remove'; id: string } | null;
 
 /**
@@ -222,9 +245,9 @@ export function resolveMaskGesture(
   minSize: number,
   masks: readonly MaskRect[],
 ): MaskGestureResult {
+  if (isMaskDragAddable(start, end, minSize)) return { kind: 'add' };
   const dx = Math.abs(end.x - start.x);
   const dy = Math.abs(end.y - start.y);
-  if (dx > minSize && dy > minSize) return { kind: 'add' };
   if (Math.sqrt(dx * dx + dy * dy) <= minSize) {
     const hit = findMaskAt(masks, start.x, start.y);
     if (hit) return { kind: 'remove', id: hit.id };

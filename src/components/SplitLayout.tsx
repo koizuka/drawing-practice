@@ -1196,9 +1196,13 @@ function SplitLayoutInner() {
   // frame" exercise. Never auto-disable: the user may keep tracing after
   // clearing masks, and re-adding a mask after the user turned the underlay
   // off only re-enables on a fresh 0 → >0 transition. The previous render's
-  // `restoreCompleted` gates out the draft-restore batch (restoreGuides and
+  // `restored` (the same "restore settled" condition as the panel render
+  // gate) gates out the draft-restore batch (restoreGuides and
   // setRestoreCompleted land in the same render), so a reload honours the
-  // persisted `underlayEnabled` instead of re-enabling it. Render-time
+  // persisted `underlayEnabled` instead of re-enabling it. Using `restored`
+  // rather than `restoreCompleted` matters when another tab owns the session
+  // lock: no restore ever runs there, `restoreCompleted` stays false, yet the
+  // panels are mounted and the user can add masks. Render-time
   // prev-value pattern, same as prevGuideVersion below. The accompanying
   // mask add already flushes autosave (non-transient guide sync) in the same
   // commit, so the new value is persisted with it.
@@ -1210,10 +1214,10 @@ function SplitLayoutInner() {
   );
   const [prevMaskTracking, setPrevMaskTracking] = useState({
     count: masks.length,
-    restored: restoreCompleted,
+    restored,
   });
-  if (prevMaskTracking.count !== masks.length || prevMaskTracking.restored !== restoreCompleted) {
-    setPrevMaskTracking({ count: masks.length, restored: restoreCompleted });
+  if (prevMaskTracking.count !== masks.length || prevMaskTracking.restored !== restored) {
+    setPrevMaskTracking({ count: masks.length, restored });
     if (
       prevMaskTracking.restored &&
       prevMaskTracking.count === 0 &&

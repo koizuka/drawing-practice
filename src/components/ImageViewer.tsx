@@ -5,7 +5,12 @@ import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils';
 import { drawGrid, drawGuideLines, drawMaskPreview, drawMasks } from '../guides/drawGuides';
 import { loadReferenceImage } from '../utils/loadReferenceImage';
-import { findMaskAt, pointToSegmentDistance, resolveMaskGesture } from '../guides/GuideManager';
+import {
+  findMaskAt,
+  isMaskDragAddable,
+  pointToSegmentDistance,
+  resolveMaskGesture,
+} from '../guides/GuideManager';
 import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
 
@@ -193,7 +198,9 @@ export function ImageViewer({
 
     // Draw in-progress guide line
     if (maskDrag) {
-      if (!maskDragIsTap)
+      // Preview only drags that release would actually add (same predicate
+      // as resolveMaskGesture) — thin slivers are discarded, so don't show them.
+      if (isMaskDragAddable(maskDrag.dragStart, maskDrag.dragEnd, minDrag))
         drawMaskPreview(ctx, maskDrag.dragStart, maskDrag.dragEnd, projected.scale);
     } else if (dragStart && dragEnd) {
       ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
@@ -623,6 +630,24 @@ export function ImageViewer({
     [guideMode, dragStart, dragEnd, commitDrag],
   );
 
+  // A cancelled touch (system gesture, palm rejection, etc.) must never commit:
+  // drop the pending guide-line / mask drag and any pinch that lost a finger.
+  const handleTouchCancel = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      activeTouchesRef.current.delete(e.changedTouches[i].identifier);
+    }
+    if (
+      pinchRef.current &&
+      (!activeTouchesRef.current.has(pinchRef.current.id1) ||
+        !activeTouchesRef.current.has(pinchRef.current.id2))
+    ) {
+      pinchRef.current = null;
+      pinchRectRef.current = null;
+    }
+    setDragStart(null);
+    setDragEnd(null);
+  }, []);
+
   const cursor =
     guideMode === 'add' || guideMode === 'mask' || guideMode === 'place-center'
       ? 'crosshair'
@@ -645,7 +670,7 @@ export function ImageViewer({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         style={{
           display: 'block',
           width: '100%',

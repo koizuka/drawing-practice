@@ -172,8 +172,11 @@ describe('ImageViewer pinch gesture', () => {
 describe('ImageViewer mask mode', () => {
   const BIG_MASK = { id: 'mask-1', x: -10000, y: -10000, w: 20000, h: 20000 };
 
-  it('mouse drag calls onAddMask with world coords', () => {
+  it('mouse drag calls onAddMask with world coords through a non-identity camera', () => {
     const vt = new ViewTransform();
+    // Pan + zoom so a viewer that skipped the camera conversion (or passed
+    // raw screen coords) would produce different numbers.
+    vt.restoreCamera(50, -30, 2);
     const onAddMask = vi.fn();
     const onRemoveMask = vi.fn();
     const { container } = render(
@@ -192,12 +195,12 @@ describe('ImageViewer mask mode', () => {
 
     expect(onAddMask).toHaveBeenCalledTimes(1);
     expect(onRemoveMask).not.toHaveBeenCalled();
-    // Screen (100,100)→(200,200) inside the canvas rect, mapped through the
-    // same camera the viewer uses.
-    const size = { width: 0, height: 0 };
-    const p1 = vt.screenToCanvas(100, 100, size, 1);
-    const p2 = vt.screenToCanvas(200, 200, size, 1);
-    expect(onAddMask).toHaveBeenCalledWith(p1.x, p1.y, p2.x, p2.y);
+    // Screen (100,100)→(200,200) inside the canvas rect. jsdom leaves the
+    // container at 0×0 and there is no image (baseScale 1), so the projection is
+    // offset = -viewCenter × zoom = (-100, 60), scale = 2:
+    //   world = (screen - offset) / 2 → (100, 20) and (150, 70).
+    // An identity camera would have yielded (100,100)→(200,200).
+    expect(onAddMask).toHaveBeenCalledWith(100, 20, 150, 70);
   });
 
   it('touch drag calls onAddMask', () => {
@@ -260,7 +263,72 @@ describe('ImageViewer mask mode', () => {
     fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
     fireEvent.touchMove(canvas, { changedTouches: [touch(0, 200, 200)] });
     fireEvent.touchStart(canvas, { changedTouches: [touch(1, 300, 300)] });
-    fireEvent.touchEnd(canvas, { changedTouches: [touch(0, 200, 200), touch(1, 300, 300)] });
+    // Lift the SECOND finger first so the pinch ends, then keep dragging and
+    // release the original finger on its own: the drag must stay discarded
+    // rather than resuming and committing through the single-touch path.
+    fireEvent.touchEnd(canvas, { changedTouches: [touch(1, 300, 300)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(0, 250, 260)] });
+    fireEvent.touchEnd(canvas, { changedTouches: [touch(0, 250, 260)] });
     expect(onAddMask).not.toHaveBeenCalled();
+  });
+
+  it('touchcancel discards an in-progress mask drag without adding', () => {
+    const onAddMask = vi.fn();
+    const onRemoveMask = vi.fn();
+    const { container } = render(
+      <ImageViewer
+        {...baseProps}
+        guideMode="mask"
+        onAddMask={onAddMask}
+        onRemoveMask={onRemoveMask}
+      />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(0, 200, 200)] });
+    fireEvent.touchCancel(canvas, { changedTouches: [touch(0, 200, 200)] });
+    // A stray end after the cancel must not resurrect the drag either.
+    fireEvent.touchEnd(canvas, { changedTouches: [touch(0, 200, 200)] });
+    expect(onAddMask).not.toHaveBeenCalled();
+    expect(onRemoveMask).not.toHaveBeenCalled();
+  });
+
+  it('touchcancel of a tap on a mask does not remove it', () => {
+    const onRemoveMask = vi.fn();
+    const { container } = render(
+      <ImageViewer
+        {...baseProps}
+        guideMode="mask"
+        masks={[BIG_MASK]}
+        onRemoveMask={onRemoveMask}
+      />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 150, 150)] });
+    fireEvent.touchCancel(canvas, { changedTouches: [touch(0, 150, 150)] });
+    expect(onRemoveMask).not.toHaveBeenCalled();
+  });
+
+  it('touchcancel discards an in-progress guide-line drag', () => {
+    const onAddGuideLine = vi.fn();
+    const { container } = render(
+      <ImageViewer {...baseProps} guideMode="add" onAddGuideLine={onAddGuideLine} />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(0, 200, 200)] });
+    fireEvent.touchCancel(canvas, { changedTouches: [touch(0, 200, 200)] });
+    expect(onAddGuideLine).not.toHaveBeenCalled();
+  });
+
+  it('pinch still works after a touchcancel', () => {
+    const applyGesture = vi.spyOn(ViewTransform.prototype, 'applyGesture');
+    const { container } = render(<ImageViewer {...baseProps} guideMode="mask" />);
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
+    fireEvent.touchCancel(canvas, { changedTouches: [touch(0, 100, 100)] });
+    fireEvent.touchStart(canvas, { changedTouches: [touch(1, 100, 100), touch(2, 200, 200)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(1, 80, 80), touch(2, 220, 220)] });
+    expect(applyGesture).toHaveBeenCalledTimes(1);
   });
 });

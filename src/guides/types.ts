@@ -211,16 +211,19 @@ export function migrateGridSettings(grid: unknown): GridSettings {
 /**
  * Sanitize a persisted mask list: drop entries with a non-string id or any
  * non-finite coordinate, normalize negative width/height (flip the origin to
- * the other corner), and drop zero-area rects. Garbage input yields [].
+ * the other corner), and drop zero-area rects. Duplicate ids keep only the
+ * first occurrence (removal is by id, so duplicates would let one tap remove
+ * several masks). Garbage input yields [].
  */
 export function sanitizeMasks(masks: unknown): MaskRect[] {
   if (!Array.isArray(masks)) return [];
   const result: MaskRect[] = [];
+  const seenIds = new Set<string>();
   for (const m of masks) {
     if (!m || typeof m !== 'object') continue;
     const src = m as Partial<Record<keyof MaskRect, unknown>>;
     const { id, x, y, w, h } = src;
-    if (typeof id !== 'string') continue;
+    if (typeof id !== 'string' || seenIds.has(id)) continue;
     if (
       typeof x !== 'number' ||
       typeof y !== 'number' ||
@@ -235,6 +238,7 @@ export function sanitizeMasks(masks: unknown): MaskRect[] {
     ) {
       continue;
     }
+    seenIds.add(id);
     result.push({
       id,
       x: w < 0 ? x + w : x,

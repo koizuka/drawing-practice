@@ -19,6 +19,15 @@ vi.mock('../storage', async () => {
   };
 });
 
+// jsdom has no Web Locks API, so the real hook reports 'acquired'; tests can
+// flip this to simulate another tab owning the session lock.
+const sessionLockMock = vi.hoisted(() => ({
+  status: 'acquired' as 'pending' | 'acquired' | 'denied',
+}));
+vi.mock('../hooks/useSessionLock', () => ({
+  useSessionLock: () => sessionLockMock.status,
+}));
+
 const getPhotoMock = vi.fn();
 const searchPhotosMock = vi.fn();
 vi.mock('../utils/pexels', async () => {
@@ -508,6 +517,30 @@ describe('SplitLayout', () => {
       addMaskViaUi(container, 200, 300);
       expect(showBtn()).toBeInTheDocument();
       expect(hideBtn()).not.toBeInTheDocument();
+    });
+
+    it('auto-enables on the first mask when another tab owns the session lock', async () => {
+      // Denied lock: panels mount without any draft restore, so
+      // restoreCompleted never flips — the auto-enable must still work.
+      sessionLockMock.status = 'denied';
+      try {
+        // A Pexels photo URL resolves through the mocked API (no image preload
+        // in jsdom) and lands as a fixed image.
+        getPhotoMock.mockResolvedValueOnce(pexelsPhoto(24680, 'Lock Tester'));
+        const { container } = render(<SplitLayout />);
+        await screen.findByText('Image File');
+        fireEvent.change(screen.getByPlaceholderText(/https:\/\//i), {
+          target: { value: 'https://www.pexels.com/photo/sample-24680/' },
+        });
+        fireEvent.click(screen.getByText('Load'));
+        await waitFor(() => expect(showBtn()).toBeInTheDocument());
+
+        fireEvent.click(container.querySelector('svg.lucide-square-dashed')!.closest('button')!);
+        addMaskViaUi(container, 50, 150);
+        await waitFor(() => expect(hideBtn()).toBeInTheDocument());
+      } finally {
+        sessionLockMock.status = 'acquired';
+      }
     });
 
     it('is not offered for sources without a fixed image', async () => {

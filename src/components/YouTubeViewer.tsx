@@ -8,7 +8,12 @@ import type { GuideInteractionMode } from './ImageViewer';
 import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import type { ViewTransform, ContainerSize } from '../drawing/ViewTransform';
 import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils';
-import { findMaskAt, pointToSegmentDistance, resolveMaskGesture } from '../guides/GuideManager';
+import {
+  findMaskAt,
+  isMaskDragAddable,
+  pointToSegmentDistance,
+  resolveMaskGesture,
+} from '../guides/GuideManager';
 
 const LOGICAL_WIDTH = 1920;
 const LOGICAL_HEIGHT = 1080;
@@ -234,7 +239,10 @@ export function YouTubeViewer({
     drawGuideLines(ctx, guideLines, scale, highlightedGuideId);
 
     if (maskDrag) {
-      if (!maskDragIsTap) drawMaskPreview(ctx, maskDrag.dragStart, maskDrag.dragEnd, scale);
+      // Preview only drags that release would actually add (same predicate
+      // as resolveMaskGesture) — thin slivers are discarded, so don't show them.
+      if (isMaskDragAddable(maskDrag.dragStart, maskDrag.dragEnd, minDrag))
+        drawMaskPreview(ctx, maskDrag.dragStart, maskDrag.dragEnd, scale);
     } else if (dragStart && dragEnd) {
       ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
       ctx.lineWidth = 1.5 / scale;

@@ -1361,8 +1361,11 @@ export function ReferencePanel({
 
             <ToolbarTooltip title={t('addMask')}>
               <span>
+                {/* The Tooltip labels the wrapping <span>, not the button, so
+                    name the button itself for assistive tech. */}
                 <IconButton
                   size="small"
+                  aria-label={t('addMask')}
                   onClick={() => toggleGuideMode('mask')}
                   disabled={suppressGuideEditing}
                   sx={{

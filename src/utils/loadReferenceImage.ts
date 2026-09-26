@@ -27,17 +27,32 @@ export function loadReferenceImage(url: string, signal?: AbortSignal): Promise<H
       signal?.removeEventListener('abort', onAbort);
       fn();
     };
-    const onAbort = () => settle(() => reject(abortError()));
+    let corsImg: HTMLImageElement | null = null;
+    // Cancel the in-flight request on abort: detach the handlers (so the
+    // emptied src can't fire them) and clear src on every image still loading.
+    const cancel = (el: HTMLImageElement | null) => {
+      if (!el) return;
+      el.onload = null;
+      el.onerror = null;
+      el.src = '';
+    };
+    const onAbort = () =>
+      settle(() => {
+        cancel(img);
+        cancel(corsImg);
+        reject(abortError());
+      });
     signal?.addEventListener('abort', onAbort);
 
     const img = new Image();
     img.onload = () => {
       if (settled) return;
-      const corsImg = new Image();
-      corsImg.crossOrigin = 'anonymous';
-      corsImg.onload = () => settle(() => resolve(corsImg));
-      corsImg.onerror = () => settle(() => resolve(img));
-      corsImg.src = url;
+      const upgrade = new Image();
+      corsImg = upgrade;
+      upgrade.crossOrigin = 'anonymous';
+      upgrade.onload = () => settle(() => resolve(upgrade));
+      upgrade.onerror = () => settle(() => resolve(img));
+      upgrade.src = url;
     };
     img.onerror = () => settle(() => reject(new Error(`Failed to load image: ${url}`)));
     img.src = url;
