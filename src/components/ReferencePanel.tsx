@@ -9,6 +9,8 @@ import {
   Link as MuiLink,
   Autocomplete,
 } from '@mui/material';
+import { MaskRevealButton } from './MaskRevealButton';
+import { resolveFixedImageUrl } from './splitLayoutHelpers';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import {
   X,
@@ -34,8 +36,6 @@ import {
   PersonStanding,
   SquareDashed,
   SquareX,
-  Eye,
-  EyeOff,
 } from 'lucide-react';
 import type {
   SketchfabActions,
@@ -418,7 +418,12 @@ export function ReferencePanel({
     removeMask,
     clearMasks,
     setMasksHidden,
+    masksPeeking,
+    setMasksPeeking,
   } = useGuides();
+  // Viewers render the EFFECTIVE hidden state: a hold-to-peek reveals without
+  // touching the persisted masksHidden (so no autosave fires).
+  const effectiveMasksHidden = masksHidden && !masksPeeking;
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
@@ -1072,6 +1077,10 @@ export function ReferencePanel({
   );
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl; // 'sketchfab', 'url', 'pexels' use fixedImageUrl
+  // The URL ImageViewer mounts on. Shared predicate with the drawing-canvas
+  // underlay (splitLayoutHelpers) so the underlay is available exactly when
+  // this fixed image is on screen.
+  const imageViewerUrl = resolveFixedImageUrl(source, referenceMode, fixedImageUrl, localImageUrl);
   const traceTemplateInfo = refInfo?.source === 'trace-template' ? refInfo : null;
   const activeTraceTemplate: TraceTemplate | null =
     source === 'trace-template' && referenceMode === 'fixed' && traceTemplateInfo
@@ -1370,15 +1379,13 @@ export function ReferencePanel({
             </ToolbarTooltip>
 
             {masks.length > 0 && (
-              <ToolbarTooltip title={masksHidden ? t('revealMasks') : t('hideMasks')}>
-                <IconButton
-                  size="small"
-                  onClick={() => setMasksHidden(!masksHidden)}
-                  sx={{ color: masksHidden ? 'inherit' : 'primary.main' }}
-                >
-                  {masksHidden ? <Eye size={20} /> : <EyeOff size={20} />}
-                </IconButton>
-              </ToolbarTooltip>
+              <MaskRevealButton
+                masksHidden={masksHidden}
+                peeking={masksPeeking}
+                onToggle={() => setMasksHidden(!masksHidden)}
+                onPeekStart={() => setMasksPeeking(true)}
+                onPeekEnd={() => setMasksPeeking(false)}
+              />
             )}
 
             {masks.length > 0 && (
@@ -2019,7 +2026,7 @@ export function ReferencePanel({
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
             masks={masks}
-            masksHidden={masksHidden}
+            masksHidden={effectiveMasksHidden}
             onAddMask={handleAddMask}
             onRemoveMask={removeMask}
             highlightedGuideId={highlightedGuideId}
@@ -2060,7 +2067,7 @@ export function ReferencePanel({
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
             masks={masks}
-            masksHidden={masksHidden}
+            masksHidden={effectiveMasksHidden}
             onAddMask={handleAddMask}
             onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}
@@ -2074,9 +2081,9 @@ export function ReferencePanel({
         )}
 
         {/* Fixed image */}
-        {isFixed && displayImageUrl && (
+        {imageViewerUrl && (
           <ImageViewer
-            imageUrl={displayImageUrl}
+            imageUrl={imageViewerUrl}
             viewResetVersion={viewResetVersion}
             grid={grid}
             guideLines={lines}
@@ -2090,7 +2097,7 @@ export function ReferencePanel({
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
             masks={masks}
-            masksHidden={masksHidden}
+            masksHidden={effectiveMasksHidden}
             onAddMask={handleAddMask}
             onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}

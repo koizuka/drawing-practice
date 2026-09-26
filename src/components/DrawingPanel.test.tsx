@@ -3,6 +3,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { vi } from 'vitest';
 import { DrawingPanel } from './DrawingPanel';
 import { GuideProvider } from '../guides/GuideContext';
+import { useGuides } from '../guides/useGuides';
+import type { GuideContextValue } from '../guides/guideContextValue';
 import { useTimer, type TimerHandle } from '../hooks/useTimer';
 import { StrokeManager } from '../drawing/StrokeManager';
 import type { ReferenceSnapshot } from '../drawing/types';
@@ -48,6 +50,9 @@ vi.mock('./Gallery', () => ({
 
 type StubCanvasProps = {
   strokeManager: StrokeManager;
+  underlayImageUrl?: string | null;
+  underlayEnabled?: boolean;
+  masksHidden?: boolean;
   onStrokeCountChange: (info?: { flush?: boolean }) => void;
   onStrokeStart?: () => void;
   redrawVersion: number;
@@ -93,6 +98,9 @@ function setup(
     traceTotalCovered?: number;
     traceTotalStrokes?: number;
     traceOverallBestPct?: number | null;
+    underlayImageUrl?: string | null;
+    underlayEnabled?: boolean;
+    onToggleUnderlay?: () => void;
   } = {},
 ) {
   const sm = new StrokeManager();
@@ -139,6 +147,7 @@ function setup(
 
   const utils = render(
     <GuideProvider>
+      <GuideProbe />
       <Inner>
         {({ timer, restoreVersion, historySyncVersion, referenceCollapsed }) => (
           <DrawingPanel
@@ -159,6 +168,9 @@ function setup(
             traceTotalCovered={opts.traceTotalCovered}
             traceTotalStrokes={opts.traceTotalStrokes}
             traceOverallBestPct={opts.traceOverallBestPct ?? null}
+            underlayImageUrl={opts.underlayImageUrl ?? null}
+            underlayEnabled={opts.underlayEnabled}
+            onToggleUnderlay={opts.onToggleUnderlay}
           />
         )}
       </Inner>
@@ -166,6 +178,16 @@ function setup(
   );
 
   return { ...utils, harness };
+}
+
+// Latest guide context, for tests that need to add masks / read peek state.
+const guidesRef: { current: GuideContextValue | null } = { current: null };
+function GuideProbe() {
+  const g = useGuides();
+  useEffect(() => {
+    guidesRef.current = g;
+  });
+  return null;
 }
 
 function findIconButton(container: HTMLElement, iconClass: string): HTMLButtonElement {
@@ -870,5 +892,86 @@ describe('DrawingPanel freeze-hint streak signal (strokeEditVersion)', () => {
     });
 
     expect(canvasPropsRef.current!.strokeEditVersion).toBe(editV + 1);
+  });
+});
+
+describe('DrawingPanel reference underlay + mask stand-in', () => {
+  beforeEach(() => {
+    canvasPropsRef.current = null;
+    guidesRef.current = null;
+  });
+
+  const underlayButton = (container: HTMLElement) =>
+    container.querySelector<HTMLButtonElement>('button[aria-label$="reference underlay"]');
+
+  it('renders the underlay toggle only when an underlay URL exists', () => {
+    const none = setup();
+    expect(underlayButton(none.container)).toBeNull();
+    none.unmount();
+
+    const onToggle = vi.fn();
+    const { container } = setup({
+      underlayImageUrl: 'https://example.com/ref.png',
+      underlayEnabled: false,
+      onToggleUnderlay: onToggle,
+    });
+    const btn = underlayButton(container)!;
+    expect(btn).not.toBeNull();
+    expect(btn.getAttribute('aria-label')).toBe('Show reference underlay');
+    fireEvent.click(btn);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(canvasPropsRef.current?.underlayImageUrl).toBe('https://example.com/ref.png');
+  });
+
+  it('labels the toggle "hide" while the underlay is on', () => {
+    const { container } = setup({
+      underlayImageUrl: 'https://example.com/ref.png',
+      underlayEnabled: true,
+    });
+    expect(underlayButton(container)!.getAttribute('aria-label')).toBe('Hide reference underlay');
+    expect(canvasPropsRef.current?.underlayEnabled).toBe(true);
+  });
+
+  it('shows the mask reveal stand-in only when collapsed with masks', () => {
+    const eye = (c: HTMLElement) =>
+      c.querySelector('svg.lucide-eye, svg.lucide-eye-off')?.closest('button') ?? null;
+
+    // Expanded + masks → reference toolbar owns it; no stand-in.
+    const expanded = setup({ onToggleReferenceCollapsed: vi.fn() });
+    act(() => {
+      guidesRef.current!.addMask(0, 0, 50, 50);
+    });
+    expect(eye(expanded.container)).toBeNull();
+    expanded.unmount();
+
+    // Collapsed without masks → nothing to reveal.
+    const collapsed = setup({
+      onToggleReferenceCollapsed: vi.fn(),
+      initialReferenceCollapsed: true,
+    });
+    expect(eye(collapsed.container)).toBeNull();
+
+    // Collapsed + masks → stand-in appears and drives the context.
+    act(() => {
+      guidesRef.current!.addMask(0, 0, 50, 50);
+    });
+    const btn = eye(collapsed.container);
+    expect(btn).not.toBeNull();
+    fireEvent.click(btn!);
+    expect(guidesRef.current!.masksHidden).toBe(false);
+  });
+
+  it('passes the effective (peek-aware) hidden state to the canvas', () => {
+    setup({ underlayImageUrl: 'https://example.com/ref.png', underlayEnabled: true });
+    act(() => {
+      guidesRef.current!.addMask(0, 0, 50, 50);
+    });
+    expect(canvasPropsRef.current?.masksHidden).toBe(true);
+    act(() => {
+      guidesRef.current!.setMasksPeeking(true);
+    });
+    expect(canvasPropsRef.current?.masksHidden).toBe(false);
+    // Persisted state untouched by the peek.
+    expect(guidesRef.current!.masksHidden).toBe(true);
   });
 });

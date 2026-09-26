@@ -60,6 +60,11 @@ export interface SessionDraft {
   /** Drawing panel flipped horizontally. Optional for back-compat. */
   flipped?: boolean;
   /**
+   * Faint reference underlay on the drawing canvas (drawing-panel view
+   * preference, like `flipped`). Optional for back-compat; absent ≡ false.
+   */
+  underlayEnabled?: boolean;
+  /**
    * Whether the in-memory strokes had unsaved changes (relative to the last
    * gallery save) at autosave time. Used to restore the save-button enabled
    * state across reload — `false` means a reload immediately after a gallery
@@ -323,6 +328,8 @@ db.version(16).stores({
 // fields (reference masks) need no index change and no version bump either:
 // old drafts simply lack them and GuideManager.importState heals absence /
 // garbage via sanitizeMasks (absent masksHidden ≡ true).
+// Likewise the additive, optional session.underlayEnabled flag (reference
+// underlay on the drawing canvas) needs no bump: absent ≡ false on restore.
 db.version(17).stores({
   drawings: '++id, createdAt',
   session: 'id',

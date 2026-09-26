@@ -35,6 +35,7 @@ import {
   PanelTopClose,
   PanelTopOpen,
   RotateCcw,
+  Layers,
 } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import type { Orientation } from '../hooks/useOrientation';
@@ -44,6 +45,7 @@ import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
 import { PerspectiveController } from './PerspectiveController';
 import { GridModePopoverButton } from './GridModePopoverButton';
+import { MaskRevealButton } from './MaskRevealButton';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
 import { saveDrawing, type DrawingRecord } from '../storage';
@@ -92,6 +94,16 @@ interface DrawingPanelProps {
    */
   historySyncVersion?: number;
   isFlipped?: boolean;
+  /**
+   * Fixed reference image available as a drawing-canvas underlay (null when
+   * the active reference has none — YouTube, trace templates, browse). The
+   * underlay toggle is rendered only when this is non-null.
+   */
+  underlayImageUrl?: string | null;
+  /** Whether the reference underlay is shown. */
+  underlayEnabled?: boolean;
+  /** Toggle `underlayEnabled` (discrete button → immediate autosave flush). */
+  onToggleUnderlay?: () => void;
   /** Optional shared ViewTransform for zoom sync with ReferencePanel. */
   viewTransform?: ViewTransform;
   /** Which panel owns the fit calculation. */
@@ -158,6 +170,9 @@ export function DrawingPanel({
   restoreVersion,
   historySyncVersion,
   isFlipped,
+  underlayImageUrl = null,
+  underlayEnabled = false,
+  onToggleUnderlay,
   viewTransform,
   orientation = 'landscape',
   referenceCollapsed = false,
@@ -221,7 +236,15 @@ export function DrawingPanel({
     placingCenter,
     placePerspectiveCenter,
     recordPerspectiveMemory,
+    masks,
+    masksHidden,
+    setMasksHidden,
+    masksPeeking,
+    setMasksPeeking,
   } = useGuides();
+  // Effective hidden state for the underlay cutouts: a hold-to-peek reveals
+  // without touching the persisted masksHidden.
+  const effectiveMasksHidden = masksHidden && !masksPeeking;
 
   // Re-render when the shared ViewTransform changes so the reset button can
   // reflect the current dirty state.
@@ -688,6 +711,21 @@ export function DrawingPanel({
                 {referenceCollapsed && (
                   <GridModePopoverButton grid={grid} onSetGridMode={setGridMode} />
                 )}
+                {/* Same stand-in rule for the mask reveal/peek button
+                  (ui-design-principles §8: masks belong to the reference side,
+                  so the drawing side only mirrors it while the reference toolbar
+                  is unreachable). Collapsed + underlay + masks is the natural
+                  full-screen "draw inside the frame" mode, and the answer check
+                  must stay reachable there. Add/clear masks stay reference-only. */}
+                {referenceCollapsed && masks.length > 0 && (
+                  <MaskRevealButton
+                    masksHidden={masksHidden}
+                    peeking={masksPeeking}
+                    onToggle={() => setMasksHidden(!masksHidden)}
+                    onPeekStart={() => setMasksPeeking(true)}
+                    onPeekEnd={() => setMasksPeeking(false)}
+                  />
+                )}
                 <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
               </>
             );
@@ -757,6 +795,20 @@ export function DrawingPanel({
         <Box sx={{ flex: 1 }} />
 
         {/* View */}
+        {underlayImageUrl && (
+          <ToolbarTooltip title={underlayEnabled ? t('underlayHide') : t('underlayShow')}>
+            <IconButton
+              size="small"
+              onClick={onToggleUnderlay}
+              aria-label={underlayEnabled ? t('underlayHide') : t('underlayShow')}
+              aria-pressed={underlayEnabled}
+              sx={{ color: underlayEnabled ? 'primary.main' : 'inherit' }}
+            >
+              <Layers size={20} />
+            </IconButton>
+          </ToolbarTooltip>
+        )}
+
         <ToolbarTooltip title={t('resetZoom')}>
           <span>
             <IconButton
@@ -931,6 +983,10 @@ export function DrawingPanel({
             onStrokeStart={handleStrokeStart}
             placingPerspectiveCenter={placingCenter}
             onPlacePerspectiveCenter={placePerspectiveCenter}
+            underlayImageUrl={underlayImageUrl}
+            underlayEnabled={underlayEnabled}
+            masks={masks}
+            masksHidden={effectiveMasksHidden}
           />
         </Box>
       </Box>

@@ -13,6 +13,13 @@ interface UseLongPressOptions {
   onLongPress: (target: HTMLElement) => void;
   /** Fires on a quick tap that did not become a long press. */
   onClick?: (target: HTMLElement) => void;
+  /**
+   * Fires when a gesture whose `onLongPress` already fired ends — on
+   * `pointerup` / `pointercancel`, and on unmount if the hold is still active
+   * (so a hold-to-reveal can never get stuck on). Never fires for a plain
+   * click or a press cancelled before the timer.
+   */
+  onLongPressEnd?: () => void;
   /** Hold duration in milliseconds before `onLongPress` fires. */
   ms?: number;
   /** Pointer movement (in CSS pixels) beyond which the press is cancelled. */
@@ -40,6 +47,7 @@ interface UseLongPressHandlers {
 export function useLongPress({
   onLongPress,
   onClick,
+  onLongPressEnd,
   ms = 500,
   moveTolerancePx = 8,
 }: UseLongPressOptions): UseLongPressHandlers {
@@ -50,6 +58,14 @@ export function useLongPress({
   const cancelledRef = useRef(false);
   const ignoredRef = useRef(false);
   const targetRef = useRef<HTMLElement | null>(null);
+  // True between a fired onLongPress and its matching end (up/cancel/unmount).
+  const holdActiveRef = useRef(false);
+  // Latest-ref so the unmount cleanup calls the current callback without
+  // re-subscribing the effect on every render.
+  const onLongPressEndRef = useRef(onLongPressEnd);
+  useEffect(() => {
+    onLongPressEndRef.current = onLongPressEnd;
+  });
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) {
@@ -58,7 +74,19 @@ export function useLongPress({
     }
   }, []);
 
-  useEffect(() => () => clearTimer(), [clearTimer]);
+  const endHold = useCallback(() => {
+    if (!holdActiveRef.current) return;
+    holdActiveRef.current = false;
+    onLongPressEndRef.current?.();
+  }, []);
+
+  useEffect(
+    () => () => {
+      clearTimer();
+      endHold();
+    },
+    [clearTimer, endHold],
+  );
 
   const onPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLElement>) => {
@@ -70,6 +98,9 @@ export function useLongPress({
         return;
       }
       ignoredRef.current = false;
+      // A new press while a previous hold is somehow still active (missed
+      // pointerup) closes the old one first.
+      endHold();
       firedRef.current = false;
       cancelledRef.current = false;
       startXRef.current = e.clientX;
@@ -80,10 +111,13 @@ export function useLongPress({
         timerRef.current = null;
         firedRef.current = true;
         const target = targetRef.current;
-        if (target) onLongPress(target);
+        if (target) {
+          holdActiveRef.current = true;
+          onLongPress(target);
+        }
       }, ms);
     },
-    [clearTimer, ms, onLongPress],
+    [clearTimer, endHold, ms, onLongPress],
   );
 
   const onPointerMove = useCallback(
@@ -108,15 +142,17 @@ export function useLongPress({
     const wasCancelled = cancelledRef.current;
     const target = targetRef.current;
     clearTimer();
+    endHold();
     if (!wasFired && !wasCancelled && target) {
       onClick?.(target);
     }
-  }, [clearTimer, onClick]);
+  }, [clearTimer, endHold, onClick]);
 
   const onPointerCancel = useCallback(() => {
     cancelledRef.current = true;
     clearTimer();
-  }, [clearTimer]);
+    endHold();
+  }, [clearTimer, endHold]);
 
   const onContextMenu = useCallback((e: ReactMouseEvent<HTMLElement>) => {
     // Suppress the OS context menu on long-press (iOS Safari, desktop right click).

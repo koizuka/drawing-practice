@@ -4,6 +4,7 @@ import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../d
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils';
 import { drawGrid, drawGuideLines, drawMaskPreview, drawMasks } from '../guides/drawGuides';
+import { loadReferenceImage } from '../utils/loadReferenceImage';
 import { findMaskAt, pointToSegmentDistance, resolveMaskGesture } from '../guides/GuideManager';
 import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
@@ -298,13 +299,14 @@ export function ImageViewer({
     onImageErrorRef.current = onImageError;
   });
 
-  // Load image: try without CORS first, then upgrade to CORS if possible.
-  // Re-runs only when the URL changes.
+  // Load image: try without CORS first, then upgrade to CORS if possible
+  // (shared with DrawingCanvas's underlay via loadReferenceImage so the two
+  // never diverge). Re-runs only when the URL changes.
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
 
     const applyImage = (loadedImg: HTMLImageElement) => {
-      if (cancelled) return;
+      if (controller.signal.aborted) return;
       imageRef.current = loadedImg;
       onImageLoadedRef.current?.(loadedImg.naturalWidth, loadedImg.naturalHeight);
       // World origin is the image center, so home is always (0, 0). Reset /
@@ -315,22 +317,12 @@ export function ImageViewer({
       resizeCanvasRef.current();
     };
 
-    const img = new Image();
-    img.onload = () => {
-      if (cancelled) return;
-      const corsImg = new Image();
-      corsImg.crossOrigin = 'anonymous';
-      corsImg.onload = () => applyImage(corsImg);
-      corsImg.onerror = () => applyImage(img);
-      corsImg.src = imageUrl;
-    };
-    img.onerror = () => {
-      if (!cancelled) onImageErrorRef.current?.();
-    };
-    img.src = imageUrl;
+    loadReferenceImage(imageUrl, controller.signal).then(applyImage, () => {
+      if (!controller.signal.aborted) onImageErrorRef.current?.();
+    });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [imageUrl, isFitLeader]);
 

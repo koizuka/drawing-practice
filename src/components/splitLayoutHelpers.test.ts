@@ -2,6 +2,7 @@ import {
   computeFitLeader,
   isSameReferenceContent,
   resolveDrawingFitSize,
+  resolveFixedImageUrl,
   shouldFullscreenReferenceBrowse,
 } from './splitLayoutHelpers';
 import type { ReferenceSnapshot } from '../drawing/types';
@@ -250,5 +251,40 @@ describe('isSameReferenceContent', () => {
       author: '',
     };
     expect(isSameReferenceContent(snap(), ref)).toBe(false);
+  });
+});
+
+describe('resolveFixedImageUrl', () => {
+  const FIXED = 'https://example.com/fixed.png';
+  const LOCAL = 'data:image/png;base64,local';
+
+  it('returns the local URL for a fixed local image', () => {
+    expect(resolveFixedImageUrl('image', 'fixed', null, LOCAL)).toBe(LOCAL);
+  });
+
+  it.each(['url', 'pexels', 'sketchfab', 'pose'] as const)(
+    'returns fixedImageUrl for %s in fixed mode',
+    (source) => {
+      expect(resolveFixedImageUrl(source, 'fixed', FIXED, null)).toBe(FIXED);
+    },
+  );
+
+  it.each(['image', 'url', 'pexels', 'sketchfab', 'pose'] as const)(
+    'returns null for %s in browse mode',
+    (source) => {
+      expect(resolveFixedImageUrl(source, 'browse', FIXED, LOCAL)).toBeNull();
+    },
+  );
+
+  it.each(['youtube', 'trace-template', 'none'] as const)(
+    'returns null for %s even when a stale URL is present',
+    (source) => {
+      expect(resolveFixedImageUrl(source, 'fixed', FIXED, LOCAL)).toBeNull();
+    },
+  );
+
+  it('returns null while the fixed URL is not set yet', () => {
+    expect(resolveFixedImageUrl('url', 'fixed', null, null)).toBeNull();
+    expect(resolveFixedImageUrl('image', 'fixed', FIXED, null)).toBeNull();
   });
 });

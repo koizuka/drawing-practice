@@ -164,4 +164,88 @@ describe('useLongPress', () => {
     expect(onLongPress).toHaveBeenCalledTimes(1);
     expect(onClick).not.toHaveBeenCalled();
   });
+  describe('onLongPressEnd', () => {
+    it('fires on pointerup after a fired long press', () => {
+      const onLongPress = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const { result } = renderHook(() => useLongPress({ onLongPress, onLongPressEnd, ms: 300 }));
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      expect(onLongPressEnd).not.toHaveBeenCalled();
+      act(() => result.current.onPointerUp());
+      expect(onLongPressEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('fires on pointercancel after a fired long press', () => {
+      const onLongPress = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const { result } = renderHook(() => useLongPress({ onLongPress, onLongPressEnd, ms: 300 }));
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      act(() => result.current.onPointerCancel());
+      expect(onLongPressEnd).toHaveBeenCalledTimes(1);
+      // A trailing pointerup must not fire it a second time.
+      act(() => result.current.onPointerUp());
+      expect(onLongPressEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire after a plain click or a pre-timer cancel', () => {
+      const onLongPress = vi.fn();
+      const onClick = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const { result } = renderHook(() =>
+        useLongPress({ onLongPress, onClick, onLongPressEnd, ms: 300 }),
+      );
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      act(() => {
+        vi.advanceTimersByTime(100);
+      });
+      act(() => result.current.onPointerUp());
+      expect(onClick).toHaveBeenCalledTimes(1);
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      act(() => result.current.onPointerCancel());
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+
+      expect(onLongPress).not.toHaveBeenCalled();
+      expect(onLongPressEnd).not.toHaveBeenCalled();
+    });
+
+    it('fires on unmount while a long press is still held', () => {
+      const onLongPress = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const { result, unmount } = renderHook(() =>
+        useLongPress({ onLongPress, onLongPressEnd, ms: 300 }),
+      );
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      act(() => {
+        vi.advanceTimersByTime(300);
+      });
+      unmount();
+      expect(onLongPressEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not fire on unmount when no long press is active', () => {
+      const onLongPress = vi.fn();
+      const onLongPressEnd = vi.fn();
+      const { result, unmount } = renderHook(() =>
+        useLongPress({ onLongPress, onLongPressEnd, ms: 300 }),
+      );
+
+      act(() => result.current.onPointerDown(fakePointerEvent()));
+      unmount();
+      expect(onLongPressEnd).not.toHaveBeenCalled();
+      expect(onLongPress).not.toHaveBeenCalled();
+    });
+  });
 });

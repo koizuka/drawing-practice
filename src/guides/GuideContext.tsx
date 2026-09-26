@@ -20,6 +20,9 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const [masksHidden, setMasksHiddenState] = useState(true);
   const [lastChangeTransient, setLastChangeTransient] = useState(false);
   const [placingCenter, setPlacingCenter] = useState(false);
+  // Hold-to-reveal peek. Plain React state, deliberately outside the manager
+  // and `sync()` so it never bumps `version` (→ no autosave flush).
+  const [masksPeeking, setMasksPeeking] = useState(false);
 
   const sync = useCallback((transient = false) => {
     setVersion((v) => v + 1);
@@ -160,6 +163,8 @@ export function GuideProvider({ children }: { children: ReactNode }) {
         removeMask,
         clearMasks,
         setMasksHidden,
+        masksPeeking,
+        setMasksPeeking,
         restoreGuides,
       }}
     >

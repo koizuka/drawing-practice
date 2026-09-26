@@ -449,6 +449,106 @@ describe('SplitLayout', () => {
     });
   });
 
+  describe('reference underlay', () => {
+    const loadDraftMock = vi.mocked(loadDraft);
+    const saveDraftMock = vi.mocked(saveDraft);
+
+    afterEach(() => {
+      loadDraftMock.mockResolvedValue(undefined);
+      saveDraftMock.mockClear();
+    });
+
+    function urlDraft(overrides: Partial<SessionDraft> = {}): SessionDraft {
+      return {
+        id: 1,
+        strokes: [],
+        redoStack: [],
+        elapsedMs: 0,
+        source: 'url',
+        referenceInfo: {
+          source: 'url',
+          title: '',
+          author: '',
+          imageUrl: 'https://example.com/pic.jpg',
+        },
+        referenceImageData: null,
+        guideState: { grid: { mode: 'none' }, lines: [] },
+        updatedAt: new Date(),
+        coordVersion: 2,
+        ...overrides,
+      };
+    }
+
+    const showBtn = () => screen.queryByLabelText('Show reference underlay');
+    const hideBtn = () => screen.queryByLabelText('Hide reference underlay');
+
+    // Add a mask through the real UI (mask mode must already be armed via the
+    // reference toolbar): drag on the ImageViewer canvas — the first canvas in
+    // the DOM, since the reference panel precedes the drawing panel.
+    function addMaskViaUi(container: HTMLElement, from: number, to: number) {
+      const canvas = container.querySelectorAll('canvas')[0];
+      fireEvent.mouseDown(canvas, { clientX: from, clientY: from });
+      fireEvent.mouseMove(canvas, { clientX: to, clientY: to });
+      fireEvent.mouseUp(canvas, { clientX: to, clientY: to });
+    }
+
+    it('appears only with a fixed image and auto-enables on the first mask (0 → >0 only)', async () => {
+      loadDraftMock.mockResolvedValueOnce(urlDraft());
+      const { container } = render(<SplitLayout />);
+
+      await waitFor(() => expect(showBtn()).toBeInTheDocument());
+
+      fireEvent.click(container.querySelector('svg.lucide-square-dashed')!.closest('button')!);
+      addMaskViaUi(container, 50, 150);
+      await waitFor(() => expect(hideBtn()).toBeInTheDocument());
+
+      // User turns it off, then adds a 2nd mask: no re-enable (1 → 2).
+      fireEvent.click(hideBtn()!);
+      expect(showBtn()).toBeInTheDocument();
+      addMaskViaUi(container, 200, 300);
+      expect(showBtn()).toBeInTheDocument();
+      expect(hideBtn()).not.toBeInTheDocument();
+    });
+
+    it('is not offered for sources without a fixed image', async () => {
+      render(<SplitLayout />);
+      await screen.findByText('Image File');
+      expect(showBtn()).not.toBeInTheDocument();
+      expect(hideBtn()).not.toBeInTheDocument();
+    });
+
+    it('round-trips underlayEnabled through autosave', async () => {
+      loadDraftMock.mockResolvedValueOnce(urlDraft({ underlayEnabled: true }));
+      render(<SplitLayout />);
+
+      await waitFor(() => expect(hideBtn()).toBeInTheDocument());
+      saveDraftMock.mockClear();
+
+      // Discrete toggle → immediate flush carrying the new value.
+      fireEvent.click(hideBtn()!);
+      await waitFor(() => expect(saveDraftMock).toHaveBeenCalled());
+      expect(saveDraftMock.mock.calls.at(-1)![0].underlayEnabled).toBe(false);
+    });
+
+    it('honours a persisted false even when the restored draft has masks', async () => {
+      loadDraftMock.mockResolvedValueOnce(
+        urlDraft({
+          underlayEnabled: false,
+          guideState: {
+            grid: { mode: 'none' },
+            lines: [],
+            masks: [{ id: 'mask-1', x: 0, y: 0, w: 50, h: 50 }],
+            masksHidden: true,
+          },
+        }),
+      );
+      render(<SplitLayout />);
+
+      await waitFor(() => expect(showBtn()).toBeInTheDocument());
+      expect(hideBtn()).not.toBeInTheDocument();
+    });
+  });
+
   describe('autosave on reference change', () => {
     const saveDraftMock = vi.mocked(saveDraft);
     const loadDraftMock = vi.mocked(loadDraft);

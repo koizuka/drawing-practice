@@ -45,6 +45,7 @@ describe('useAutosave', () => {
     masksHidden: true,
     camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
     flipped: false,
+    underlayEnabled: false,
     gallerySaveDirty: true,
     ...overrides,
   });

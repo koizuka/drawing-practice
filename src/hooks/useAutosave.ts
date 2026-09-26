@@ -21,6 +21,7 @@ interface AutosaveState {
   referenceCollapsed?: boolean;
   camera: { viewCenterX: number; viewCenterY: number; zoom: number };
   flipped: boolean;
+  underlayEnabled: boolean;
   gallerySaveDirty: boolean;
 }
 
@@ -70,6 +71,7 @@ export function useAutosave(
       referenceCollapsed: state.referenceCollapsed ?? false,
       camera: { ...state.camera },
       flipped: state.flipped,
+      underlayEnabled: state.underlayEnabled,
       gallerySaveDirty: state.gallerySaveDirty,
     };
 

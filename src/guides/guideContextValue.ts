@@ -37,6 +37,14 @@ export interface GuideContextValue {
   removeMask: (id: string) => void;
   clearMasks: () => void;
   setMasksHidden: (hidden: boolean) => void;
+  /**
+   * Non-persisted UI state (sibling of `placingCenter`): true while the user
+   * holds the reveal button to peek at the hidden areas. Consumers render
+   * with the EFFECTIVE hidden state `masksHidden && !masksPeeking`; a peek
+   * never touches the persisted `masksHidden`, so it fires no autosave.
+   */
+  masksPeeking: boolean;
+  setMasksPeeking: (peeking: boolean) => void;
   restoreGuides: (state: GuideState) => void;
 }
 
