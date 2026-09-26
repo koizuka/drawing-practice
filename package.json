@@ -19,7 +19,7 @@
     "@mui/material": "^9.4.0",
     "@pixiv/three-vrm": "^3.5.5",
     "dexie": "^4.4.6",
-    "lucide-react": "^1.45.0",
+    "lucide-react": "^1.47.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "three": "^0.186.0"
