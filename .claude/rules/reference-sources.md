@@ -52,6 +52,10 @@ A single screenshot is captured at Fix Angle time and stored in **three** places
 
 Canvas-based image viewer with zoom/pan, grid/guide overlay, stroke overlay for comparison, and guide line interaction (drag to add, tap to select for deletion). Loads images with non-CORS fallback for cross-origin URLs.
 
+## Reference masks
+
+`ImageViewer`, `TraceTemplateViewer` and `YouTubeViewer` all render `GuideState.masks` via `drawMasks` and support the `'mask'` `GuideInteractionMode` (drag → `onAddMask`, tap within the 5px drag threshold on a mask → `onRemoveMask`, two fingers cancel and pinch — same as `'add'`). **Draw order is fixed in every viewer: reference content → `drawMasks` → `drawGrid` → `drawGuideLines`** (then overlay strokes) — the grid stays visible over a hidden region as the position anchor. Masks are world-coord rects like guide lines (pan/zoom/flip for free, `shiftGuideState` migrates them), `masksHidden` (absent ≡ true) is persisted so a reload never reveals the answer, and they are reference-only: not in the stroke undo stack and not part of exports / gallery thumbnails (those render stroke data only). SketchfabViewer (iframe, no overlay) and pose browse have no mask layer. The only drawing-side trace of a mask is the **underlay cutout**: when the drawing-canvas underlay is on, `DrawingCanvas` draws the same fixed image (`resolveFixedImageUrl` — the predicate ReferencePanel also mounts `ImageViewer` on; `loadReferenceImage` is the shared plain→CORS loader) at 25% alpha at `(-W/2, -H/2)` and fills hidden masks with the background color, never Phase 1's gray. YouTube / trace templates have no underlay. Viewers and `DrawingCanvas` all receive the EFFECTIVE hidden state `masksHidden && !masksPeeking` (hold-to-peek on `MaskRevealButton`; `masksPeeking` is non-persisted GuideContext state, so a peek never triggers autosave).
+
 ## YouTubeViewer
 
 iframe embed with a transparent canvas overlay spanning the full container (incl. 16:9 letterbox). Fixed 16:9 logical coordinate space (1920x1080) reported via `onFitSize` so drawing-panel grid aligns.

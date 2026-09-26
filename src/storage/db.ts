@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Stroke } from '../drawing/types';
-import type { GuideLine, GridSettings } from '../guides/types';
+import type { GuideLine, GridSettings, MaskRect } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
 import type {
@@ -44,6 +44,10 @@ export interface SessionDraft {
   guideState: {
     grid: GridSettings;
     lines: GuideLine[];
+    /** Reference masks (see GuideState.masks). Optional for back-compat. */
+    masks?: MaskRect[];
+    /** Absent ≡ true (masks hidden). */
+    masksHidden?: boolean;
   };
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
   referenceCollapsed?: boolean;
@@ -55,6 +59,11 @@ export interface SessionDraft {
   camera?: { viewCenterX: number; viewCenterY: number; zoom: number };
   /** Drawing panel flipped horizontally. Optional for back-compat. */
   flipped?: boolean;
+  /**
+   * Faint reference underlay on the drawing canvas (drawing-panel view
+   * preference, like `flipped`). Optional for back-compat; absent ≡ false.
+   */
+  underlayEnabled?: boolean;
   /**
    * Whether the in-memory strokes had unsaved changes (relative to the last
    * gallery save) at autosave time. Used to restore the save-button enabled
@@ -315,6 +324,12 @@ db.version(16).stores({
 // field ({ yaw, pitch, strength, centerX, centerY }) and the 'perspective'
 // GridMode stored inside session.guideState.grid. Old drafts lack the field
 // and are healed by migrateGridSettings on restore.
+// (no v18) the additive, optional session.guideState.masks / masksHidden
+// fields (reference masks) need no index change and no version bump either:
+// old drafts simply lack them and GuideManager.importState heals absence /
+// garbage via sanitizeMasks (absent masksHidden ≡ true).
+// Likewise the additive, optional session.underlayEnabled flag (reference
+// underlay on the drawing canvas) needs no bump: absent ≡ false on restore.
 db.version(17).stores({
   drawings: '++id, createdAt',
   session: 'id',

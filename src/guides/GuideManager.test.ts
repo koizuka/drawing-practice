@@ -1,4 +1,4 @@
-import { GuideManager } from './GuideManager';
+import { GuideManager, findMaskAt, isMaskDragAddable, resolveMaskGesture } from './GuideManager';
 import type { GuideLine, GuideState } from './types';
 import { DEFAULT_PERSPECTIVE } from './types';
 
@@ -325,6 +325,166 @@ describe('GuideManager', () => {
       const closer = manager.addLine(0, 10, 100, 10); // y=10
       const found = manager.findNearestLine(50, 12, 20);
       expect(found?.id).toBe(closer.id);
+    });
+  });
+
+  describe('masks', () => {
+    it('starts empty and hidden', () => {
+      expect(manager.getMasks()).toEqual([]);
+      expect(manager.getMasksHidden()).toBe(true);
+    });
+
+    it('adds a mask normalizing corners from a negative drag', () => {
+      const mask = manager.addMask(100, 80, 20, 30);
+      expect(mask).toMatchObject({ x: 20, y: 30, w: 80, h: 50 });
+      expect(mask.id).toMatch(/^mask-\d+$/);
+      expect(manager.getMasks()).toEqual([mask]);
+    });
+
+    it('removes a mask by id', () => {
+      const a = manager.addMask(0, 0, 10, 10);
+      const b = manager.addMask(20, 20, 30, 30);
+      expect(manager.removeMask(a.id)).toBe(true);
+      expect(manager.getMasks()).toEqual([b]);
+      expect(manager.removeMask('mask-nope')).toBe(false);
+    });
+
+    it('clears all masks', () => {
+      manager.addMask(0, 0, 10, 10);
+      manager.addMask(20, 20, 30, 30);
+      manager.clearMasks();
+      expect(manager.getMasks()).toEqual([]);
+    });
+
+    it('toggles masksHidden', () => {
+      manager.setMasksHidden(false);
+      expect(manager.getMasksHidden()).toBe(false);
+      manager.setMasksHidden(true);
+      expect(manager.getMasksHidden()).toBe(true);
+    });
+
+    it('findMaskAt picks the last-added mask on overlap', () => {
+      manager.addMask(0, 0, 100, 100);
+      const top = manager.addMask(50, 50, 150, 150);
+      expect(manager.findMaskAt(75, 75)?.id).toBe(top.id);
+      expect(manager.findMaskAt(10, 10)?.id).not.toBe(top.id);
+      expect(manager.findMaskAt(10, 10)).not.toBeNull();
+      expect(manager.findMaskAt(200, 200)).toBeNull();
+    });
+
+    it('importState tolerates missing masks and defaults masksHidden to true', () => {
+      manager.addMask(0, 0, 10, 10);
+      manager.setMasksHidden(false);
+      manager.importState({ grid: { mode: 'none' }, lines: [] });
+      expect(manager.getMasks()).toEqual([]);
+      expect(manager.getMasksHidden()).toBe(true);
+    });
+
+    it('importState drops malformed entries and normalizes negative w/h', () => {
+      const state = {
+        grid: { mode: 'none' },
+        lines: [],
+        masks: [
+          { id: 'mask-1', x: 10, y: 20, w: 30, h: 40 },
+          { id: 'mask-2', x: 100, y: 100, w: -20, h: -10 },
+          { id: 'mask-3', x: NaN, y: 0, w: 10, h: 10 },
+          { id: 'mask-4', x: 0, y: 0, w: Infinity, h: 10 },
+          { id: 'mask-5', x: 0, y: 0, w: '10', h: 10 },
+          { x: 0, y: 0, w: 10, h: 10 },
+          null,
+          'garbage',
+        ],
+        masksHidden: false,
+      } as unknown as GuideState;
+      manager.importState(state);
+      expect(manager.getMasks()).toEqual([
+        { id: 'mask-1', x: 10, y: 20, w: 30, h: 40 },
+        { id: 'mask-2', x: 80, y: 90, w: 20, h: 10 },
+      ]);
+      expect(manager.getMasksHidden()).toBe(false);
+    });
+
+    it('importState treats a non-array masks field as empty', () => {
+      manager.importState({
+        grid: { mode: 'none' },
+        lines: [],
+        masks: 'nope',
+      } as unknown as GuideState);
+      expect(manager.getMasks()).toEqual([]);
+    });
+
+    it('does not reuse imported mask ids for new masks', () => {
+      manager.importState({
+        grid: { mode: 'none' },
+        lines: [],
+        masks: [{ id: 'mask-9000', x: 0, y: 0, w: 1, h: 1 }],
+      });
+      const added = manager.addMask(0, 0, 5, 5);
+      expect(added.id).not.toBe('mask-9000');
+      expect(parseInt(added.id.slice('mask-'.length), 10)).toBeGreaterThan(9000);
+    });
+
+    it('does not reuse ids from the constructor initial state', () => {
+      const m = new GuideManager({
+        grid: { mode: 'none' },
+        lines: [{ id: 'guide-9500', x1: 0, y1: 0, x2: 1, y2: 1 }],
+        masks: [{ id: 'mask-9600', x: 0, y: 0, w: 1, h: 1 }],
+      });
+      const added = m.addMask(0, 0, 5, 5);
+      expect(parseInt(added.id.slice('mask-'.length), 10)).toBeGreaterThan(9600);
+      const line = m.addLine(0, 0, 5, 5);
+      expect(parseInt(line.id.slice('guide-'.length), 10)).toBeGreaterThan(9600);
+    });
+
+    it('importState drops later duplicate ids so one removal cannot hit several masks', () => {
+      manager.importState({
+        grid: { mode: 'none' },
+        lines: [],
+        masks: [
+          { id: 'mask-1', x: 0, y: 0, w: 10, h: 10 },
+          { id: 'mask-1', x: 50, y: 50, w: 10, h: 10 },
+          { id: 'mask-2', x: 100, y: 100, w: 10, h: 10 },
+        ],
+      });
+      expect(manager.getMasks().map((m) => [m.id, m.x])).toEqual([
+        ['mask-1', 0],
+        ['mask-2', 100],
+      ]);
+      expect(manager.removeMask('mask-1')).toBe(true);
+      expect(manager.getMasks().map((m) => m.id)).toEqual(['mask-2']);
+    });
+  });
+
+  describe('resolveMaskGesture', () => {
+    const masks = [{ id: 'mask-1', x: 0, y: 0, w: 100, h: 100 }];
+
+    it('adds when the drag exceeds the threshold in both dimensions', () => {
+      expect(resolveMaskGesture({ x: 0, y: 0 }, { x: 20, y: 20 }, 5, masks)).toEqual({
+        kind: 'add',
+      });
+    });
+
+    it('removes the mask under a tap', () => {
+      expect(resolveMaskGesture({ x: 50, y: 50 }, { x: 51, y: 50 }, 5, masks)).toEqual({
+        kind: 'remove',
+        id: 'mask-1',
+      });
+    });
+
+    it('does nothing for a tap on empty space or a thin sliver drag', () => {
+      expect(resolveMaskGesture({ x: 500, y: 500 }, { x: 501, y: 500 }, 5, masks)).toBeNull();
+      expect(resolveMaskGesture({ x: 50, y: 50 }, { x: 90, y: 51 }, 5, masks)).toBeNull();
+    });
+
+    it('isMaskDragAddable requires both extents above the threshold', () => {
+      expect(isMaskDragAddable({ x: 0, y: 0 }, { x: 20, y: 20 }, 5)).toBe(true);
+      expect(isMaskDragAddable({ x: 0, y: 0 }, { x: 20, y: 3 }, 5)).toBe(false);
+      expect(isMaskDragAddable({ x: 0, y: 0 }, { x: -20, y: -20 }, 5)).toBe(true);
+    });
+
+    it('findMaskAt treats edges as inside', () => {
+      expect(findMaskAt(masks, 100, 100)?.id).toBe('mask-1');
+      expect(findMaskAt(masks, 100.1, 50)).toBeNull();
     });
   });
 });

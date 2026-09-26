@@ -1,4 +1,4 @@
-import type { GridSettings, GuideLine, PerspectiveSettings } from './types';
+import type { GridSettings, GuideLine, MaskRect, PerspectiveSettings } from './types';
 import { getGridSpacing, DEFAULT_PERSPECTIVE } from './types';
 import { computePerspectiveGridLines } from './perspective';
 import type { Point } from '../drawing/types';
@@ -136,5 +136,72 @@ export function drawGuideLines(
     ctx.stroke();
   }
 
+  ctx.restore();
+}
+
+const MASK_FILL = '#d9d9d9';
+const MASK_BORDER = '#b0b0b0';
+const MASK_HIGHLIGHT_BORDER = 'rgba(255, 0, 0, 0.9)';
+const MASK_REVEALED_OUTLINE = 'rgba(255, 50, 50, 0.4)';
+
+/**
+ * Draw reference masks in world coordinate space (caller has applied the view
+ * transform, same contract as drawGrid). Draw order in every viewer:
+ * reference content → drawMasks → drawGrid → drawGuideLines, so the grid stays
+ * visible over the mask as the position anchor.
+ *
+ * - hidden: opaque neutral fill (content must be unreadable) + 1px border.
+ * - revealed: no fill, dashed low-alpha guide-red outline marking the region.
+ */
+export function drawMasks(
+  ctx: CanvasRenderingContext2D,
+  masks: readonly MaskRect[],
+  hidden: boolean,
+  scale: number,
+  highlightedId?: string | null,
+): void {
+  if (masks.length === 0) return;
+  ctx.save();
+  if (!hidden) ctx.setLineDash([6 / scale, 4 / scale]);
+  for (const m of masks) {
+    const isHighlighted = m.id === highlightedId;
+    if (hidden) {
+      ctx.fillStyle = MASK_FILL;
+      ctx.fillRect(m.x, m.y, m.w, m.h);
+    }
+    ctx.strokeStyle = isHighlighted
+      ? MASK_HIGHLIGHT_BORDER
+      : hidden
+        ? MASK_BORDER
+        : MASK_REVEALED_OUTLINE;
+    ctx.lineWidth = (isHighlighted ? 3 : 1) / scale;
+    ctx.strokeRect(m.x, m.y, m.w, m.h);
+  }
+  ctx.restore();
+}
+
+/** In-progress mask drag: hidden-mask style at ~50% alpha. Corners in any order. */
+export function drawMaskPreview(
+  ctx: CanvasRenderingContext2D,
+  start: Point,
+  end: Point,
+  scale: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  drawMasks(
+    ctx,
+    [
+      {
+        id: '__preview__',
+        x: Math.min(start.x, end.x),
+        y: Math.min(start.y, end.y),
+        w: Math.abs(end.x - start.x),
+        h: Math.abs(end.y - start.y),
+      },
+    ],
+    true,
+    scale,
+  );
   ctx.restore();
 }

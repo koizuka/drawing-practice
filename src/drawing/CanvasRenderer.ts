@@ -26,6 +26,11 @@ export class CanvasRenderer {
     this.options = { ...DEFAULT_OPTIONS, ...options };
   }
 
+  /** Canvas background color (used e.g. for the underlay's mask cutouts). */
+  getBackgroundColor(): string {
+    return this.options.backgroundColor;
+  }
+
   clear(): void {
     const canvas = this.ctx.canvas;
     this.ctx.fillStyle = this.options.backgroundColor;

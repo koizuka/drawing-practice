@@ -109,6 +109,31 @@ describe('coordMigration', () => {
       ]);
     });
 
+    it('shifts mask origins and keeps size, ids and masksHidden', () => {
+      const state: GuideState = {
+        grid: { mode: 'none' },
+        lines: [],
+        masks: [
+          { id: 'mask-1', x: 100, y: 200, w: 30, h: 40 },
+          { id: 'mask-2', x: 0, y: 0, w: 10, h: 10 },
+        ],
+        masksHidden: false,
+      };
+      const out = shiftGuideState(state, -50, -100);
+      expect(out.masks).toEqual([
+        { id: 'mask-1', x: 50, y: 100, w: 30, h: 40 },
+        { id: 'mask-2', x: -50, y: -100, w: 10, h: 10 },
+      ]);
+      expect(out.masksHidden).toBe(false);
+    });
+
+    it('leaves masks absent when the legacy state has none', () => {
+      const state: GuideState = { grid: { mode: 'none' }, lines: [] };
+      const out = shiftGuideState(state, -50, -100);
+      expect(out.masks).toBeUndefined();
+      expect(out.masksHidden).toBeUndefined();
+    });
+
     it('keeps grid identity when no perspective settings exist', () => {
       const state: GuideState = { grid: { mode: 'large' }, lines: [] };
       const out = shiftGuideState(state, -50, -100);

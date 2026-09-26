@@ -9,6 +9,8 @@ import {
   Link as MuiLink,
   Autocomplete,
 } from '@mui/material';
+import { MaskRevealButton } from './MaskRevealButton';
+import { resolveFixedImageUrl } from './splitLayoutHelpers';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import {
   X,
@@ -32,6 +34,8 @@ import {
   KeyRound,
   Spline,
   PersonStanding,
+  SquareDashed,
+  SquareX,
 } from 'lucide-react';
 import type {
   SketchfabActions,
@@ -408,7 +412,18 @@ export function ReferencePanel({
     clearLines,
     placingCenter,
     placePerspectiveCenter,
+    masks,
+    masksHidden,
+    addMask,
+    removeMask,
+    clearMasks,
+    setMasksHidden,
+    masksPeeking,
+    setMasksPeeking,
   } = useGuides();
+  // Viewers render the EFFECTIVE hidden state: a hold-to-peek reveals without
+  // touching the persisted masksHidden (so no autosave fires).
+  const effectiveMasksHidden = masksHidden && !masksPeeking;
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
@@ -1024,6 +1039,13 @@ export function ReferencePanel({
     [addLine],
   );
 
+  const handleAddMask = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) => {
+      addMask(x1, y1, x2, y2);
+    },
+    [addMask],
+  );
+
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedGuideId) {
       removeLine(highlightedGuideId);
@@ -1055,6 +1077,10 @@ export function ReferencePanel({
   );
 
   const displayImageUrl = source === 'image' ? localImageUrl : fixedImageUrl; // 'sketchfab', 'url', 'pexels' use fixedImageUrl
+  // The URL ImageViewer mounts on. Shared predicate with the drawing-canvas
+  // underlay (splitLayoutHelpers) so the underlay is available exactly when
+  // this fixed image is on screen.
+  const imageViewerUrl = resolveFixedImageUrl(source, referenceMode, fixedImageUrl, localImageUrl);
   const traceTemplateInfo = refInfo?.source === 'trace-template' ? refInfo : null;
   const activeTraceTemplate: TraceTemplate | null =
     source === 'trace-template' && referenceMode === 'fixed' && traceTemplateInfo
@@ -1327,16 +1353,73 @@ export function ReferencePanel({
           </>
         )}
 
-        {/* Clear-all works on guide state alone, so stay available even with no
-            reference loaded — otherwise stale guides become undeletable. */}
-        {!(isFixed || isYouTube) && lines.length > 0 && (
+        {/* Reference masks — hide part of the reference to draw it from
+            inference. Same visibility rule as the guide-line tools. */}
+        {(isFixed || isYouTube) && !inYouTubeVideoMode && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <ToolbarTooltip title={t('clearGuideLines')}>
-              <IconButton size="small" onClick={clearLines}>
-                <Trash2 size={20} />
-              </IconButton>
+
+            <ToolbarTooltip title={t('addMask')}>
+              <span>
+                {/* The Tooltip labels the wrapping <span>, not the button, so
+                    name the button itself for assistive tech. */}
+                <IconButton
+                  size="small"
+                  aria-label={t('addMask')}
+                  onClick={() => toggleGuideMode('mask')}
+                  disabled={suppressGuideEditing}
+                  sx={{
+                    bgcolor: effectiveGuideMode === 'mask' ? 'error.main' : 'transparent',
+                    color: effectiveGuideMode === 'mask' ? 'white' : 'inherit',
+                    '&:hover': {
+                      bgcolor: effectiveGuideMode === 'mask' ? 'error.dark' : 'action.hover',
+                    },
+                  }}
+                >
+                  <SquareDashed size={20} />
+                </IconButton>
+              </span>
             </ToolbarTooltip>
+
+            {masks.length > 0 && (
+              <MaskRevealButton
+                masksHidden={masksHidden}
+                peeking={masksPeeking}
+                onToggle={() => setMasksHidden(!masksHidden)}
+                onPeekStart={() => setMasksPeeking(true)}
+                onPeekEnd={() => setMasksPeeking(false)}
+              />
+            )}
+
+            {masks.length > 0 && (
+              <ToolbarTooltip title={t('clearMasks')}>
+                <IconButton size="small" onClick={clearMasks}>
+                  <SquareX size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
+          </>
+        )}
+
+        {/* Clear-all works on guide state alone, so stay available even with no
+            reference loaded — otherwise stale guides / masks become undeletable. */}
+        {!(isFixed || isYouTube) && (lines.length > 0 || masks.length > 0) && (
+          <>
+            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+            {lines.length > 0 && (
+              <ToolbarTooltip title={t('clearGuideLines')}>
+                <IconButton size="small" onClick={clearLines}>
+                  <Trash2 size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
+            {masks.length > 0 && (
+              <ToolbarTooltip title={t('clearMasks')}>
+                <IconButton size="small" onClick={clearMasks}>
+                  <SquareX size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
           </>
         )}
 
@@ -1945,6 +2028,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={effectiveMasksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
             viewTransform={viewTransform}
@@ -1982,6 +2069,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={effectiveMasksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
@@ -1993,9 +2084,9 @@ export function ReferencePanel({
         )}
 
         {/* Fixed image */}
-        {isFixed && displayImageUrl && (
+        {imageViewerUrl && (
           <ImageViewer
-            imageUrl={displayImageUrl}
+            imageUrl={imageViewerUrl}
             viewResetVersion={viewResetVersion}
             grid={grid}
             guideLines={lines}
@@ -2008,6 +2099,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={effectiveMasksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}

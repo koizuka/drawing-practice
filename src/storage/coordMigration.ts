@@ -1,5 +1,5 @@
 import type { Stroke } from '../drawing/types';
-import type { GuideLine, GuideState, PerspectiveSettings } from '../guides/types';
+import type { GuideLine, GuideState, MaskRect, PerspectiveSettings } from '../guides/types';
 
 /**
  * Translate every coordinate by `(dx, dy)`. Used to migrate legacy stored
@@ -21,6 +21,10 @@ function shiftGuideLine(line: GuideLine, dx: number, dy: number): GuideLine {
     x2: line.x2 + dx,
     y2: line.y2 + dy,
   };
+}
+
+function shiftMask(mask: MaskRect, dx: number, dy: number): MaskRect {
+  return { ...mask, x: mask.x + dx, y: mask.y + dy };
 }
 
 export function shiftStrokes(strokes: readonly Stroke[], dx: number, dy: number): Stroke[] {
@@ -53,5 +57,8 @@ export function shiftGuideState(state: GuideState, dx: number, dy: number): Guid
           }
         : state.grid,
     lines: state.lines.map((l) => shiftGuideLine(l, dx, dy)),
+    // Masks are world-coord rects too; masksHidden rides along unchanged.
+    ...(state.masks ? { masks: state.masks.map((m) => shiftMask(m, dx, dy)) } : {}),
+    ...(state.masksHidden !== undefined ? { masksHidden: state.masksHidden } : {}),
   };
 }

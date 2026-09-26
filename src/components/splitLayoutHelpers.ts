@@ -54,6 +54,40 @@ export function computeFitLeader(source: ReferenceSource, referenceMode: Referen
 }
 
 /**
+ * URL of the fixed reference image that `ImageViewer` is showing, or null
+ * when no fixed image is on screen. Single source of truth for both the
+ * reference panel (which mounts `ImageViewer` on it) and the drawing-canvas
+ * underlay (which draws the same bitmap faintly under the strokes), so the
+ * underlay is available exactly when the fixed image is.
+ *
+ * - `image` + fixed → the local (data/blob) URL
+ * - `url` / `pexels` / `sketchfab` / `pose` + fixed → `fixedImageUrl`
+ *   (Sketchfab/pose Fix-Angle screenshots ride this same path)
+ * - everything else → null: `youtube` (an iframe can't be drawn onto a
+ *   canvas), `trace-template` (renders its own guide strokes), `none`, and
+ *   every browse screen.
+ */
+export function resolveFixedImageUrl(
+  source: ReferenceSource,
+  referenceMode: ReferenceMode,
+  fixedImageUrl: string | null,
+  localImageUrl: string | null,
+): string | null {
+  if (referenceMode !== 'fixed') return null;
+  switch (source) {
+    case 'image':
+      return localImageUrl;
+    case 'url':
+    case 'pexels':
+    case 'sketchfab':
+    case 'pose':
+      return fixedImageUrl;
+    default:
+      return null;
+  }
+}
+
+/**
  * Size that DrawingCanvas should fit-to-canvas. When the reference panel
  * leads, mirror the reference's size so strokes/grid project consistently.
  * When the drawing panel leads (free drawing or search screens), return null

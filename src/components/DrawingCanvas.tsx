@@ -14,9 +14,10 @@ import {
 import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import { drawGrid, drawGuideLines } from '../guides/drawGuides';
 import type { Point, Stroke } from '../drawing/types';
-import type { GridSettings, GuideLine } from '../guides/types';
+import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { TraceFeedback, TraceStroke } from '../trace/types';
 import { DrawingFreezeHint } from './DrawingFreezeHint';
+import { loadReferenceImage } from '../utils/loadReferenceImage';
 
 // Unified erase/select mode: a tap selects the nearest stroke (eraser), a
 // drag-to-enclose acts as a lasso. The pen mode is unchanged. See
@@ -90,6 +91,21 @@ interface DrawingCanvasProps {
   /** When true, the next tap places the perspective grid anchor instead of drawing/erasing. */
   placingPerspectiveCenter?: boolean;
   onPlacePerspectiveCenter?: (x: number, y: number) => void;
+  /**
+   * Fixed reference image to render faintly under the strokes (the
+   * "underlay"). Null/absent when the active reference has no fixed image.
+   * Loaded with the same plain→CORS sequence as ImageViewer.
+   */
+  underlayImageUrl?: string | null;
+  /** Whether the underlay is shown (drawing-panel view preference). */
+  underlayEnabled?: boolean;
+  /** Reference masks — cut out of the underlay (background-colored) while hidden. */
+  masks?: readonly MaskRect[];
+  /**
+   * EFFECTIVE hidden state (persisted `masksHidden && !masksPeeking`). When
+   * false the underlay shows through the mask rects (answer check).
+   */
+  masksHidden?: boolean;
 }
 
 /**
@@ -100,7 +116,17 @@ interface DrawingCanvasProps {
  */
 const DIMMED_STROKE_OPACITY = 0.2;
 
+/**
+ * Opacity of the reference underlay. Faint enough that the user's own black
+ * strokes stay clearly dominant over the reference they're drawn on.
+ */
+export const UNDERLAY_ALPHA = 0.25;
+/** Thin frame around each blank mask cutout so the "draw here" area reads as a region. */
+const UNDERLAY_CUTOUT_BORDER = 'rgba(0, 0, 0, 0.25)';
+
 const ERASER_THRESHOLD = 20;
+
+const EMPTY_MASKS: readonly MaskRect[] = [];
 
 // Screen-space movement (CSS px) that promotes an erase-mode press from a
 // "tap to select" into a "drag to lasso". Matches useLongPress's
@@ -141,6 +167,10 @@ export function DrawingCanvas({
   onStrokeStart,
   placingPerspectiveCenter = false,
   onPlacePerspectiveCenter,
+  underlayImageUrl = null,
+  underlayEnabled = false,
+  masks = EMPTY_MASKS,
+  masksHidden = true,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -164,6 +194,10 @@ export function DrawingCanvas({
   // first touch.
   const lastDrawClientRef = useRef<{ x: number; y: number } | null>(null);
   const rendererRef = useRef<CanvasRenderer | null>(null);
+  // Loaded underlay bitmap tagged with its URL. redrawAll draws it only when
+  // the tag matches the current `underlayImageUrl`, so a reference swap never
+  // shows the previous image under the new one while the new one loads.
+  const underlayRef = useRef<{ url: string; img: HTMLImageElement } | null>(null);
   // Lazy-init: useRef's argument runs every render, so a plain default would
   // allocate a throw-away ViewTransform on each render. The non-null cast is
   // safe because the if-block always assigns before any read.
@@ -261,6 +295,32 @@ export function DrawingCanvas({
       dpr * projected.offsetY,
     );
 
+    // Reference underlay (faint fixed image, bottom layer). World origin ≡
+    // image center, so (-W/2, -H/2) lines up with ImageViewer and the strokes
+    // with no other alignment code; flip rides the container's CSS scaleX(-1)
+    // like everything else in world space. While masks are hidden their rects
+    // are cut out in the BACKGROUND color (not Phase 1's gray occluder) so the
+    // blank reads as "draw here"; revealed/peeking masks show the image.
+    const underlay = underlayRef.current;
+    if (underlayEnabled && underlay && underlay.url === underlayImageUrl) {
+      const { img } = underlay;
+      ctx.save();
+      ctx.globalAlpha = UNDERLAY_ALPHA;
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      ctx.restore();
+      if (masksHidden && masks.length > 0) {
+        ctx.save();
+        ctx.fillStyle = renderer.getBackgroundColor();
+        ctx.strokeStyle = UNDERLAY_CUTOUT_BORDER;
+        ctx.lineWidth = 1 / projected.scale;
+        for (const m of masks) {
+          ctx.fillRect(m.x, m.y, m.w, m.h);
+          ctx.strokeRect(m.x, m.y, m.w, m.h);
+        }
+        ctx.restore();
+      }
+    }
+
     // Trace-template guide layer (semi-transparent gray, under user strokes).
     // Drawn first so user strokes paint over it. Line width compensates for
     // zoom so the guide stays visually subtle at high magnifications.
@@ -354,6 +414,10 @@ export function DrawingCanvas({
     templateStrokes,
     traceFeedback,
     dimmedStrokeTimestamps,
+    underlayImageUrl,
+    underlayEnabled,
+    masks,
+    masksHidden,
   ]);
 
   // Setup canvas with DPR
@@ -467,6 +531,29 @@ export function DrawingCanvas({
       redrawAll();
     });
   }, [redrawAll]);
+
+  // Load the underlay image only while it is wanted; a cached bitmap for the
+  // same URL survives toggling off/on without a refetch. Prop changes
+  // (enable/URL/masks) already re-run redrawAll via its identity; the load
+  // itself is async, so it redraws through the latest-ref bridge.
+  useEffect(() => {
+    if (!underlayImageUrl || !underlayEnabled) return;
+    if (underlayRef.current?.url === underlayImageUrl) return;
+    const controller = new AbortController();
+    const url = underlayImageUrl;
+    loadReferenceImage(url, controller.signal).then(
+      (img) => {
+        if (controller.signal.aborted) return;
+        underlayRef.current = { url, img };
+        redrawAllRef.current();
+      },
+      () => {
+        // Load failure: no underlay. The reference panel's ImageViewer owns
+        // the user-facing error / reset path for the same URL.
+      },
+    );
+    return () => controller.abort();
+  }, [underlayImageUrl, underlayEnabled]);
 
   const stopMarching = useCallback(() => {
     if (marchingRafRef.current) {

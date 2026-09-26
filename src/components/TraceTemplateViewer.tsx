@@ -3,14 +3,19 @@ import { Box } from '@mui/material';
 import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils';
-import { drawGrid, drawGuideLines } from '../guides/drawGuides';
-import { pointToSegmentDistance } from '../guides/GuideManager';
-import type { GridSettings, GuideLine } from '../guides/types';
+import { drawGrid, drawGuideLines, drawMaskPreview, drawMasks } from '../guides/drawGuides';
+import {
+  findMaskAt,
+  isMaskDragAddable,
+  pointToSegmentDistance,
+  resolveMaskGesture,
+} from '../guides/GuideManager';
+import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
 import type { TraceTemplate } from '../templates/types';
 import type { TraceFeedback } from '../trace/types';
 
-export type GuideInteractionMode = 'none' | 'add' | 'delete' | 'place-center';
+export type GuideInteractionMode = 'none' | 'add' | 'delete' | 'place-center' | 'mask';
 
 interface TraceTemplateViewerProps {
   template: TraceTemplate;
@@ -27,6 +32,14 @@ interface TraceTemplateViewerProps {
   onDeleteGuideLine?: (id: string) => void;
   /** Tap handler for the 'place-center' mode (perspective grid anchor). */
   onPlaceCenter?: (x: number, y: number) => void;
+  /** Reference masks (world coords), drawn between the content and the grid. */
+  masks?: readonly MaskRect[];
+  /** True = opaque occluders; false = revealed (dashed outline only). */
+  masksHidden?: boolean;
+  /** 'mask' mode: drag released above the size threshold. Corners in any order. */
+  onAddMask?: (x1: number, y1: number, x2: number, y2: number) => void;
+  /** 'mask' mode: tap (no drag) on an existing mask. */
+  onRemoveMask?: (id: string) => void;
   highlightedGuideId?: string | null;
   onHighlightGuide?: (id: string | null) => void;
   isFlipped?: boolean;
@@ -40,6 +53,9 @@ const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)';
 const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)';
 const TEMPLATE_COLOR = 'rgba(140, 140, 160, 0.55)';
 const GUIDE_HIT_THRESHOLD = 15;
+/** Screen-pixel minimum drag for a guide line / mask; also the mask tap tolerance. */
+const MIN_DRAG_PX = 5;
+const EMPTY_MASKS: readonly MaskRect[] = [];
 
 export function TraceTemplateViewer({
   template,
@@ -54,6 +70,10 @@ export function TraceTemplateViewer({
   guideMode,
   onAddGuideLine,
   onPlaceCenter,
+  masks = EMPTY_MASKS,
+  masksHidden = true,
+  onAddMask,
+  onRemoveMask,
   highlightedGuideId,
   onHighlightGuide,
   isFlipped,
@@ -164,11 +184,32 @@ export function TraceTemplateViewer({
       container,
       baseScale,
     );
+    // Masks sit between the reference content and the grid: the grid stays
+    // visible over a hidden region as the position anchor.
+    const minDrag = MIN_DRAG_PX / projected.scale;
+    const maskDrag = guideMode === 'mask' && dragStart && dragEnd ? { dragStart, dragEnd } : null;
+    const maskDragIsTap =
+      maskDrag !== null &&
+      Math.hypot(
+        maskDrag.dragEnd.x - maskDrag.dragStart.x,
+        maskDrag.dragEnd.y - maskDrag.dragStart.y,
+      ) <= minDrag;
+    // Tap-to-remove feedback: while a mask-mode press hasn't moved, highlight
+    // the mask it would remove on release.
+    const pressedMaskId = maskDragIsTap
+      ? (findMaskAt(masks, maskDrag.dragStart.x, maskDrag.dragStart.y)?.id ?? null)
+      : null;
+    drawMasks(ctx, masks, masksHidden, projected.scale, pressedMaskId);
     drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER);
     drawGuideLines(ctx, guideLines, projected.scale, highlightedGuideId);
 
     // In-progress guide line
-    if (dragStart && dragEnd) {
+    if (maskDrag) {
+      // Preview only drags that release would actually add (same predicate
+      // as resolveMaskGesture) — thin slivers are discarded, so don't show them.
+      if (isMaskDragAddable(maskDrag.dragStart, maskDrag.dragEnd, minDrag))
+        drawMaskPreview(ctx, maskDrag.dragStart, maskDrag.dragEnd, projected.scale);
+    } else if (dragStart && dragEnd) {
       ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
       ctx.lineWidth = 1.5 / projected.scale;
       ctx.setLineDash([6 / projected.scale, 4 / projected.scale]);
@@ -240,6 +281,9 @@ export function TraceTemplateViewer({
     highlightedGuideId,
     dragStart,
     dragEnd,
+    guideMode,
+    masks,
+    masksHidden,
     getBaseScale,
     traceFeedback,
   ]);
@@ -366,7 +410,7 @@ export function TraceTemplateViewer({
     (e: React.MouseEvent) => {
       if (guideMode === 'none') return;
       const point = getCanvasPoint(e.clientX, e.clientY);
-      if (guideMode === 'add') {
+      if (guideMode === 'add' || guideMode === 'mask') {
         setDragStart(point);
         setDragEnd(point);
       } else if (guideMode === 'delete') {
@@ -390,23 +434,49 @@ export function TraceTemplateViewer({
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (guideMode !== 'add' || !dragStart) return;
+      if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart) return;
       setDragEnd(getCanvasPoint(e.clientX, e.clientY));
       requestRedraw();
     },
     [guideMode, dragStart, getCanvasPoint, requestRedraw],
   );
 
-  const handleMouseUp = useCallback(() => {
-    if (guideMode !== 'add' || !dragStart || !dragEnd) return;
-    const dx = dragEnd.x - dragStart.x;
-    const dy = dragEnd.y - dragStart.y;
-    if (Math.sqrt(dx * dx + dy * dy) > 5 / getCurrentScale()) {
-      onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+  // Shared release logic for mouse and touch: 'add' commits a guide line,
+  // 'mask' either adds a rect (drag) or removes the tapped mask (tap).
+  const commitDrag = useCallback(() => {
+    if (!dragStart || !dragEnd) return;
+    const minDrag = MIN_DRAG_PX / getCurrentScale();
+    if (guideMode === 'add') {
+      const dx = dragEnd.x - dragStart.x;
+      const dy = dragEnd.y - dragStart.y;
+      if (Math.sqrt(dx * dx + dy * dy) > minDrag) {
+        onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+      }
+    } else if (guideMode === 'mask') {
+      const result = resolveMaskGesture(dragStart, dragEnd, minDrag, masks);
+      if (result?.kind === 'add') {
+        onAddMask?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+      } else if (result?.kind === 'remove') {
+        onRemoveMask?.(result.id);
+      }
     }
     setDragStart(null);
     setDragEnd(null);
-  }, [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale]);
+  }, [
+    guideMode,
+    dragStart,
+    dragEnd,
+    onAddGuideLine,
+    onAddMask,
+    onRemoveMask,
+    masks,
+    getCurrentScale,
+  ]);
+
+  const handleMouseUp = useCallback(() => {
+    if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart || !dragEnd) return;
+    commitDrag();
+  }, [guideMode, dragStart, dragEnd, commitDrag]);
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
@@ -439,7 +509,7 @@ export function TraceTemplateViewer({
       e.preventDefault();
       const touch = e.changedTouches[0];
       const point = getCanvasPoint(touch.clientX, touch.clientY);
-      if (guideMode === 'add') {
+      if (guideMode === 'add' || guideMode === 'mask') {
         setDragStart(point);
         setDragEnd(point);
       } else if (guideMode === 'delete') {
@@ -511,7 +581,7 @@ export function TraceTemplateViewer({
         requestRedraw();
         return;
       }
-      if (guideMode !== 'add' || !dragStart) return;
+      if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart) return;
       e.preventDefault();
       const touch = e.changedTouches[0];
       setDragEnd(getCanvasPoint(touch.clientX, touch.clientY));
@@ -536,21 +606,33 @@ export function TraceTemplateViewer({
         e.preventDefault();
         return;
       }
-      if (guideMode !== 'add' || !dragStart || !dragEnd) return;
+      if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart || !dragEnd) return;
       e.preventDefault();
-      const dx = dragEnd.x - dragStart.x;
-      const dy = dragEnd.y - dragStart.y;
-      if (Math.sqrt(dx * dx + dy * dy) > 5 / getCurrentScale()) {
-        onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
-      }
-      setDragStart(null);
-      setDragEnd(null);
+      commitDrag();
     },
-    [guideMode, dragStart, dragEnd, onAddGuideLine, getCurrentScale],
+    [guideMode, dragStart, dragEnd, commitDrag],
   );
 
+  // A cancelled touch (system gesture, palm rejection, etc.) must never commit:
+  // drop the pending guide-line / mask drag and any pinch that lost a finger.
+  const handleTouchCancel = useCallback((e: React.TouchEvent) => {
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      activeTouchesRef.current.delete(e.changedTouches[i].identifier);
+    }
+    if (
+      pinchRef.current &&
+      (!activeTouchesRef.current.has(pinchRef.current.id1) ||
+        !activeTouchesRef.current.has(pinchRef.current.id2))
+    ) {
+      pinchRef.current = null;
+      pinchRectRef.current = null;
+    }
+    setDragStart(null);
+    setDragEnd(null);
+  }, []);
+
   const cursor =
-    guideMode === 'add' || guideMode === 'place-center'
+    guideMode === 'add' || guideMode === 'mask' || guideMode === 'place-center'
       ? 'crosshair'
       : guideMode === 'delete'
         ? 'pointer'
@@ -571,7 +653,7 @@ export function TraceTemplateViewer({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        onTouchCancel={handleTouchEnd}
+        onTouchCancel={handleTouchCancel}
         style={{
           display: 'block',
           width: '100%',

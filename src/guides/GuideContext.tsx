@@ -1,6 +1,13 @@
 import { useRef, useState, useCallback, type ReactNode } from 'react';
 import { GuideManager } from './GuideManager';
-import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
+import type {
+  GuideLine,
+  GridSettings,
+  GridMode,
+  GuideState,
+  MaskRect,
+  PerspectiveSettings,
+} from './types';
 import { DEFAULT_GUIDE_STATE } from './types';
 import { GuideContext } from './guideContextValue';
 
@@ -9,13 +16,20 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState(0);
   const [grid, setGrid] = useState<GridSettings>(DEFAULT_GUIDE_STATE.grid);
   const [lines, setLines] = useState<readonly GuideLine[]>([]);
+  const [masks, setMasks] = useState<readonly MaskRect[]>([]);
+  const [masksHidden, setMasksHiddenState] = useState(true);
   const [lastChangeTransient, setLastChangeTransient] = useState(false);
   const [placingCenter, setPlacingCenter] = useState(false);
+  // Hold-to-reveal peek. Plain React state, deliberately outside the manager
+  // and `sync()` so it never bumps `version` (→ no autosave flush).
+  const [masksPeeking, setMasksPeeking] = useState(false);
 
   const sync = useCallback((transient = false) => {
     setVersion((v) => v + 1);
     setGrid(guideManagerRef.current.getGrid());
     setLines([...guideManagerRef.current.getLines()]);
+    setMasks([...guideManagerRef.current.getMasks()]);
+    setMasksHiddenState(guideManagerRef.current.getMasksHidden());
     setLastChangeTransient(transient);
   }, []);
 
@@ -84,6 +98,39 @@ export function GuideProvider({ children }: { children: ReactNode }) {
     sync();
   }, [sync]);
 
+  // Mask mutations are discrete tap/button actions → non-transient sync so
+  // SplitLayout's guide-version listener flushes autosave immediately (same
+  // as add/remove line). The in-progress drag rect is viewer-local state and
+  // never reaches the manager.
+  const addMask = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) => {
+      const mask = guideManagerRef.current.addMask(x1, y1, x2, y2);
+      sync();
+      return mask;
+    },
+    [sync],
+  );
+
+  const removeMask = useCallback(
+    (id: string) => {
+      if (guideManagerRef.current.removeMask(id)) sync();
+    },
+    [sync],
+  );
+
+  const clearMasks = useCallback(() => {
+    guideManagerRef.current.clearMasks();
+    sync();
+  }, [sync]);
+
+  const setMasksHidden = useCallback(
+    (hidden: boolean) => {
+      guideManagerRef.current.setMasksHidden(hidden);
+      sync();
+    },
+    [sync],
+  );
+
   const restoreGuides = useCallback(
     (state: GuideState) => {
       guideManagerRef.current.importState(state);
@@ -110,6 +157,14 @@ export function GuideProvider({ children }: { children: ReactNode }) {
         addLine,
         removeLine,
         clearLines,
+        masks,
+        masksHidden,
+        addMask,
+        removeMask,
+        clearMasks,
+        setMasksHidden,
+        masksPeeking,
+        setMasksPeeking,
         restoreGuides,
       }}
     >

@@ -16,6 +16,7 @@ import { GestureHUD } from './GestureHUD';
 import {
   computeFitLeader,
   isSameReferenceContent,
+  resolveFixedImageUrl,
   resolveDrawingFitSize,
   shouldFullscreenReferenceBrowse,
 } from './splitLayoutHelpers';
@@ -59,6 +60,10 @@ function SplitLayoutInner() {
   const currentStrokeRef = useRef<Stroke | null>(null);
   const overlayRedrawFnRef = useRef<(() => void) | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
+  // Reference underlay on the drawing canvas — a drawing-panel view
+  // preference like `isFlipped` (not guide state). Persisted in the session
+  // draft; auto-enabled on the first mask (see below).
+  const [underlayEnabled, setUnderlayEnabled] = useState(false);
   const [referenceSize, setReferenceSize] = useState<{ width: number; height: number } | null>(
     null,
   );
@@ -144,6 +149,8 @@ function SplitLayoutInner() {
   const {
     grid,
     lines,
+    masks,
+    masksHidden,
     version: guideVersion,
     lastChangeTransient: guideChangeTransient,
     restoreGuides,
@@ -517,7 +524,9 @@ function SplitLayoutInner() {
         // tag the new state with the current coord version. Read via refs so
         // this callback's identity doesn't churn on every guide update.
         const userHasStarted =
-          strokeManager.canUndo() || (guideManagerRef.current?.getLines().length ?? 0) > 0;
+          strokeManager.canUndo() ||
+          (guideManagerRef.current?.getLines().length ?? 0) > 0 ||
+          (guideManagerRef.current?.getMasks().length ?? 0) > 0;
         // Gallery loads skip the guard: changeReference has already pushed
         // reference/tentative-clear undo entries (so canUndo() is always true
         // here), and the user explicitly confirmed replacing the canvas.
@@ -587,6 +596,12 @@ function SplitLayoutInner() {
 
   const handleToggleFlip = useCallback(() => {
     setIsFlipped((prev) => !prev);
+    incrementFlushVersion();
+  }, [incrementFlushVersion]);
+
+  // Discrete toolbar button → immediate flush, same as collapse / flip.
+  const handleToggleUnderlay = useCallback(() => {
+    setUnderlayEnabled((prev) => !prev);
     incrementFlushVersion();
   }, [incrementFlushVersion]);
 
@@ -1092,9 +1107,12 @@ function SplitLayoutInner() {
             : null,
       grid,
       lines,
+      masks,
+      masksHidden,
       referenceCollapsed,
       camera: viewTransform.getCamera(),
       flipped: isFlipped,
+      underlayEnabled,
       // Read at call time — the dirty flag deliberately is not in the deps.
       // `useAutosave` re-invokes this getter when `changeVersion` (bumped by
       // stroke mutations) or `flushVersion` (bumped by `onGallerySaved`)
@@ -1109,9 +1127,12 @@ function SplitLayoutInner() {
       fixedImageUrl,
       grid,
       lines,
+      masks,
+      masksHidden,
       referenceCollapsed,
       viewTransform,
       isFlipped,
+      underlayEnabled,
     ],
   );
 
@@ -1167,6 +1188,44 @@ function SplitLayoutInner() {
       } else {
         incrementFlushVersion();
       }
+    }
+  }
+
+  // Auto-enable the underlay when the first mask appears (masks 0 → >0) and
+  // there is a fixed image to show — masks + underlay is the "draw inside the
+  // frame" exercise. Never auto-disable: the user may keep tracing after
+  // clearing masks, and re-adding a mask after the user turned the underlay
+  // off only re-enables on a fresh 0 → >0 transition. The previous render's
+  // `restored` (the same "restore settled" condition as the panel render
+  // gate) gates out the draft-restore batch (restoreGuides and
+  // setRestoreCompleted land in the same render), so a reload honours the
+  // persisted `underlayEnabled` instead of re-enabling it. Using `restored`
+  // rather than `restoreCompleted` matters when another tab owns the session
+  // lock: no restore ever runs there, `restoreCompleted` stays false, yet the
+  // panels are mounted and the user can add masks. Render-time
+  // prev-value pattern, same as prevGuideVersion below. The accompanying
+  // mask add already flushes autosave (non-transient guide sync) in the same
+  // commit, so the new value is persisted with it.
+  const underlayImageUrl = resolveFixedImageUrl(
+    source,
+    referenceMode,
+    fixedImageUrl,
+    localImageUrl,
+  );
+  const [prevMaskTracking, setPrevMaskTracking] = useState({
+    count: masks.length,
+    restored,
+  });
+  if (prevMaskTracking.count !== masks.length || prevMaskTracking.restored !== restored) {
+    setPrevMaskTracking({ count: masks.length, restored });
+    if (
+      prevMaskTracking.restored &&
+      prevMaskTracking.count === 0 &&
+      masks.length > 0 &&
+      underlayImageUrl !== null &&
+      !underlayEnabled
+    ) {
+      setUnderlayEnabled(true);
     }
   }
 
@@ -1268,6 +1327,9 @@ function SplitLayoutInner() {
         if (draft.flipped !== undefined) {
           setIsFlipped(draft.flipped);
         }
+
+        // Restore underlay preference (absent ≡ false).
+        setUnderlayEnabled(draft.underlayEnabled ?? false);
 
         // Restore camera. When a viewer with loadContent will mount, defer;
         // the pending-camera effect re-applies it after the viewer's
@@ -1448,6 +1510,9 @@ function SplitLayoutInner() {
               restoreVersion={restoreVersion}
               historySyncVersion={historySyncVersion}
               isFlipped={isFlipped}
+              underlayImageUrl={underlayImageUrl}
+              underlayEnabled={underlayEnabled}
+              onToggleUnderlay={handleToggleUnderlay}
               viewTransform={viewTransform}
               orientation={orientation}
               referenceCollapsed={referenceCollapsed}

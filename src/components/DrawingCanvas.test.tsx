@@ -1,6 +1,6 @@
-import { render, fireEvent, cleanup } from '@testing-library/react';
+import { render, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
+import { DrawingCanvas, UNDERLAY_ALPHA, type DrawingMode } from './DrawingCanvas';
 import { StrokeManager } from '../drawing/StrokeManager';
 import type { GridSettings } from '../guides/types';
 
@@ -532,5 +532,166 @@ describe('DrawingCanvas perspective-anchor placement', () => {
 
     expect(onPlacePerspectiveCenter).toHaveBeenCalledWith(50, 0);
     expect(sm.getStrokes()).toHaveLength(0);
+  });
+});
+
+describe('DrawingCanvas reference underlay', () => {
+  // Fake Image: fires onload on a microtask after `src` is set, with a fixed
+  // natural size. jsdom never loads images, so this stands in for both the
+  // plain and the CORS-upgrade loads in loadReferenceImage.
+  class FakeImage {
+    naturalWidth = 200;
+    naturalHeight = 100;
+    crossOrigin: string | null = null;
+    onload: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    private _src = '';
+    get src() {
+      return this._src;
+    }
+    set src(v: string) {
+      this._src = v;
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+
+  interface Call {
+    name: string;
+    args: unknown[];
+    globalAlpha: number;
+    fillStyle: unknown;
+  }
+
+  // Recording 2D context: remembers every method call together with the
+  // globalAlpha / fillStyle in effect at call time (save/restore honoured).
+  function installRecordingContext(): Call[] {
+    const calls: Call[] = [];
+    const state: Record<string, unknown> = { globalAlpha: 1, fillStyle: '#000' };
+    const stack: Record<string, unknown>[] = [];
+    const ctx = new Proxy(state, {
+      get(target, prop: string) {
+        if (prop === 'canvas') return { width: 400, height: 300 };
+        if (prop in target) return target[prop];
+        return (...args: unknown[]) => {
+          if (prop === 'save') stack.push({ ...state });
+          if (prop === 'restore') Object.assign(state, stack.pop() ?? {});
+          calls.push({
+            name: prop,
+            args,
+            globalAlpha: state.globalAlpha as number,
+            fillStyle: state.fillStyle,
+          });
+          return prop === 'measureText' ? { width: 0 } : undefined;
+        };
+      },
+      set(target, prop: string, value) {
+        target[prop] = value;
+        return true;
+      },
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+      ctx as unknown as CanvasRenderingContext2D,
+    );
+    return calls;
+  }
+
+  const MASKS = [
+    { id: 'mask-1', x: -50, y: -20, w: 30, h: 40 },
+    { id: 'mask-2', x: 10, y: 5, w: 20, h: 10 },
+  ];
+
+  function renderUnderlay(props: {
+    underlayEnabled: boolean;
+    masksHidden?: boolean;
+    masks?: typeof MASKS;
+  }) {
+    return render(
+      <DrawingCanvas
+        mode="pen"
+        highlightedStrokeIndex={null}
+        onHighlightStroke={vi.fn()}
+        onStrokeCountChange={vi.fn()}
+        strokeManager={new StrokeManager()}
+        redrawVersion={0}
+        viewResetVersion={0}
+        grid={grid}
+        guideLines={[]}
+        guideVersion={0}
+        underlayImageUrl="https://example.com/ref.png"
+        underlayEnabled={props.underlayEnabled}
+        masks={props.masks ?? []}
+        masksHidden={props.masksHidden ?? true}
+      />,
+    );
+  }
+
+  const flushImageLoad = () =>
+    act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+  beforeEach(() => {
+    vi.stubGlobal('Image', FakeImage);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('draws the loaded image centered on the world origin at alpha 0.25', async () => {
+    const calls = installRecordingContext();
+    renderUnderlay({ underlayEnabled: true });
+    await flushImageLoad();
+
+    const draws = calls.filter((c) => c.name === 'drawImage');
+    expect(draws.length).toBeGreaterThan(0);
+    const last = draws[draws.length - 1];
+    expect(last.args.slice(1)).toEqual([-100, -50]);
+    expect(last.globalAlpha).toBe(UNDERLAY_ALPHA);
+    expect(UNDERLAY_ALPHA).toBe(0.25);
+  });
+
+  it('cuts each hidden mask out in the background color', async () => {
+    const calls = installRecordingContext();
+    renderUnderlay({ underlayEnabled: true, masks: MASKS, masksHidden: true });
+    await flushImageLoad();
+
+    for (const m of MASKS) {
+      const fills = calls.filter(
+        (c) =>
+          c.name === 'fillRect' &&
+          c.args[0] === m.x &&
+          c.args[1] === m.y &&
+          c.args[2] === m.w &&
+          c.args[3] === m.h,
+      );
+      expect(fills.length).toBeGreaterThan(0);
+      expect(fills[fills.length - 1].fillStyle).toBe('#ffffff');
+    }
+  });
+
+  it('shows the image through revealed masks (no cutout fill)', async () => {
+    const calls = installRecordingContext();
+    renderUnderlay({ underlayEnabled: true, masks: MASKS, masksHidden: false });
+    await flushImageLoad();
+
+    expect(calls.some((c) => c.name === 'drawImage')).toBe(true);
+    const maskFills = calls.filter(
+      (c) => c.name === 'fillRect' && MASKS.some((m) => c.args[0] === m.x && c.args[1] === m.y),
+    );
+    expect(maskFills).toHaveLength(0);
+  });
+
+  it('draws nothing from the underlay when disabled', async () => {
+    const calls = installRecordingContext();
+    renderUnderlay({ underlayEnabled: false, masks: MASKS, masksHidden: true });
+    await flushImageLoad();
+
+    expect(calls.some((c) => c.name === 'drawImage')).toBe(false);
+    const maskFills = calls.filter(
+      (c) => c.name === 'fillRect' && MASKS.some((m) => c.args[0] === m.x && c.args[1] === m.y),
+    );
+    expect(maskFills).toHaveLength(0);
   });
 });
