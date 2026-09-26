@@ -6,6 +6,21 @@ export interface GuideLine {
   y2: number;
 }
 
+/**
+ * Rectangular occluder over the reference (hide-and-infer practice). Lives in
+ * the same world coordinate space as guide lines and strokes, so it pans /
+ * zooms / flips with the reference for free. Never drawn on the drawing panel.
+ */
+export interface MaskRect {
+  /** `mask-${n}`, same id scheme as GuideLine. */
+  id: string;
+  /** World coords, normalized: w > 0, h > 0. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export type GridMode = 'none' | 'normal' | 'large' | 'perspective';
 
 export interface PerspectiveSettings {
@@ -63,6 +78,14 @@ export interface GridSettings {
 export interface GuideState {
   grid: GridSettings;
   lines: GuideLine[];
+  /** Optional for back-compat with persisted drafts. Absent ≡ []. */
+  masks?: MaskRect[];
+  /**
+   * When true the masks are drawn as opaque occluders; when false only their
+   * dashed outline is drawn (answer-check / reveal state). Absent ≡ true.
+   * Persisted so a reload doesn't silently reveal the answer.
+   */
+  masksHidden?: boolean;
 }
 
 export const DEFAULT_GUIDE_STATE: GuideState = {
@@ -183,4 +206,42 @@ export function migrateGridSettings(grid: unknown): GridSettings {
     }
   }
   return DEFAULT_GUIDE_STATE.grid;
+}
+
+/**
+ * Sanitize a persisted mask list: drop entries with a non-string id or any
+ * non-finite coordinate, normalize negative width/height (flip the origin to
+ * the other corner), and drop zero-area rects. Garbage input yields [].
+ */
+export function sanitizeMasks(masks: unknown): MaskRect[] {
+  if (!Array.isArray(masks)) return [];
+  const result: MaskRect[] = [];
+  for (const m of masks) {
+    if (!m || typeof m !== 'object') continue;
+    const src = m as Partial<Record<keyof MaskRect, unknown>>;
+    const { id, x, y, w, h } = src;
+    if (typeof id !== 'string') continue;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      typeof w !== 'number' ||
+      typeof h !== 'number' ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      !Number.isFinite(w) ||
+      !Number.isFinite(h) ||
+      w === 0 ||
+      h === 0
+    ) {
+      continue;
+    }
+    result.push({
+      id,
+      x: w < 0 ? x + w : x,
+      y: h < 0 ? y + h : y,
+      w: Math.abs(w),
+      h: Math.abs(h),
+    });
+  }
+  return result;
 }

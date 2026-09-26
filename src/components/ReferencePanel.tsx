@@ -32,6 +32,10 @@ import {
   KeyRound,
   Spline,
   PersonStanding,
+  SquareDashed,
+  SquareX,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type {
   SketchfabActions,
@@ -408,6 +412,12 @@ export function ReferencePanel({
     clearLines,
     placingCenter,
     placePerspectiveCenter,
+    masks,
+    masksHidden,
+    addMask,
+    removeMask,
+    clearMasks,
+    setMasksHidden,
   } = useGuides();
   const { isFullscreen, toggleFullscreen, isSupported: fullscreenSupported } = useFullscreen();
   const [viewResetVersion, setViewResetVersion] = useState(0);
@@ -1024,6 +1034,13 @@ export function ReferencePanel({
     [addLine],
   );
 
+  const handleAddMask = useCallback(
+    (x1: number, y1: number, x2: number, y2: number) => {
+      addMask(x1, y1, x2, y2);
+    },
+    [addMask],
+  );
+
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedGuideId) {
       removeLine(highlightedGuideId);
@@ -1327,16 +1344,72 @@ export function ReferencePanel({
           </>
         )}
 
-        {/* Clear-all works on guide state alone, so stay available even with no
-            reference loaded — otherwise stale guides become undeletable. */}
-        {!(isFixed || isYouTube) && lines.length > 0 && (
+        {/* Reference masks — hide part of the reference to draw it from
+            inference. Same visibility rule as the guide-line tools. */}
+        {(isFixed || isYouTube) && !inYouTubeVideoMode && (
           <>
             <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
-            <ToolbarTooltip title={t('clearGuideLines')}>
-              <IconButton size="small" onClick={clearLines}>
-                <Trash2 size={20} />
-              </IconButton>
+
+            <ToolbarTooltip title={t('addMask')}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => toggleGuideMode('mask')}
+                  disabled={suppressGuideEditing}
+                  sx={{
+                    bgcolor: effectiveGuideMode === 'mask' ? 'error.main' : 'transparent',
+                    color: effectiveGuideMode === 'mask' ? 'white' : 'inherit',
+                    '&:hover': {
+                      bgcolor: effectiveGuideMode === 'mask' ? 'error.dark' : 'action.hover',
+                    },
+                  }}
+                >
+                  <SquareDashed size={20} />
+                </IconButton>
+              </span>
             </ToolbarTooltip>
+
+            {masks.length > 0 && (
+              <ToolbarTooltip title={masksHidden ? t('revealMasks') : t('hideMasks')}>
+                <IconButton
+                  size="small"
+                  onClick={() => setMasksHidden(!masksHidden)}
+                  sx={{ color: masksHidden ? 'inherit' : 'primary.main' }}
+                >
+                  {masksHidden ? <Eye size={20} /> : <EyeOff size={20} />}
+                </IconButton>
+              </ToolbarTooltip>
+            )}
+
+            {masks.length > 0 && (
+              <ToolbarTooltip title={t('clearMasks')}>
+                <IconButton size="small" onClick={clearMasks}>
+                  <SquareX size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
+          </>
+        )}
+
+        {/* Clear-all works on guide state alone, so stay available even with no
+            reference loaded — otherwise stale guides / masks become undeletable. */}
+        {!(isFixed || isYouTube) && (lines.length > 0 || masks.length > 0) && (
+          <>
+            <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
+            {lines.length > 0 && (
+              <ToolbarTooltip title={t('clearGuideLines')}>
+                <IconButton size="small" onClick={clearLines}>
+                  <Trash2 size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
+            {masks.length > 0 && (
+              <ToolbarTooltip title={t('clearMasks')}>
+                <IconButton size="small" onClick={clearMasks}>
+                  <SquareX size={20} />
+                </IconButton>
+              </ToolbarTooltip>
+            )}
           </>
         )}
 
@@ -1945,6 +2018,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={masksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
             viewTransform={viewTransform}
@@ -1982,6 +2059,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={masksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}
@@ -2008,6 +2089,10 @@ export function ReferencePanel({
             guideMode={effectiveGuideMode}
             onAddGuideLine={handleAddGuideLine}
             onPlaceCenter={placePerspectiveCenter}
+            masks={masks}
+            masksHidden={masksHidden}
+            onAddMask={handleAddMask}
+            onRemoveMask={removeMask}
             onDeleteGuideLine={removeLine}
             highlightedGuideId={highlightedGuideId}
             onHighlightGuide={setHighlightedGuideId}

@@ -41,6 +41,8 @@ describe('useAutosave', () => {
     referenceImageData: 'data:image/png;base64,abc',
     grid: { mode: 'normal' as const },
     lines: [],
+    masks: [] as { id: string; x: number; y: number; w: number; h: number }[],
+    masksHidden: true,
     camera: { viewCenterX: 0, viewCenterY: 0, zoom: 1 },
     flipped: false,
     gallerySaveDirty: true,

@@ -1,6 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Stroke } from '../drawing/types';
-import type { GuideLine, GridSettings } from '../guides/types';
+import type { GuideLine, GridSettings, MaskRect } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
 import type {
@@ -44,6 +44,10 @@ export interface SessionDraft {
   guideState: {
     grid: GridSettings;
     lines: GuideLine[];
+    /** Reference masks (see GuideState.masks). Optional for back-compat. */
+    masks?: MaskRect[];
+    /** Absent ≡ true (masks hidden). */
+    masksHidden?: boolean;
   };
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
   referenceCollapsed?: boolean;
@@ -315,6 +319,10 @@ db.version(16).stores({
 // field ({ yaw, pitch, strength, centerX, centerY }) and the 'perspective'
 // GridMode stored inside session.guideState.grid. Old drafts lack the field
 // and are healed by migrateGridSettings on restore.
+// (no v18) the additive, optional session.guideState.masks / masksHidden
+// fields (reference masks) need no index change and no version bump either:
+// old drafts simply lack them and GuideManager.importState heals absence /
+// garbage via sanitizeMasks (absent masksHidden ≡ true).
 db.version(17).stores({
   drawings: '++id, createdAt',
   session: 'id',

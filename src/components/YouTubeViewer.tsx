@@ -1,14 +1,14 @@
 import { useRef, useEffect, useCallback, useState, useImperativeHandle, type Ref } from 'react';
 import { Box } from '@mui/material';
 import { buildYouTubeEmbedUrl, YOUTUBE_ORIGIN } from '../utils/youtube';
-import { drawGrid, drawGuideLines } from '../guides/drawGuides';
-import type { GridSettings, GuideLine } from '../guides/types';
+import { drawGrid, drawGuideLines, drawMaskPreview, drawMasks } from '../guides/drawGuides';
+import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
 import type { GuideInteractionMode } from './ImageViewer';
 import { OVERLAY_HALO_MULTIPLIER, STROKE_WIDTH, TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
 import type { ViewTransform, ContainerSize } from '../drawing/ViewTransform';
 import { computeBaseScale, drawOverlayStrokePath, GRID_CENTER } from '../drawing/canvasUtils';
-import { pointToSegmentDistance } from '../guides/GuideManager';
+import { findMaskAt, pointToSegmentDistance, resolveMaskGesture } from '../guides/GuideManager';
 
 const LOGICAL_WIDTH = 1920;
 const LOGICAL_HEIGHT = 1080;
@@ -27,6 +27,7 @@ const OVERLAY_COLOR = 'rgba(0, 100, 255, 0.7)';
 const OVERLAY_HALO_COLOR = 'rgba(255, 255, 255, 0.8)';
 const GUIDE_HIT_THRESHOLD_PX = 15;
 const GUIDE_MIN_DRAG_PX = 5;
+const EMPTY_MASKS: readonly MaskRect[] = [];
 
 // YouTube IFrame Player API postMessage protocol.
 // See https://developers.google.com/youtube/iframe_api_reference
@@ -56,6 +57,14 @@ interface YouTubeViewerProps {
   onAddGuideLine?: (x1: number, y1: number, x2: number, y2: number) => void;
   /** Tap handler for the 'place-center' mode (perspective grid anchor). */
   onPlaceCenter?: (x: number, y: number) => void;
+  /** Reference masks (world coords), drawn over the video under the grid. */
+  masks?: readonly MaskRect[];
+  /** True = opaque occluders; false = revealed (dashed outline only). */
+  masksHidden?: boolean;
+  /** 'mask' mode: drag released above the size threshold. Corners in any order. */
+  onAddMask?: (x1: number, y1: number, x2: number, y2: number) => void;
+  /** 'mask' mode: tap (no drag) on an existing mask. */
+  onRemoveMask?: (id: string) => void;
   highlightedGuideId?: string | null;
   onHighlightGuide?: (id: string | null) => void;
   /** Optional shared ViewTransform to sync iframe placement with the drawing canvas. */
@@ -91,6 +100,10 @@ export function YouTubeViewer({
   guideMode,
   onAddGuideLine,
   onPlaceCenter,
+  masks = EMPTY_MASKS,
+  masksHidden = true,
+  onAddMask,
+  onRemoveMask,
   highlightedGuideId,
   onHighlightGuide,
   viewTransform,
@@ -203,10 +216,26 @@ export function YouTubeViewer({
     // convention the logical content spans (-W/2,-H/2) to (W/2,H/2).
     const topLeft: Point = { x: -LOGICAL_HALF_W, y: -LOGICAL_HALF_H };
     const bottomRight: Point = { x: LOGICAL_HALF_W, y: LOGICAL_HALF_H };
+    // Masks cover the video (the iframe is below this overlay canvas) but sit
+    // under the grid, which stays visible as the position anchor.
+    const minDrag = GUIDE_MIN_DRAG_PX / scale;
+    const maskDrag = guideMode === 'mask' && dragStart && dragEnd ? { dragStart, dragEnd } : null;
+    const maskDragIsTap =
+      maskDrag !== null &&
+      Math.hypot(
+        maskDrag.dragEnd.x - maskDrag.dragStart.x,
+        maskDrag.dragEnd.y - maskDrag.dragStart.y,
+      ) <= minDrag;
+    const pressedMaskId = maskDragIsTap
+      ? (findMaskAt(masks, maskDrag.dragStart.x, maskDrag.dragStart.y)?.id ?? null)
+      : null;
+    drawMasks(ctx, masks, masksHidden, scale, pressedMaskId);
     drawGrid(ctx, grid, topLeft, bottomRight, scale, GRID_CENTER);
     drawGuideLines(ctx, guideLines, scale, highlightedGuideId);
 
-    if (dragStart && dragEnd) {
+    if (maskDrag) {
+      if (!maskDragIsTap) drawMaskPreview(ctx, maskDrag.dragStart, maskDrag.dragEnd, scale);
+    } else if (dragStart && dragEnd) {
       ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
       ctx.lineWidth = 1.5 / scale;
       ctx.setLineDash([6 / scale, 4 / scale]);
@@ -244,6 +273,9 @@ export function YouTubeViewer({
     highlightedGuideId,
     dragStart,
     dragEnd,
+    guideMode,
+    masks,
+    masksHidden,
     getViewTransformState,
   ]);
 
@@ -421,7 +453,7 @@ export function YouTubeViewer({
     (clientX: number, clientY: number) => {
       if (guideMode === 'none') return;
       const point = getWorldPoint(clientX, clientY);
-      if (guideMode === 'add') {
+      if (guideMode === 'add' || guideMode === 'mask') {
         setDragStart(point);
         setDragEnd(point);
       } else if (guideMode === 'delete') {
@@ -448,7 +480,7 @@ export function YouTubeViewer({
 
   const updateGuideInteraction = useCallback(
     (clientX: number, clientY: number) => {
-      if (guideMode !== 'add' || !dragStart) return;
+      if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart) return;
       setDragEnd(getWorldPoint(clientX, clientY));
       requestRedraw();
     },
@@ -456,18 +488,37 @@ export function YouTubeViewer({
   );
 
   const endGuideInteraction = useCallback(() => {
-    if (guideMode !== 'add' || !dragStart || !dragEnd) return;
-    const dx = dragEnd.x - dragStart.x;
-    const dy = dragEnd.y - dragStart.y;
+    if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart || !dragEnd) return;
     // Min drag length is a screen-pixel threshold, converted to logical units.
     const scale = getLogicalScale();
     const minLenLogical = scale > 0 ? GUIDE_MIN_DRAG_PX / scale : GUIDE_MIN_DRAG_PX;
-    if (Math.sqrt(dx * dx + dy * dy) > minLenLogical) {
-      onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+    if (guideMode === 'add') {
+      const dx = dragEnd.x - dragStart.x;
+      const dy = dragEnd.y - dragStart.y;
+      if (Math.sqrt(dx * dx + dy * dy) > minLenLogical) {
+        onAddGuideLine?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+      }
+    } else {
+      // 'mask': drag → add rect; tap on an existing mask → remove it.
+      const result = resolveMaskGesture(dragStart, dragEnd, minLenLogical, masks);
+      if (result?.kind === 'add') {
+        onAddMask?.(dragStart.x, dragStart.y, dragEnd.x, dragEnd.y);
+      } else if (result?.kind === 'remove') {
+        onRemoveMask?.(result.id);
+      }
     }
     setDragStart(null);
     setDragEnd(null);
-  }, [guideMode, dragStart, dragEnd, getLogicalScale, onAddGuideLine]);
+  }, [
+    guideMode,
+    dragStart,
+    dragEnd,
+    getLogicalScale,
+    onAddGuideLine,
+    onAddMask,
+    onRemoveMask,
+    masks,
+  ]);
 
   const commitTapIfValid = useCallback(() => {
     const tap = tapCandidateRef.current;
@@ -610,7 +661,7 @@ export function YouTubeViewer({
       const touch = e.changedTouches[0];
       maybeInvalidateTap(touch.clientX, touch.clientY);
 
-      if (guideMode !== 'add' || !dragStart) return;
+      if ((guideMode !== 'add' && guideMode !== 'mask') || !dragStart) return;
       e.preventDefault();
       updateGuideInteraction(touch.clientX, touch.clientY);
     },
@@ -638,7 +689,7 @@ export function YouTubeViewer({
 
       commitTapIfValid();
 
-      if (guideMode !== 'add') return;
+      if (guideMode !== 'add' && guideMode !== 'mask') return;
       e.preventDefault();
       endGuideInteraction();
     },
@@ -655,7 +706,7 @@ export function YouTubeViewer({
         pinchRef.current = null;
         pinchRectRef.current = null;
       }
-      if (guideMode === 'add' && (dragStart || dragEnd)) {
+      if ((guideMode === 'add' || guideMode === 'mask') && (dragStart || dragEnd)) {
         setDragStart(null);
         setDragEnd(null);
       }
@@ -665,7 +716,7 @@ export function YouTubeViewer({
 
   const overlayActive = !videoInteractMode;
   const cursor =
-    guideMode === 'add' || guideMode === 'place-center'
+    guideMode === 'add' || guideMode === 'mask' || guideMode === 'place-center'
       ? 'crosshair'
       : guideMode === 'delete'
         ? 'pointer'

@@ -1,6 +1,13 @@
 import { createContext } from 'react';
 import type { GuideManager } from './GuideManager';
-import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
+import type {
+  GuideLine,
+  GridSettings,
+  GridMode,
+  GuideState,
+  MaskRect,
+  PerspectiveSettings,
+} from './types';
 
 export interface GuideContextValue {
   guideManagerRef: React.RefObject<GuideManager>;
@@ -22,6 +29,14 @@ export interface GuideContextValue {
   addLine: (x1: number, y1: number, x2: number, y2: number) => GuideLine;
   removeLine: (id: string) => void;
   clearLines: () => void;
+  /** Reference occluders (world coords). Not part of the stroke undo stack. */
+  masks: readonly MaskRect[];
+  /** True = masks drawn opaque; false = revealed (outline only). */
+  masksHidden: boolean;
+  addMask: (x1: number, y1: number, x2: number, y2: number) => MaskRect;
+  removeMask: (id: string) => void;
+  clearMasks: () => void;
+  setMasksHidden: (hidden: boolean) => void;
   restoreGuides: (state: GuideState) => void;
 }
 

@@ -168,3 +168,99 @@ describe('ImageViewer pinch gesture', () => {
     expect(outer.style.transform).toBe('');
   });
 });
+
+describe('ImageViewer mask mode', () => {
+  const BIG_MASK = { id: 'mask-1', x: -10000, y: -10000, w: 20000, h: 20000 };
+
+  it('mouse drag calls onAddMask with world coords', () => {
+    const vt = new ViewTransform();
+    const onAddMask = vi.fn();
+    const onRemoveMask = vi.fn();
+    const { container } = render(
+      <ImageViewer
+        {...baseProps}
+        guideMode="mask"
+        viewTransform={vt}
+        onAddMask={onAddMask}
+        onRemoveMask={onRemoveMask}
+      />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.mouseDown(canvas, { clientX: 110, clientY: 120 });
+    fireEvent.mouseMove(canvas, { clientX: 210, clientY: 220 });
+    fireEvent.mouseUp(canvas, { clientX: 210, clientY: 220 });
+
+    expect(onAddMask).toHaveBeenCalledTimes(1);
+    expect(onRemoveMask).not.toHaveBeenCalled();
+    // Screen (100,100)→(200,200) inside the canvas rect, mapped through the
+    // same camera the viewer uses.
+    const size = { width: 0, height: 0 };
+    const p1 = vt.screenToCanvas(100, 100, size, 1);
+    const p2 = vt.screenToCanvas(200, 200, size, 1);
+    expect(onAddMask).toHaveBeenCalledWith(p1.x, p1.y, p2.x, p2.y);
+  });
+
+  it('touch drag calls onAddMask', () => {
+    const onAddMask = vi.fn();
+    const { container } = render(
+      <ImageViewer {...baseProps} guideMode="mask" onAddMask={onAddMask} />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 110, 120)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(0, 180, 200)] });
+    fireEvent.touchEnd(canvas, { changedTouches: [touch(0, 180, 200)] });
+    expect(onAddMask).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tap on an existing mask calls onRemoveMask with its id', () => {
+    const onAddMask = vi.fn();
+    const onRemoveMask = vi.fn();
+    const { container } = render(
+      <ImageViewer
+        {...baseProps}
+        guideMode="mask"
+        masks={[BIG_MASK]}
+        onAddMask={onAddMask}
+        onRemoveMask={onRemoveMask}
+      />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.mouseDown(canvas, { clientX: 150, clientY: 150 });
+    fireEvent.mouseUp(canvas, { clientX: 150, clientY: 150 });
+    expect(onRemoveMask).toHaveBeenCalledWith('mask-1');
+    expect(onAddMask).not.toHaveBeenCalled();
+  });
+
+  it('a sub-threshold drag on empty space calls neither', () => {
+    const onAddMask = vi.fn();
+    const onRemoveMask = vi.fn();
+    const { container } = render(
+      <ImageViewer
+        {...baseProps}
+        guideMode="mask"
+        masks={[]}
+        onAddMask={onAddMask}
+        onRemoveMask={onRemoveMask}
+      />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.mouseDown(canvas, { clientX: 150, clientY: 150 });
+    fireEvent.mouseMove(canvas, { clientX: 152, clientY: 151 });
+    fireEvent.mouseUp(canvas, { clientX: 152, clientY: 151 });
+    expect(onAddMask).not.toHaveBeenCalled();
+    expect(onRemoveMask).not.toHaveBeenCalled();
+  });
+
+  it('a second finger cancels an in-progress mask drag', () => {
+    const onAddMask = vi.fn();
+    const { container } = render(
+      <ImageViewer {...baseProps} guideMode="mask" onAddMask={onAddMask} />,
+    );
+    const canvas = container.querySelector('canvas')!;
+    fireEvent.touchStart(canvas, { changedTouches: [touch(0, 100, 100)] });
+    fireEvent.touchMove(canvas, { changedTouches: [touch(0, 200, 200)] });
+    fireEvent.touchStart(canvas, { changedTouches: [touch(1, 300, 300)] });
+    fireEvent.touchEnd(canvas, { changedTouches: [touch(0, 200, 200), touch(1, 300, 300)] });
+    expect(onAddMask).not.toHaveBeenCalled();
+  });
+});

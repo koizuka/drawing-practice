@@ -3,7 +3,7 @@ import { saveDraft, clearDraft } from '../storage/sessionStore';
 import type { DraftData } from '../storage/sessionStore';
 import type { Stroke } from '../drawing/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
-import type { GridSettings, GuideLine } from '../guides/types';
+import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 
 const DEBOUNCE_MS = 2000;
 
@@ -16,6 +16,8 @@ interface AutosaveState {
   referenceImageData: string | null;
   grid: GridSettings;
   lines: readonly GuideLine[];
+  masks: readonly MaskRect[];
+  masksHidden: boolean;
   referenceCollapsed?: boolean;
   camera: { viewCenterX: number; viewCenterY: number; zoom: number };
   flipped: boolean;
@@ -62,6 +64,8 @@ export function useAutosave(
           ...(state.grid.perspective ? { perspective: { ...state.grid.perspective } } : {}),
         },
         lines: [...state.lines],
+        masks: state.masks.map((m) => ({ ...m })),
+        masksHidden: state.masksHidden,
       },
       referenceCollapsed: state.referenceCollapsed ?? false,
       camera: { ...state.camera },

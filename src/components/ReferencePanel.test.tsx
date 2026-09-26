@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import type { UrlHistoryEntry } from '../storage/db';
 import { buildYouTubeThumbnailUrl } from '../utils/youtube';
@@ -24,6 +24,10 @@ vi.mock('../storage/urlHistoryStore', () => ({
 }));
 
 import { SplitLayout } from './SplitLayout';
+import { ReferencePanel } from './ReferencePanel';
+import { GuideProvider } from '../guides/GuideContext';
+import { useGuides } from '../guides/useGuides';
+import type { GuideContextValue } from '../guides/guideContextValue';
 
 describe('resolveHistoryThumbnailSrc', () => {
   const NOW = new Date();
@@ -238,5 +242,104 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     await waitFor(() => {
       expect(createObjectURLSpy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('ReferencePanel mask toolbar', () => {
+  let guides: GuideContextValue | null = null;
+  function GuideProbe() {
+    guides = useGuides();
+    return null;
+  }
+
+  function renderPanel(
+    props: Partial<React.ComponentProps<typeof ReferencePanel>> = {},
+  ): ReturnType<typeof render> {
+    return render(
+      <GuideProvider>
+        <GuideProbe />
+        <ReferencePanel
+          source="url"
+          referenceMode="fixed"
+          fixedImageUrl="https://example.com/ref.png"
+          localImageUrl={null}
+          refInfo={{
+            title: '',
+            author: '',
+            source: 'url',
+            imageUrl: 'https://example.com/ref.png',
+          }}
+          onReferenceChange={() => {}}
+          onReferenceResetOnError={() => {}}
+          {...props}
+        />
+      </GuideProvider>,
+    );
+  }
+
+  beforeEach(() => {
+    guides = null;
+    getUrlHistoryMock.mockReset().mockResolvedValue([]);
+  });
+
+  const q = (container: HTMLElement, cls: string) =>
+    (container.querySelector(`.${cls}`)?.closest('button') ?? null) as HTMLButtonElement | null;
+
+  it('shows the add-mask button only with a fixed reference', () => {
+    const { container, unmount } = renderPanel();
+    expect(q(container, 'lucide-square-dashed')).not.toBeNull();
+    unmount();
+
+    const none = renderPanel({
+      source: 'none',
+      referenceMode: 'browse',
+      fixedImageUrl: null,
+      refInfo: null,
+    });
+    expect(q(none.container, 'lucide-square-dashed')).toBeNull();
+  });
+
+  it('shows reveal / clear only when masks exist, and they drive the context', () => {
+    const { container } = renderPanel();
+    expect(q(container, 'lucide-eye')).toBeNull();
+    expect(q(container, 'lucide-square-x')).toBeNull();
+
+    act(() => {
+      guides!.addMask(0, 0, 50, 50);
+    });
+    const reveal = q(container, 'lucide-eye');
+    expect(reveal).not.toBeNull();
+    expect(q(container, 'lucide-square-x')).not.toBeNull();
+
+    fireEvent.click(reveal!);
+    expect(guides!.masksHidden).toBe(false);
+    // Revealed state swaps the icon to "hide again".
+    fireEvent.click(q(container, 'lucide-eye-off')!);
+    expect(guides!.masksHidden).toBe(true);
+
+    fireEvent.click(q(container, 'lucide-square-x')!);
+    expect(guides!.masks).toHaveLength(0);
+    expect(q(container, 'lucide-square-x')).toBeNull();
+  });
+
+  it('keeps clear-masks reachable with no reference loaded', () => {
+    const { container } = renderPanel({
+      source: 'none',
+      referenceMode: 'browse',
+      fixedImageUrl: null,
+      refInfo: null,
+    });
+    act(() => {
+      guides!.addMask(0, 0, 50, 50);
+    });
+    const clear = q(container, 'lucide-square-x');
+    expect(clear).not.toBeNull();
+    fireEvent.click(clear!);
+    expect(guides!.masks).toHaveLength(0);
+  });
+
+  it('disables add-mask while suppressGuideEditing is set', () => {
+    const { container } = renderPanel({ suppressGuideEditing: true });
+    expect(q(container, 'lucide-square-dashed')).toBeDisabled();
   });
 });

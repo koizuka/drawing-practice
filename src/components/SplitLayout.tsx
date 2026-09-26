@@ -144,6 +144,8 @@ function SplitLayoutInner() {
   const {
     grid,
     lines,
+    masks,
+    masksHidden,
     version: guideVersion,
     lastChangeTransient: guideChangeTransient,
     restoreGuides,
@@ -517,7 +519,9 @@ function SplitLayoutInner() {
         // tag the new state with the current coord version. Read via refs so
         // this callback's identity doesn't churn on every guide update.
         const userHasStarted =
-          strokeManager.canUndo() || (guideManagerRef.current?.getLines().length ?? 0) > 0;
+          strokeManager.canUndo() ||
+          (guideManagerRef.current?.getLines().length ?? 0) > 0 ||
+          (guideManagerRef.current?.getMasks().length ?? 0) > 0;
         // Gallery loads skip the guard: changeReference has already pushed
         // reference/tentative-clear undo entries (so canUndo() is always true
         // here), and the user explicitly confirmed replacing the canvas.
@@ -1092,6 +1096,8 @@ function SplitLayoutInner() {
             : null,
       grid,
       lines,
+      masks,
+      masksHidden,
       referenceCollapsed,
       camera: viewTransform.getCamera(),
       flipped: isFlipped,
@@ -1109,6 +1115,8 @@ function SplitLayoutInner() {
       fixedImageUrl,
       grid,
       lines,
+      masks,
+      masksHidden,
       referenceCollapsed,
       viewTransform,
       isFlipped,

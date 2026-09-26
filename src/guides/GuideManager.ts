@@ -1,10 +1,18 @@
-import type { GuideLine, GridSettings, GridMode, GuideState, PerspectiveSettings } from './types';
+import type {
+  GuideLine,
+  GridSettings,
+  GridMode,
+  GuideState,
+  MaskRect,
+  PerspectiveSettings,
+} from './types';
 import {
   DEFAULT_GUIDE_STATE,
   DEFAULT_PERSPECTIVE,
   MAX_PERSPECTIVE_MEMORIES,
   migrateGridSettings,
   perspectiveSettingsEqual,
+  sanitizeMasks,
   sanitizePerspectiveSettings,
   smallestFreeMemorySeq,
 } from './types';
@@ -16,8 +24,13 @@ export class GuideManager {
 
   constructor(initial?: GuideState) {
     this.state = initial
-      ? { ...initial, lines: [...initial.lines] }
-      : { ...DEFAULT_GUIDE_STATE, lines: [] };
+      ? {
+          ...initial,
+          lines: [...initial.lines],
+          masks: [...(initial.masks ?? [])],
+          masksHidden: initial.masksHidden ?? true,
+        }
+      : { ...DEFAULT_GUIDE_STATE, lines: [], masks: [], masksHidden: true };
   }
 
   getState(): GuideState {
@@ -104,11 +117,64 @@ export class GuideManager {
     this.state.lines = [];
   }
 
+  getMasks(): readonly MaskRect[] {
+    return this.state.masks ?? [];
+  }
+
+  /**
+   * Add a mask spanning the two drag corners (any order). The caller is
+   * responsible for rejecting degenerate drags (screen-space threshold); the
+   * manager only normalizes to { x, y, w, h } with w, h >= 0.
+   */
+  addMask(x1: number, y1: number, x2: number, y2: number): MaskRect {
+    const mask: MaskRect = {
+      id: `mask-${nextId++}`,
+      x: Math.min(x1, x2),
+      y: Math.min(y1, y2),
+      w: Math.abs(x2 - x1),
+      h: Math.abs(y2 - y1),
+    };
+    this.state.masks = [...this.getMasks(), mask];
+    return mask;
+  }
+
+  removeMask(id: string): boolean {
+    const masks = this.getMasks();
+    const filtered = masks.filter((m) => m.id !== id);
+    if (filtered.length === masks.length) return false;
+    this.state.masks = filtered;
+    return true;
+  }
+
+  clearMasks(): void {
+    this.state.masks = [];
+  }
+
+  getMasksHidden(): boolean {
+    return this.state.masksHidden ?? true;
+  }
+
+  setMasksHidden(hidden: boolean): void {
+    this.state.masksHidden = hidden;
+  }
+
+  /** Topmost (last-added) mask containing the point, or null. */
+  findMaskAt(x: number, y: number): MaskRect | null {
+    return findMaskAt(this.getMasks(), x, y);
+  }
+
   importState(state: GuideState): void {
-    this.state = { grid: migrateGridSettings(state.grid), lines: [...state.lines] };
-    // Update nextId to avoid collisions with imported line ids
-    for (const line of state.lines) {
-      const match = line.id.match(/^guide-(\d+)$/);
+    this.state = {
+      grid: migrateGridSettings(state.grid),
+      lines: [...state.lines],
+      masks: sanitizeMasks(state.masks),
+      // Anything but an explicit `false` keeps the answer hidden.
+      masksHidden: state.masksHidden !== false,
+    };
+    // Update nextId to avoid collisions with imported line / mask ids (both
+    // share the same counter).
+    for (const item of [...this.state.lines, ...(this.state.masks ?? [])]) {
+      const match = item.id.match(/^(?:guide|mask)-(\d+)$/);
       if (match) {
         const id = parseInt(match[1], 10);
         if (id >= nextId) nextId = id + 1;
@@ -130,6 +196,40 @@ export class GuideManager {
 
     return best;
   }
+}
+
+/** Topmost (last in array = last-added) mask containing (x, y), edges inclusive. */
+export function findMaskAt(masks: readonly MaskRect[], x: number, y: number): MaskRect | null {
+  for (let i = masks.length - 1; i >= 0; i--) {
+    const m = masks[i];
+    if (x >= m.x && x <= m.x + m.w && y >= m.y && y <= m.y + m.h) return m;
+  }
+  return null;
+}
+
+export type MaskGestureResult = { kind: 'add' } | { kind: 'remove'; id: string } | null;
+
+/**
+ * Classify a finished single-pointer gesture in 'mask' mode (world coords).
+ * - Both extents exceed `minSize` (screen threshold / scale) → add a mask.
+ * - Movement within `minSize` (a tap) on an existing mask at the DOWN point →
+ *   remove that mask.
+ * - Anything else (tap on empty space, thin sliver drag) → nothing.
+ */
+export function resolveMaskGesture(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  minSize: number,
+  masks: readonly MaskRect[],
+): MaskGestureResult {
+  const dx = Math.abs(end.x - start.x);
+  const dy = Math.abs(end.y - start.y);
+  if (dx > minSize && dy > minSize) return { kind: 'add' };
+  if (Math.sqrt(dx * dx + dy * dy) <= minSize) {
+    const hit = findMaskAt(masks, start.x, start.y);
+    if (hit) return { kind: 'remove', id: hit.id };
+  }
+  return null;
 }
 
 export function pointToSegmentDistance(
