@@ -118,8 +118,8 @@ describe('ReferencePanel ObjectURL lifecycle (via SplitLayout)', () => {
     counter = 0;
     createObjectURLSpy.mockReset().mockImplementation(() => `blob:fake-${++counter}`);
     revokeObjectURLSpy.mockReset();
-    // jsdom doesn't implement these on URL by default; install fresh spies
-    // each test so we can observe call counts.
+    // Install fresh spies each test (overriding jsdom's own implementation)
+    // so we can observe call counts.
     URL.createObjectURL = createObjectURLSpy as unknown as typeof URL.createObjectURL;
     URL.revokeObjectURL = revokeObjectURLSpy as unknown as typeof URL.revokeObjectURL;
     getUrlHistoryMock.mockReset();

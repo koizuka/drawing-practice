@@ -63,15 +63,18 @@ function makeDrawing(createdAt: string, reference?: ReferenceInfo): DrawingRecor
 }
 
 beforeAll(() => {
-  if (typeof URL.createObjectURL === 'undefined') {
-    Object.defineProperty(URL, 'createObjectURL', {
-      value: vi.fn(() => 'blob:test'),
-      writable: true,
-    });
-  }
-  if (typeof URL.revokeObjectURL === 'undefined') {
-    Object.defineProperty(URL, 'revokeObjectURL', { value: vi.fn(), writable: true });
-  }
+  // Always stub: jsdom >= 30.1 implements these, but its createObjectURL only
+  // accepts jsdom's own Blob impl and throws on the Node Blob our mock returns.
+  Object.defineProperty(URL, 'createObjectURL', {
+    value: vi.fn(() => 'blob:test'),
+    writable: true,
+    configurable: true,
+  });
+  Object.defineProperty(URL, 'revokeObjectURL', {
+    value: vi.fn(),
+    writable: true,
+    configurable: true,
+  });
 });
 
 beforeEach(() => {
