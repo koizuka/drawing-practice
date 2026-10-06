@@ -229,7 +229,6 @@ function v3(x: number, y: number, z: number): Vec3 {
 /**
  * Polyline approximation of a parametric curve, one Segment3D per step.
  * `normal` gives the surface normal at a point (sphere: the point itself).
- * `keep` can drop steps (e.g. the parts of the brow line sliced off).
  */
 function curve(
   point: (t: number) => Vec3,
@@ -238,14 +237,12 @@ function curve(
   steps: number,
   major: boolean,
   normal: (p: Vec3) => Vec3,
-  keep: (mid: Vec3) => boolean = () => true,
 ): Segment3D[] {
   const lines: Segment3D[] = [];
   for (let k = 0; k < steps; k++) {
     const a = point(t0 + ((t1 - t0) * k) / steps);
     const b = point(t0 + ((t1 - t0) * (k + 1)) / steps);
     const mid = v3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-    if (!keep(mid)) continue;
     lines.push({ a, b, major, normals: [normal(mid)] });
   }
   return lines;
@@ -269,18 +266,21 @@ function headSegments(): Segment3D[] {
   const onSphere = (p: Vec3) => p;
   const lines: Segment3D[] = [];
 
-  // Brow line (equator), minus the parts sliced away by the side planes.
-  lines.push(
-    ...curve(
-      (t) => v3(Math.cos(t), 0, Math.sin(t)),
-      0,
-      TAU,
-      CIRCLE_STEPS,
-      false,
-      onSphere,
-      (mid) => Math.abs(mid.x) <= HEAD_SIDE,
-    ),
-  );
+  // Brow line (equator) between the side planes: the front and back arcs
+  // where |cos t| <= HEAD_SIDE, ending exactly on the side-plane circles.
+  const cut = Math.acos(HEAD_SIDE);
+  for (const t0 of [cut, Math.PI + cut]) {
+    lines.push(
+      ...curve(
+        (t) => v3(Math.cos(t), 0, Math.sin(t)),
+        t0,
+        t0 + Math.PI - 2 * cut,
+        CIRCLE_STEPS / 4,
+        false,
+        onSphere,
+      ),
+    );
+  }
   // Center line (the vertical great circle through the face).
   lines.push(
     ...curve((t) => v3(0, Math.cos(t), Math.sin(t)), 0, TAU, CIRCLE_STEPS, false, onSphere),
