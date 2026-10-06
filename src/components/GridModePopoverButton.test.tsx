@@ -15,7 +15,30 @@ describe('GridModePopoverButton', () => {
     openPopover();
     fireEvent.click(screen.getByRole('button', { name: t('gridModePerspective') }));
 
-    expect(onSetGridMode).toHaveBeenCalledWith('perspective');
+    expect(onSetGridMode).toHaveBeenCalledWith('perspective', 'room');
+  });
+
+  it('reports the perspective shape and marks the current shape as selected', () => {
+    const onSetGridMode = vi.fn();
+    render(
+      <GridModePopoverButton
+        grid={{ mode: 'perspective', perspectiveShape: 'head' }}
+        onSetGridMode={onSetGridMode}
+      />,
+    );
+
+    openPopover();
+    expect(screen.getByRole('button', { name: t('gridModePerspectiveHead') })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(screen.getByRole('button', { name: t('gridModePerspective') })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: t('gridModePerspectiveBox') }));
+
+    expect(onSetGridMode).toHaveBeenCalledWith('perspective', 'box');
   });
 
   it('closes the popover after a selection', () => {

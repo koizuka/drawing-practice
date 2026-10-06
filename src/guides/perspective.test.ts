@@ -131,4 +131,63 @@ describe('computePerspectiveGridLines', () => {
     expect(lines.length).toBeLessThanOrEqual(18 + 3 * 13);
     expect(lines.length).toBeGreaterThanOrEqual(18 + 13); // at least floor + back wall
   });
+
+  it('scales all segments about the anchor by size', () => {
+    const base = computePerspectiveGridLines(settings({ centerX: 50, centerY: 20 }));
+    const big = computePerspectiveGridLines(settings({ centerX: 50, centerY: 20, size: 2 }));
+    expect(big.length).toBe(base.length);
+    for (let i = 0; i < base.length; i++) {
+      expect(big[i].x1 - 50).toBeCloseTo((base[i].x1 - 50) * 2, 6);
+      expect(big[i].y2 - 20).toBeCloseTo((base[i].y2 - 20) * 2, 6);
+    }
+  });
+
+  it('never flags room lines as hidden', () => {
+    expect(computePerspectiveGridLines(settings({ yaw: 30 })).some((l) => l.hidden)).toBe(false);
+  });
+
+  describe.each(['box', 'head'] as const)('%s shape', (shape) => {
+    it('is left-right symmetric at yaw=0, pitch=0 and finite at extreme angles', () => {
+      const lines = computePerspectiveGridLines(settings(), shape);
+      const key = (x1: number, y1: number, x2: number, y2: number) =>
+        [
+          `${Math.round(x1 * 100)},${Math.round(y1 * 100)}`,
+          `${Math.round(x2 * 100)},${Math.round(y2 * 100)}`,
+        ]
+          .sort()
+          .join('|');
+      const keys = new Set(lines.map((l) => key(l.x1, l.y1, l.x2, l.y2)));
+      for (const l of lines) expect(keys.has(key(-l.x1, l.y1, -l.x2, l.y2))).toBe(true);
+
+      for (const yaw of [-90, 0, 90]) {
+        for (const pitch of [-90, 0, 90]) {
+          const extreme = computePerspectiveGridLines(settings({ yaw, pitch, strength: 1 }), shape);
+          for (const c of allCoords(extreme)) expect(Number.isFinite(c)).toBe(true);
+        }
+      }
+    });
+
+    it('draws through: keeps far-side lines, flagged hidden', () => {
+      const lines = computePerspectiveGridLines(settings({ yaw: 30, pitch: 20 }), shape);
+      expect(lines.some((l) => l.hidden)).toBe(true);
+      expect(lines.some((l) => !l.hidden)).toBe(true);
+    });
+  });
+
+  it('box: shows exactly the 3 faces turned toward a corner view', () => {
+    const lines = computePerspectiveGridLines(settings({ yaw: 30, pitch: 20 }), 'box');
+    // 12 edges + 2 center lines per face. Visible: 9 edges (those touching a
+    // visible face) + 3 faces × 2 center lines.
+    expect(lines.length).toBe(12 + 6 * 2);
+    expect(lines.filter((l) => !l.hidden).length).toBe(9 + 3 * 2);
+  });
+
+  it('head: the side-plane circle turned toward the camera is visible, the other hidden', () => {
+    // Positive yaw turns the head's +x side toward the viewer... either way,
+    // exactly one side circle (major, non-silhouette) set is visible.
+    const front = computePerspectiveGridLines(settings({ yaw: 0 }), 'head');
+    const turned = computePerspectiveGridLines(settings({ yaw: 45 }), 'head');
+    const visibleMajor = (ls: PerspectiveSegment[]) => ls.filter((l) => l.major && !l.hidden);
+    expect(visibleMajor(turned).length).toBeGreaterThan(visibleMajor(front).length);
+  });
 });

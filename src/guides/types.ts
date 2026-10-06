@@ -23,6 +23,15 @@ export interface MaskRect {
 
 export type GridMode = 'none' | 'normal' | 'large' | 'perspective';
 
+/**
+ * What the perspective grid depicts. 'room' is a stage (floor + walls) to put
+ * the subject IN; 'box' and 'head' are construction forms the subject itself
+ * is built on (drawn through, hidden edges faint).
+ */
+export type PerspectiveShape = 'room' | 'box' | 'head';
+
+export const PERSPECTIVE_SHAPES: readonly PerspectiveShape[] = ['room', 'box', 'head'];
+
 export interface PerspectiveSettings {
   /** Horizontal rotation in degrees, [-90, 90]. 0 = facing the back wall. */
   yaw: number;
@@ -33,7 +42,16 @@ export interface PerspectiveSettings {
   /** World coordinates of the box anchor point (projection is translated here). */
   centerX: number;
   centerY: number;
+  /**
+   * Uniform scale of the projected shape, [MIN_PERSPECTIVE_SIZE,
+   * MAX_PERSPECTIVE_SIZE]. Pure 2D scale, so the distortion (strength) looks
+   * the same at any size. Absent in drafts saved before it existed (≡ 1).
+   */
+  size: number;
 }
+
+export const MIN_PERSPECTIVE_SIZE = 0.25;
+export const MAX_PERSPECTIVE_SIZE = 3;
 
 export const DEFAULT_PERSPECTIVE: PerspectiveSettings = {
   yaw: 0,
@@ -41,6 +59,7 @@ export const DEFAULT_PERSPECTIVE: PerspectiveSettings = {
   strength: 0.5,
   centerX: 0,
   centerY: 0,
+  size: 1,
 };
 
 /**
@@ -66,6 +85,12 @@ export interface GridSettings {
   mode: GridMode;
   /** Only meaningful when mode === 'perspective', but kept while switching modes. */
   perspective?: PerspectiveSettings;
+  /**
+   * Shape drawn in perspective mode. Absent ≡ 'room'. Kept outside
+   * PerspectiveSettings so angle memories recall the same view onto whichever
+   * shape is current (e.g. check a head drawing's angle against the box).
+   */
+  perspectiveShape?: PerspectiveShape;
   /**
    * Snapshots of perspective settings captured when a stroke was drawn, oldest
    * first, so the user can flip back to an angle they already sketched at.
@@ -123,6 +148,11 @@ export function sanitizePerspectiveSettings(p: unknown): PerspectiveSettings {
     strength: clamp(num(src.strength, DEFAULT_PERSPECTIVE.strength), 0, 1),
     centerX: num(src.centerX, DEFAULT_PERSPECTIVE.centerX),
     centerY: num(src.centerY, DEFAULT_PERSPECTIVE.centerY),
+    size: clamp(
+      num(src.size, DEFAULT_PERSPECTIVE.size),
+      MIN_PERSPECTIVE_SIZE,
+      MAX_PERSPECTIVE_SIZE,
+    ),
   };
 }
 
@@ -135,7 +165,8 @@ export function perspectiveSettingsEqual(a: PerspectiveSettings, b: PerspectiveS
     Math.abs(a.pitch - b.pitch) < MEMORY_EPSILON &&
     Math.abs(a.strength - b.strength) < MEMORY_EPSILON &&
     Math.abs(a.centerX - b.centerX) < MEMORY_EPSILON &&
-    Math.abs(a.centerY - b.centerY) < MEMORY_EPSILON
+    Math.abs(a.centerY - b.centerY) < MEMORY_EPSILON &&
+    Math.abs(a.size - b.size) < MEMORY_EPSILON
   );
 }
 
@@ -173,6 +204,13 @@ export function sanitizePerspectiveMemories(memories: unknown): PerspectiveMemor
   });
 }
 
+/** A valid non-default shape, or undefined ('room' is the absent default). */
+function sanitizePerspectiveShape(shape: unknown): PerspectiveShape | undefined {
+  return shape !== 'room' && PERSPECTIVE_SHAPES.includes(shape as PerspectiveShape)
+    ? (shape as PerspectiveShape)
+    : undefined;
+}
+
 /** Legacy grid settings stored before the GridMode migration */
 interface LegacyGridSettings {
   enabled: boolean;
@@ -192,14 +230,19 @@ export function migrateGridSettings(grid: unknown): GridSettings {
   if (grid && typeof grid === 'object') {
     if (isGridSettings(grid)) {
       const memories = sanitizePerspectiveMemories(grid.perspectiveMemories);
+      const shape = sanitizePerspectiveShape(grid.perspectiveShape);
+      const rest = {
+        ...(shape ? { perspectiveShape: shape } : {}),
+        ...(memories ? { perspectiveMemories: memories } : {}),
+      };
       if (grid.perspective !== undefined || grid.mode === 'perspective') {
         return {
           mode: grid.mode,
           perspective: sanitizePerspectiveSettings(grid.perspective),
-          ...(memories ? { perspectiveMemories: memories } : {}),
+          ...rest,
         };
       }
-      return { mode: grid.mode, ...(memories ? { perspectiveMemories: memories } : {}) };
+      return { mode: grid.mode, ...rest };
     }
     if (isLegacyGridSettings(grid)) {
       return { mode: grid.enabled ? 'normal' : 'none' };

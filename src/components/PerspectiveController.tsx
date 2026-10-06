@@ -1,10 +1,15 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Box, IconButton, Paper, Slider } from '@mui/material';
-import { Check, Crosshair, Minimize2, RotateCcw, Trash2, X } from 'lucide-react';
+import { Check, Crosshair, Minimize2, RotateCcw, Scaling, Trash2, X } from 'lucide-react';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { t } from '../i18n';
 import { useGuides } from '../guides/useGuides';
-import { DEFAULT_PERSPECTIVE, perspectiveSettingsEqual } from '../guides/types';
+import {
+  DEFAULT_PERSPECTIVE,
+  MAX_PERSPECTIVE_SIZE,
+  MIN_PERSPECTIVE_SIZE,
+  perspectiveSettingsEqual,
+} from '../guides/types';
 import { GridIcon } from './GridModePopoverButton';
 
 const PAD_SIZE = 96;
@@ -14,7 +19,8 @@ const DOT_RADIUS = 6;
  * Floating controls for the perspective grid, overlaid on the drawing canvas
  * (screen-fixed — deliberately not following camera pan/zoom). A square pad
  * maps its x/y to yaw/pitch (center = 0°, edges = ±90°), a vertical slider
- * sets the perspective strength, and a crosshair toggle arms the
+ * sets the perspective strength, a horizontal one the shape size (to fit a
+ * box / head guide onto the subject), and a crosshair toggle arms the
  * place-anchor tap mode. Mounted only while grid.mode === 'perspective'.
  */
 export function PerspectiveController() {
@@ -129,7 +135,7 @@ export function PerspectiveController() {
               '&:hover': { bgcolor: 'info.dark' },
             }}
           >
-            <GridIcon mode="perspective" />
+            <GridIcon mode="perspective" shape={grid.perspectiveShape} />
           </IconButton>
         </ToolbarTooltip>
       </Box>
@@ -225,6 +231,24 @@ export function PerspectiveController() {
           }
           onChangeCommitted={(_e, value) => setPerspective({ strength: value as number })}
           sx={{ height: PAD_SIZE, touchAction: 'none' }}
+        />
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+        <ToolbarTooltip title={t('perspectiveSize')}>
+          <Box sx={{ display: 'flex', color: 'text.secondary' }}>
+            <Scaling size={16} />
+          </Box>
+        </ToolbarTooltip>
+        <Slider
+          aria-label={t('perspectiveSize')}
+          size="small"
+          min={MIN_PERSPECTIVE_SIZE}
+          max={MAX_PERSPECTIVE_SIZE}
+          step={0.01}
+          value={perspective.size}
+          onChange={(_e, value) => setPerspective({ size: value as number }, { transient: true })}
+          onChangeCommitted={(_e, value) => setPerspective({ size: value as number })}
+          sx={{ touchAction: 'none' }}
         />
       </Box>
       {memories.length > 0 && (

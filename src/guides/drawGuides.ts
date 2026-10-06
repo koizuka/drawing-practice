@@ -1,10 +1,18 @@
-import type { GridSettings, GuideLine, MaskRect, PerspectiveSettings } from './types';
+import type {
+  GridSettings,
+  GuideLine,
+  MaskRect,
+  PerspectiveSettings,
+  PerspectiveShape,
+} from './types';
 import { getGridSpacing, DEFAULT_PERSPECTIVE } from './types';
 import { computePerspectiveGridLines } from './perspective';
 import type { Point } from '../drawing/types';
 
 const GRID_COLOR = 'rgba(0, 150, 255, 0.35)';
 const GRID_ORIGIN_COLOR = 'rgba(0, 150, 255, 0.6)';
+/** Far side of a perspective construction form (box / head), drawn through. */
+const GRID_HIDDEN_COLOR = 'rgba(0, 150, 255, 0.22)';
 const GUIDE_COLOR = 'rgba(255, 50, 50, 0.6)';
 const GUIDE_WIDTH = 1;
 
@@ -28,7 +36,12 @@ export function drawGrid(
   if (grid.mode === 'none') return;
 
   if (grid.mode === 'perspective') {
-    drawPerspectiveGrid(ctx, grid.perspective ?? DEFAULT_PERSPECTIVE, scale);
+    drawPerspectiveGrid(
+      ctx,
+      grid.perspective ?? DEFAULT_PERSPECTIVE,
+      scale,
+      grid.perspectiveShape ?? 'room',
+    );
     return;
   }
 
@@ -76,27 +89,35 @@ export function drawGrid(
 }
 
 /**
- * Draw the perspective box grid in world coordinate space. Like drawGrid, the
- * caller has already applied the view transform (including DPR) to ctx.
+ * Draw the perspective grid shape in world coordinate space. Like drawGrid,
+ * the caller has already applied the view transform (including DPR) to ctx.
  */
 export function drawPerspectiveGrid(
   ctx: CanvasRenderingContext2D,
   perspective: PerspectiveSettings,
   scale: number,
+  shape: PerspectiveShape = 'room',
 ): void {
-  const lines = computePerspectiveGridLines(perspective);
+  const lines = computePerspectiveGridLines(perspective, shape);
 
   ctx.save();
 
   const minorWidth = 1 / scale;
   const majorWidth = 2 / scale;
 
-  for (const major of [false, true]) {
-    ctx.strokeStyle = major ? GRID_ORIGIN_COLOR : GRID_COLOR;
+  // Hidden (far-side) lines first and dashed, so visible lines sit on top.
+  for (const [hidden, major] of [
+    [true, false],
+    [true, true],
+    [false, false],
+    [false, true],
+  ]) {
+    ctx.strokeStyle = hidden ? GRID_HIDDEN_COLOR : major ? GRID_ORIGIN_COLOR : GRID_COLOR;
     ctx.lineWidth = major ? majorWidth : minorWidth;
+    ctx.setLineDash(hidden ? [6 / scale, 4 / scale] : []);
     ctx.beginPath();
     for (const line of lines) {
-      if (line.major !== major) continue;
+      if (line.major !== major || line.hidden !== hidden) continue;
       ctx.moveTo(line.x1, line.y1);
       ctx.lineTo(line.x2, line.y2);
     }
@@ -104,6 +125,7 @@ export function drawPerspectiveGrid(
   }
 
   // Small cross marker at the anchor point as the placement affordance.
+  ctx.setLineDash([]);
   const r = 10 / scale;
   ctx.strokeStyle = GRID_ORIGIN_COLOR;
   ctx.lineWidth = majorWidth;

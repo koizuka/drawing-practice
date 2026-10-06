@@ -5,6 +5,7 @@ import type {
   GuideState,
   MaskRect,
   PerspectiveSettings,
+  PerspectiveShape,
 } from './types';
 import {
   DEFAULT_GUIDE_STATE,
@@ -56,7 +57,8 @@ export class GuideManager {
     return this.state.grid;
   }
 
-  setGridMode(mode: GridMode): void {
+  /** `shape` (perspective only) switches the drawn shape; omitted keeps the current one. */
+  setGridMode(mode: GridMode, shape?: PerspectiveShape): void {
     // Keep perspective settings (and captured memories) across mode switches
     // so re-entering the perspective mode restores the previous composition.
     const perspective =
@@ -64,9 +66,11 @@ export class GuideManager {
         ? (this.state.grid.perspective ?? DEFAULT_PERSPECTIVE)
         : this.state.grid.perspective;
     const memories = this.state.grid.perspectiveMemories;
+    const nextShape = shape ?? this.state.grid.perspectiveShape;
     this.state.grid = {
       mode,
       ...(perspective ? { perspective } : {}),
+      ...(nextShape && nextShape !== 'room' ? { perspectiveShape: nextShape } : {}),
       ...(memories?.length ? { perspectiveMemories: memories } : {}),
     };
   }
