@@ -43,6 +43,17 @@ describe('GuideManager', () => {
       expect(manager.getGrid().perspective).toMatchObject({ yaw: 30, strength: 0.8 });
     });
 
+    it('switches the perspective shape only when one is given, and keeps it across modes', () => {
+      manager.setGridMode('perspective', 'head');
+      expect(manager.getGrid().perspectiveShape).toBe('head');
+      manager.setGridMode('normal');
+      manager.setGridMode('perspective');
+      expect(manager.getGrid().perspectiveShape).toBe('head');
+      // 'room' is the absent default.
+      manager.setGridMode('perspective', 'room');
+      expect(manager.getGrid().perspectiveShape).toBeUndefined();
+    });
+
     it('keeps perspective memories across mode switches', () => {
       manager.setGridMode('perspective');
       manager.setPerspective({ yaw: 30 });
@@ -235,6 +246,30 @@ describe('GuideManager', () => {
         lines: [],
       });
       expect(manager.getGrid().perspective).toEqual(DEFAULT_PERSPECTIVE);
+    });
+
+    it('restores a valid perspective shape and drops an unknown one', () => {
+      manager.importState({
+        grid: { mode: 'perspective', perspectiveShape: 'box' },
+        lines: [],
+      });
+      expect(manager.getGrid().perspectiveShape).toBe('box');
+      manager.importState({
+        grid: { mode: 'perspective', perspectiveShape: 'cone' as never },
+        lines: [],
+      });
+      expect(manager.getGrid().perspectiveShape).toBeUndefined();
+    });
+
+    it('defaults size to 1 for drafts saved before it existed', () => {
+      manager.importState({
+        grid: {
+          mode: 'perspective',
+          perspective: { yaw: 10, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 } as never,
+        },
+        lines: [],
+      });
+      expect(manager.getGrid().perspective?.size).toBe(1);
     });
 
     it('sanitizes and caps stored perspective memories', () => {

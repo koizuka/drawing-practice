@@ -7,6 +7,7 @@ import type {
   GuideState,
   MaskRect,
   PerspectiveSettings,
+  PerspectiveShape,
 } from './types';
 import { DEFAULT_GUIDE_STATE } from './types';
 import { GuideContext } from './guideContextValue';
@@ -34,8 +35,8 @@ export function GuideProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setGridMode = useCallback(
-    (mode: GridMode) => {
-      guideManagerRef.current.setGridMode(mode);
+    (mode: GridMode, shape?: PerspectiveShape) => {
+      guideManagerRef.current.setGridMode(mode, shape);
       // Disarm the place-anchor mode when leaving perspective — otherwise the
       // next tap would still mutate the (now hidden) perspective settings.
       if (mode !== 'perspective') setPlacingCenter(false);

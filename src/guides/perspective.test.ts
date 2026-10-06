@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { computePerspectiveGridLines, type PerspectiveSegment } from './perspective';
+import {
+  computePerspectiveGridLines,
+  PERSPECTIVE_HEAD_RADIUS,
+  type PerspectiveSegment,
+} from './perspective';
 import { DEFAULT_PERSPECTIVE, type PerspectiveSettings } from './types';
 
 function settings(patch: Partial<PerspectiveSettings> = {}): PerspectiveSettings {
@@ -131,4 +135,87 @@ describe('computePerspectiveGridLines', () => {
     expect(lines.length).toBeLessThanOrEqual(18 + 3 * 13);
     expect(lines.length).toBeGreaterThanOrEqual(18 + 13); // at least floor + back wall
   });
+
+  it('scales all segments about the anchor by size', () => {
+    const base = computePerspectiveGridLines(settings({ centerX: 50, centerY: 20 }));
+    const big = computePerspectiveGridLines(settings({ centerX: 50, centerY: 20, size: 2 }));
+    expect(big.length).toBe(base.length);
+    for (let i = 0; i < base.length; i++) {
+      expect(big[i].x1 - 50).toBeCloseTo((base[i].x1 - 50) * 2, 6);
+      expect(big[i].y1 - 20).toBeCloseTo((base[i].y1 - 20) * 2, 6);
+      expect(big[i].x2 - 50).toBeCloseTo((base[i].x2 - 50) * 2, 6);
+      expect(big[i].y2 - 20).toBeCloseTo((base[i].y2 - 20) * 2, 6);
+    }
+  });
+
+  it('never flags room lines as hidden', () => {
+    expect(computePerspectiveGridLines(settings({ yaw: 30 })).some((l) => l.hidden)).toBe(false);
+  });
+
+  describe.each(['box', 'head'] as const)('%s shape', (shape) => {
+    it('is left-right symmetric at yaw=0, pitch=0 and finite at extreme angles', () => {
+      const lines = computePerspectiveGridLines(settings(), shape);
+      const key = (x1: number, y1: number, x2: number, y2: number) =>
+        [
+          `${Math.round(x1 * 100)},${Math.round(y1 * 100)}`,
+          `${Math.round(x2 * 100)},${Math.round(y2 * 100)}`,
+        ]
+          .sort()
+          .join('|');
+      const keys = new Set(lines.map((l) => key(l.x1, l.y1, l.x2, l.y2)));
+      for (const l of lines) expect(keys.has(key(-l.x1, l.y1, -l.x2, l.y2))).toBe(true);
+
+      for (const yaw of [-90, 0, 90]) {
+        for (const pitch of [-90, 0, 90]) {
+          const extreme = computePerspectiveGridLines(settings({ yaw, pitch, strength: 1 }), shape);
+          for (const c of allCoords(extreme)) expect(Number.isFinite(c)).toBe(true);
+        }
+      }
+    });
+
+    it('draws through: keeps far-side lines, flagged hidden', () => {
+      const lines = computePerspectiveGridLines(settings({ yaw: 30, pitch: 20 }), shape);
+      expect(lines.some((l) => l.hidden)).toBe(true);
+      expect(lines.some((l) => !l.hidden)).toBe(true);
+    });
+  });
+
+  it('box: shows exactly the 3 faces turned toward a corner view', () => {
+    const lines = computePerspectiveGridLines(settings({ yaw: 30, pitch: 20 }), 'box');
+    // 12 edges + 2 center lines per face. Visible: 9 edges (those touching a
+    // visible face) + 3 faces × 2 center lines.
+    expect(lines.length).toBe(12 + 6 * 2);
+    expect(lines.filter((l) => !l.hidden).length).toBe(9 + 3 * 2);
+  });
+
+  it.each([60, -60])(
+    'head at yaw %i: the near side plane is visible, the far one hidden',
+    (yaw) => {
+      const lines = computePerspectiveGridLines(settings({ yaw }), 'head');
+      // Positive yaw brings the +x side plane toward the camera, on screen right.
+      const nearSign = Math.sign(yaw);
+      const midX = (l: PerspectiveSegment) => (l.x1 + l.x2) / 2;
+      const midY = (l: PerspectiveSegment) => (l.y1 + l.y2) / 2;
+      // Major lines are the silhouette (always visible), side circles and jaw.
+      // Compared by centroid: seen obliquely, the far circle's ellipse still
+      // reaches a little past the screen center line.
+      const centroidX = (ls: PerspectiveSegment[]) =>
+        ls.reduce((sum, l) => sum + midX(l), 0) / ls.length;
+      const hiddenMajor = lines.filter((l) => l.major && l.hidden);
+      expect(hiddenMajor.length).toBeGreaterThan(0);
+      expect(Math.sign(centroidX(hiddenMajor))).toBe(-nearSign);
+      // The near side circle: visible major segments well inside the
+      // silhouette, at cranium height (the jaw starts below it).
+      const silhouette = Math.max(...lines.map((l) => Math.hypot(l.x1, l.y1)));
+      const nearCircle = lines.filter(
+        (l) =>
+          l.major &&
+          !l.hidden &&
+          Math.hypot(midX(l), midY(l)) < silhouette * 0.9 &&
+          Math.abs(midY(l)) < PERSPECTIVE_HEAD_RADIUS * 0.5,
+      );
+      expect(nearCircle.length).toBeGreaterThan(0);
+      expect(Math.sign(centroidX(nearCircle))).toBe(nearSign);
+    },
+  );
 });

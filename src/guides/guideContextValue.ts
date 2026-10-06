@@ -7,6 +7,7 @@ import type {
   GuideState,
   MaskRect,
   PerspectiveSettings,
+  PerspectiveShape,
 } from './types';
 
 export interface GuideContextValue {
@@ -16,7 +17,7 @@ export interface GuideContextValue {
   version: number;
   /** True when the last change was mid-gesture (drag); autosave may debounce it. */
   lastChangeTransient: boolean;
-  setGridMode: (mode: GridMode) => void;
+  setGridMode: (mode: GridMode, shape?: PerspectiveShape) => void;
   setPerspective: (patch: Partial<PerspectiveSettings>, opts?: { transient?: boolean }) => void;
   /** Snapshot the current perspective settings into the recall-memory list (no-op if already memorized). */
   recordPerspectiveMemory: () => void;

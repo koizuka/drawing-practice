@@ -76,7 +76,7 @@ describe('coordMigration', () => {
       const state: GuideState = {
         grid: {
           mode: 'perspective',
-          perspective: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200 },
+          perspective: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200, size: 1 },
         },
         lines: [],
       };
@@ -87,6 +87,7 @@ describe('coordMigration', () => {
         strength: 0.7,
         centerX: 50,
         centerY: 100,
+        size: 1,
       });
     });
 
@@ -94,18 +95,30 @@ describe('coordMigration', () => {
       const state: GuideState = {
         grid: {
           mode: 'perspective',
-          perspective: { yaw: 0, pitch: 0, strength: 0.5, centerX: 0, centerY: 0 },
+          perspective: { yaw: 0, pitch: 0, strength: 0.5, centerX: 0, centerY: 0, size: 1 },
           perspectiveMemories: [
-            { seq: 1, settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200 } },
-            { seq: 2, settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: 10, centerY: 20 } },
+            {
+              seq: 1,
+              settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 100, centerY: 200, size: 1 },
+            },
+            {
+              seq: 2,
+              settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: 10, centerY: 20, size: 1 },
+            },
           ],
         },
         lines: [],
       };
       const out = shiftGuideState(state, -50, -100);
       expect(out.grid.perspectiveMemories).toEqual([
-        { seq: 1, settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100 } },
-        { seq: 2, settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: -40, centerY: -80 } },
+        {
+          seq: 1,
+          settings: { yaw: 30, pitch: 10, strength: 0.7, centerX: 50, centerY: 100, size: 1 },
+        },
+        {
+          seq: 2,
+          settings: { yaw: -20, pitch: 5, strength: 0.3, centerX: -40, centerY: -80, size: 1 },
+        },
       ]);
     });
 
