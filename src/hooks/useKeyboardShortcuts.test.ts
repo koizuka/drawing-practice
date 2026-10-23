@@ -15,6 +15,9 @@ function createActions() {
     onEraseTool: vi.fn(),
     onSave: vi.fn(),
     onResetZoom: vi.fn(),
+    onRotateLeft: vi.fn(),
+    onRotateRight: vi.fn(),
+    onResetRotation: vi.fn(),
   };
 }
 
@@ -154,6 +157,31 @@ describe('useKeyboardShortcuts', () => {
       } finally {
         document.body.removeChild(input);
       }
+    });
+  });
+
+  describe('View rotation (4 / 5 / 6, Krita defaults)', () => {
+    it.each([
+      ['Digit4', '4', 'onRotateLeft'],
+      ['Numpad4', '4', 'onRotateLeft'],
+      ['Digit6', '6', 'onRotateRight'],
+      ['Numpad6', '6', 'onRotateRight'],
+      ['Digit5', '5', 'onResetRotation'],
+      ['Numpad5', '5', 'onResetRotation'],
+    ] as const)('%s fires %s', (code, key, action) => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+      const event = fireKey({ code, key });
+      expect(actions[action]).toHaveBeenCalledTimes(1);
+      expect(event.defaultPrevented).toBe(true);
+    });
+
+    it('ignores rotation keys with a modifier', () => {
+      const actions = createActions();
+      renderHook(() => useKeyboardShortcuts({ actions }));
+      fireKey({ code: 'Digit6', key: '6', ctrlKey: true });
+      fireKey({ code: 'Digit6', key: '^', shiftKey: true });
+      expect(actions.onRotateRight).not.toHaveBeenCalled();
     });
   });
 

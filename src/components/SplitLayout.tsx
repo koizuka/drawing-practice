@@ -401,6 +401,7 @@ function SplitLayoutInner() {
     viewCenterX: number;
     viewCenterY: number;
     zoom: number;
+    rotation?: number;
   } | null>(null);
 
   /**
@@ -1249,7 +1250,12 @@ function SplitLayoutInner() {
     const pending = pendingCameraRef.current;
     if (!pending || !referenceSize) return;
     pendingCameraRef.current = null;
-    viewTransform.restoreCamera(pending.viewCenterX, pending.viewCenterY, pending.zoom);
+    viewTransform.restoreCamera(
+      pending.viewCenterX,
+      pending.viewCenterY,
+      pending.zoom,
+      pending.rotation,
+    );
   }, [viewTransform, referenceSize, restoreVersion]);
 
   // Restore draft when session lock is acquired
@@ -1341,7 +1347,7 @@ function SplitLayoutInner() {
           if (referenceWillSize) {
             pendingCameraRef.current = cam;
           } else {
-            viewTransform.restoreCamera(cam.viewCenterX, cam.viewCenterY, cam.zoom);
+            viewTransform.restoreCamera(cam.viewCenterX, cam.viewCenterY, cam.zoom, cam.rotation);
           }
         }
 

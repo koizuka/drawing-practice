@@ -18,6 +18,11 @@ interface ShortcutActions {
   onEraseTool: () => void;
   onSave: () => void;
   onResetZoom: () => void;
+  /** Rotate the drawing view 15° counter-clockwise / clockwise (Krita's 4 / 6). */
+  onRotateLeft?: () => void;
+  onRotateRight?: () => void;
+  /** Rotate the drawing view back upright (Krita's 5). */
+  onResetRotation?: () => void;
 }
 
 interface UseKeyboardShortcutsOptions {
@@ -73,6 +78,24 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
         e.preventDefault();
         actions.onResetZoom();
         return;
+      }
+
+      // View rotation (no modifiers): Krita's defaults, main row or numpad.
+      // Matched on e.code so the keys work regardless of keyboard layout.
+      if (!mod && !e.altKey && !e.shiftKey) {
+        const rotate =
+          e.code === 'Digit4' || e.code === 'Numpad4'
+            ? actions.onRotateLeft
+            : e.code === 'Digit6' || e.code === 'Numpad6'
+              ? actions.onRotateRight
+              : e.code === 'Digit5' || e.code === 'Numpad5'
+                ? actions.onResetRotation
+                : undefined;
+        if (rotate) {
+          e.preventDefault();
+          rotate();
+          return;
+        }
       }
 
       // Tool shortcuts (no modifiers)

@@ -36,7 +36,7 @@ Every `Point` in `currentStroke.points` and `this.strokes[]` is snapped to the 0
 ## CanvasRenderer / ViewTransform
 
 - `CanvasRenderer` — stroke rendering with highlight support.
-- `ViewTransform` — pinch zoom/pan, scale clamped to **0.25x ~ 8x**.
+- `ViewTransform` — pinch zoom/pan/rotate, scale clamped to **0.25x ~ 8x**. Rotation is camera state (not in the undo stack) and is rendered only by the drawing panel — see CLAUDE.md "View rotation".
 
 ## DrawingPanel undo button behavior
 

@@ -35,11 +35,14 @@ import {
   PanelTopClose,
   PanelTopOpen,
   RotateCcw,
+  RotateCwSquare,
+  Lock,
   Layers,
 } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import type { Orientation } from '../hooks/useOrientation';
-import { DrawingCanvas, type DrawingMode } from './DrawingCanvas';
+import { DrawingCanvas, type DrawingMode, type RotationCommand } from './DrawingCanvas';
+import { CanvasNavigator } from './CanvasNavigator';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { useGuides } from '../guides/useGuides';
@@ -54,6 +57,27 @@ import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
+
+// Pinch-rotation switch: a per-user preference (not session state), so it
+// lives in localStorage rather than the autosave draft. Default OFF — an
+// unintended twist while zooming is the failure mode this guards against.
+const PINCH_ROTATE_STORAGE_KEY = 'drawing.pinchRotateEnabled';
+
+function loadPinchRotateEnabled(): boolean {
+  try {
+    return localStorage.getItem(PINCH_ROTATE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistPinchRotateEnabled(enabled: boolean): void {
+  try {
+    localStorage.setItem(PINCH_ROTATE_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
 
 // Gallery is a modal opened on demand via the "Gallery" toolbar button —
 // keep it out of the initial bundle.
@@ -206,6 +230,22 @@ export function DrawingPanel({
   const [strokeEditVersion, setStrokeEditVersion] = useState(0);
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
+  const [pinchRotateEnabled, setPinchRotateEnabled] = useState(loadPinchRotateEnabled);
+  const [rotationCommand, setRotationCommand] = useState<RotationCommand | null>(null);
+  const rotationSeqRef = useRef(0);
+  const requestRotation = useCallback((cmd: { kind: 'reset' } | { kind: 'step'; dir: 1 | -1 }) => {
+    rotationSeqRef.current += 1;
+    setRotationCommand({ ...cmd, seq: rotationSeqRef.current });
+  }, []);
+  const handleResetRotation = useCallback(
+    () => requestRotation({ kind: 'reset' }),
+    [requestRotation],
+  );
+  const handleTogglePinchRotate = useCallback(() => {
+    const next = !pinchRotateEnabled;
+    persistPinchRotateEnabled(next);
+    setPinchRotateEnabled(next);
+  }, [pinchRotateEnabled]);
   const [showGallery, setShowGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -522,8 +562,19 @@ export function DrawingPanel({
         onEraseTool: handleEraseTool,
         onSave: handleSave,
         onResetZoom: () => setViewResetVersion((v) => v + 1),
+        onRotateLeft: () => requestRotation({ kind: 'step', dir: -1 }),
+        onRotateRight: () => requestRotation({ kind: 'step', dir: 1 }),
+        onResetRotation: handleResetRotation,
       }),
-      [handleUndo, handleRedo, handlePenTool, handleEraseTool, handleSave],
+      [
+        handleUndo,
+        handleRedo,
+        handlePenTool,
+        handleEraseTool,
+        handleSave,
+        requestRotation,
+        handleResetRotation,
+      ],
     ),
   });
 
@@ -809,6 +860,42 @@ export function DrawingPanel({
           </ToolbarTooltip>
         )}
 
+        <ToolbarTooltip title={pinchRotateEnabled ? t('pinchRotateOn') : t('pinchRotateOff')}>
+          <IconButton
+            size="small"
+            onClick={handleTogglePinchRotate}
+            aria-label={pinchRotateEnabled ? t('pinchRotateOn') : t('pinchRotateOff')}
+            aria-pressed={pinchRotateEnabled}
+            // Two cues, not color alone (hard to read at a glance on iPad):
+            // ON = filled like the active pen button, OFF = lock badge.
+            sx={{
+              position: 'relative',
+              bgcolor: pinchRotateEnabled ? 'primary.main' : 'transparent',
+              color: pinchRotateEnabled ? 'white' : 'inherit',
+              '&:hover': { bgcolor: pinchRotateEnabled ? 'primary.dark' : 'action.hover' },
+            }}
+          >
+            <RotateCwSquare size={20} />
+            {!pinchRotateEnabled && (
+              <Box
+                component="span"
+                sx={{
+                  position: 'absolute',
+                  right: 1,
+                  bottom: 1,
+                  display: 'flex',
+                  p: '1px',
+                  borderRadius: '50%',
+                  bgcolor: 'background.paper',
+                  lineHeight: 0,
+                }}
+              >
+                <Lock size={10} strokeWidth={2.5} />
+              </Box>
+            )}
+          </IconButton>
+        </ToolbarTooltip>
+
         <ToolbarTooltip title={t('resetZoom')}>
           <span>
             <IconButton
@@ -955,6 +1042,18 @@ export function DrawingPanel({
           </Box>
         )}
         {grid.mode === 'perspective' && <PerspectiveController />}
+        {viewTransform && (
+          <CanvasNavigator
+            viewTransform={viewTransform}
+            strokeManager={strokeManager}
+            fitSize={referenceSize ?? undefined}
+            isFlipped={isFlipped ?? false}
+            contentVersion={redrawVersion}
+            onResetRotation={handleResetRotation}
+            // Clear the trace score badge pinned to the same corner.
+            top={templateStrokes && templateStrokes.length > 0 ? 44 : 8}
+          />
+        )}
         <Box
           sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}
         >
@@ -987,6 +1086,8 @@ export function DrawingPanel({
             underlayEnabled={underlayEnabled}
             masks={masks}
             masksHidden={effectiveMasksHidden}
+            pinchRotateEnabled={pinchRotateEnabled}
+            rotationCommand={rotationCommand}
           />
         </Box>
       </Box>

@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import { ViewTransform, type CameraIntent } from './ViewTransform';
+import { ViewTransform, normalizeRotation, type CameraIntent } from './ViewTransform';
 
 const C = { width: 800, height: 600 };
 
@@ -275,6 +275,117 @@ describe('ViewTransform (camera model)', () => {
       vt.subscribe(fn);
       vt.adjustForUnfit(0.5, 1);
       expect(fn).toHaveBeenCalledWith(null);
+    });
+  });
+  describe('rotation', () => {
+    const deg = (d: number) => (d * Math.PI) / 180;
+
+    it('normalizeRotation wraps into (-π, π] and collapses -0', () => {
+      expect(normalizeRotation(deg(190))).toBeCloseTo(deg(-170));
+      expect(normalizeRotation(deg(-180))).toBeCloseTo(Math.PI);
+      expect(normalizeRotation(2 * Math.PI)).toBe(0);
+      expect(Object.is(normalizeRotation(-0), 0)).toBe(true);
+      expect(normalizeRotation(Number.NaN)).toBe(0);
+    });
+
+    it('rotates about the focal point: the focal world point stays under the fingers', () => {
+      const focalX = 300,
+        focalY = 200;
+      const before = vt.screenToCanvas(focalX, focalY, C, 1, true);
+      vt.applyGesture(focalX, focalY, 1.5, 0, 0, C, 1, { rotated: true, rotationDelta: deg(30) });
+      const after = vt.screenToCanvas(focalX, focalY, C, 1, true);
+      expect(after.x).toBeCloseTo(before.x);
+      expect(after.y).toBeCloseTo(before.y);
+      expect(vt.getRotation()).toBeCloseTo(deg(30));
+    });
+
+    it('positive rotation turns content clockwise on screen (canvas y-down)', () => {
+      vt.applyGesture(C.width / 2, C.height / 2, 1, 0, 0, C, 1, {
+        rotated: true,
+        rotationDelta: deg(90),
+      });
+      // World +x (right of center) now points screen-down.
+      const p = vt.canvasToScreen(100, 0, C, 1, true);
+      expect(p.x).toBeCloseTo(C.width / 2);
+      expect(p.y).toBeCloseTo(C.height / 2 + 100);
+    });
+
+    it('projectMatrix / screenToCanvas / canvasToScreen agree under rotation', () => {
+      vt.applyGesture(120, 80, 2, 15, -25, C, 0.8, { rotated: true, rotationDelta: deg(-47) });
+      const m = vt.projectMatrix(C, 0.8, true);
+      const w = { x: 37, y: -12 };
+      const s = vt.canvasToScreen(w.x, w.y, C, 0.8, true);
+      expect(m.a * w.x + m.c * w.y + m.e).toBeCloseTo(s.x);
+      expect(m.b * w.x + m.d * w.y + m.f).toBeCloseTo(s.y);
+      const back = vt.screenToCanvas(s.x, s.y, C, 0.8, true);
+      expect(back.x).toBeCloseTo(w.x);
+      expect(back.y).toBeCloseTo(w.y);
+      expect(m.scale).toBeCloseTo(1.6);
+    });
+
+    it('upright (non-rotated) callers ignore rotation and never change it', () => {
+      vt.applyGesture(400, 300, 1, 0, 0, C, 1, { rotated: true, rotationDelta: deg(40) });
+      const cam = vt.getCamera();
+      // Same center/zoom seen upright as project() reports.
+      const p = vt.screenToCanvas(C.width / 2 + 10, C.height / 2, C, 1);
+      expect(p.x).toBeCloseTo(cam.viewCenterX + 10);
+      expect(p.y).toBeCloseTo(cam.viewCenterY);
+      // A reference-panel pan (rotated=false) translates in world axes and
+      // ignores any rotationDelta.
+      vt.applyGesture(0, 0, 1, -20, 0, C, 1, { rotationDelta: deg(10) });
+      expect(vt.getCamera().viewCenterX).toBeCloseTo(cam.viewCenterX + 20);
+      expect(vt.getRotation()).toBeCloseTo(deg(40));
+    });
+
+    it('a rotated pan follows the fingers in the rotated frame', () => {
+      vt.applyGesture(400, 300, 1, 0, 0, C, 1, { rotated: true, rotationDelta: deg(90) });
+      const sx = 100,
+        sy = 100;
+      const w = vt.screenToCanvas(sx, sy, C, 1, true);
+      vt.applyGesture(sx, sy, 1, 30, 40, C, 1, { rotated: true });
+      const s = vt.canvasToScreen(w.x, w.y, C, 1, true);
+      expect(s.x).toBeCloseTo(sx + 30);
+      expect(s.y).toBeCloseTo(sy + 40);
+    });
+
+    it('setRotationAbout keeps the pivot fixed and emits the given intent', () => {
+      const intents: (CameraIntent | null)[] = [];
+      vt.subscribe((i) => {
+        intents.push(i);
+      });
+      const before = vt.screenToCanvas(200, 100, C, 1, true);
+      vt.setRotationAbout(deg(-15), 200, 100, C, 1, 'gesture');
+      const after = vt.screenToCanvas(200, 100, C, 1, true);
+      expect(after.x).toBeCloseTo(before.x);
+      expect(after.y).toBeCloseTo(before.y);
+      expect(vt.getRotation()).toBeCloseTo(deg(-15));
+      // Same angle with 'userRotate' still notifies (promotes the save).
+      vt.setRotationAbout(deg(-15), 200, 100, C, 1, 'userRotate');
+      vt.setRotationAbout(deg(-15), 200, 100, C, 1, 'gesture');
+      expect(intents).toEqual(['gesture', 'userRotate']);
+    });
+
+    it('rotation makes the camera dirty; reset / loadContent clear it', () => {
+      vt.setRotationAbout(deg(5), 400, 300, C, 1, 'userRotate');
+      expect(vt.isDirty()).toBe(true);
+      vt.userResetToHome();
+      expect(vt.getRotation()).toBe(0);
+      expect(vt.isDirty()).toBe(false);
+      vt.setRotationAbout(deg(5), 400, 300, C, 1, 'userRotate');
+      vt.loadContent(0, 0, 1);
+      expect(vt.getRotation()).toBe(0);
+    });
+
+    it('restoreCamera round-trips rotation; absent rotation ≡ 0', () => {
+      vt.restoreCamera(10, 20, 2, deg(30));
+      expect(vt.getCamera()).toEqual({
+        viewCenterX: 10,
+        viewCenterY: 20,
+        zoom: 2,
+        rotation: normalizeRotation(deg(30)),
+      });
+      vt.restoreCamera(10, 20, 2);
+      expect(vt.getRotation()).toBe(0);
     });
   });
 });
