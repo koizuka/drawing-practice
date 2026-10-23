@@ -36,6 +36,7 @@ import {
   PanelTopOpen,
   RotateCcw,
   RotateCwSquare,
+  Lock,
   Layers,
 } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
@@ -865,9 +866,33 @@ export function DrawingPanel({
             onClick={handleTogglePinchRotate}
             aria-label={pinchRotateEnabled ? t('pinchRotateOn') : t('pinchRotateOff')}
             aria-pressed={pinchRotateEnabled}
-            sx={{ color: pinchRotateEnabled ? 'primary.main' : 'inherit' }}
+            // Two cues, not color alone (hard to read at a glance on iPad):
+            // ON = filled like the active pen button, OFF = lock badge.
+            sx={{
+              position: 'relative',
+              bgcolor: pinchRotateEnabled ? 'primary.main' : 'transparent',
+              color: pinchRotateEnabled ? 'white' : 'inherit',
+              '&:hover': { bgcolor: pinchRotateEnabled ? 'primary.dark' : 'action.hover' },
+            }}
           >
             <RotateCwSquare size={20} />
+            {!pinchRotateEnabled && (
+              <Box
+                component="span"
+                sx={{
+                  position: 'absolute',
+                  right: 1,
+                  bottom: 1,
+                  display: 'flex',
+                  p: '1px',
+                  borderRadius: '50%',
+                  bgcolor: 'background.paper',
+                  lineHeight: 0,
+                }}
+              >
+                <Lock size={10} strokeWidth={2.5} />
+              </Box>
+            )}
           </IconButton>
         </ToolbarTooltip>
 
