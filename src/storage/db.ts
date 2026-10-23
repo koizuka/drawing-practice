@@ -52,11 +52,12 @@ export interface SessionDraft {
   /** Reference panel collapsed (free-drawing layout). Optional for back-compat. */
   referenceCollapsed?: boolean;
   /**
-   * Camera state (viewing center in world coords + zoom multiplier). Restored
-   * on reload so pan/zoom survives across sessions. Optional for back-compat
-   * with drafts written before this field existed.
+   * Camera state (viewing center in world coords + zoom multiplier + drawing
+   * panel rotation in radians). Restored on reload so pan/zoom/rotation
+   * survives across sessions. Optional for back-compat with drafts written
+   * before this field existed; `rotation` absent ≡ 0 (pre-rotation drafts).
    */
-  camera?: { viewCenterX: number; viewCenterY: number; zoom: number };
+  camera?: { viewCenterX: number; viewCenterY: number; zoom: number; rotation?: number };
   /** Drawing panel flipped horizontally. Optional for back-compat. */
   flipped?: boolean;
   /**

@@ -12,6 +12,14 @@ import {
   type BoundingBox,
 } from '../drawing/canvasUtils';
 import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
+import {
+  nextRotationStep,
+  PINCH_ROTATE_START_THRESHOLD,
+  ROTATION_ANIM_MS,
+  screenToCanvasRotation,
+  shortestAngleDelta,
+  snapRotationTarget,
+} from '../drawing/rotation';
 import { drawGrid, drawGuideLines } from '../guides/drawGuides';
 import type { Point, Stroke } from '../drawing/types';
 import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
@@ -23,6 +31,16 @@ import { loadReferenceImage } from '../utils/loadReferenceImage';
 // drag-to-enclose acts as a lasso. The pen mode is unchanged. See
 // .claude/rules/drawing-undo.md and the erase-pending machinery below.
 export type DrawingMode = 'pen' | 'erase';
+
+/**
+ * Discrete rotation request from outside the canvas (keyboard shortcut,
+ * navigator ▲ tap). `seq` must increase per request so repeating the same
+ * command re-fires. `dir` is a SCREEN direction (+1 = clockwise as seen);
+ * the canvas converts for the horizontal flip.
+ */
+export type RotationCommand =
+  | { seq: number; kind: 'reset' }
+  | { seq: number; kind: 'step'; dir: 1 | -1 };
 
 interface DrawingCanvasProps {
   mode: DrawingMode;
@@ -106,6 +124,10 @@ interface DrawingCanvasProps {
    * false the underlay shows through the mask rects (answer check).
    */
   masksHidden?: boolean;
+  /** Two-finger twist rotates the view (user preference; off by default). */
+  pinchRotateEnabled?: boolean;
+  /** Latest discrete rotation request (keyboard / ▲ tap). */
+  rotationCommand?: RotationCommand | null;
 }
 
 /**
@@ -171,6 +193,8 @@ export function DrawingCanvas({
   underlayEnabled = false,
   masks = EMPTY_MASKS,
   masksHidden = true,
+  pinchRotateEnabled = false,
+  rotationCommand = null,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -247,13 +271,21 @@ export function DrawingCanvas({
     [],
   );
 
-  // Pinch state
+  // Pinch state. Rotation is gated per pinch: the finger twist accumulates in
+  // `twistAccum` until it crosses PINCH_ROTATE_START_THRESHOLD, and only then
+  // (`rotating`) do further twists turn the view — a zoom-only pinch never
+  // tilts the paper. `lastFocal*` (canvas-space) is the snap pivot on release.
   const pinchRef = useRef<{
     id1: number;
     id2: number;
     lastDist: number;
     lastMidX: number;
     lastMidY: number;
+    lastAngle: number;
+    twistAccum: number;
+    rotating: boolean;
+    lastFocalX: number;
+    lastFocalY: number;
   } | null>(null);
   const activeTouchesRef = useRef<Map<number, { x: number; y: number }>>(new Map());
   // Cached canvas rect captured at pinch start; reused each touchmove to avoid
@@ -285,14 +317,16 @@ export function DrawingCanvas({
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     renderer.clear();
 
-    const projected = viewTransformRef.current.project(container, baseScale);
+    // The drawing panel is the one panel that renders the camera rotation
+    // ("rotating the paper"); reference viewers stay upright.
+    const projected = viewTransformRef.current.projectMatrix(container, baseScale, true);
     ctx.setTransform(
-      dpr * projected.scale,
-      0,
-      0,
-      dpr * projected.scale,
-      dpr * projected.offsetX,
-      dpr * projected.offsetY,
+      dpr * projected.a,
+      dpr * projected.b,
+      dpr * projected.c,
+      dpr * projected.d,
+      dpr * projected.e,
+      dpr * projected.f,
     );
 
     // Reference underlay (faint fixed image, bottom layer). World origin ≡
@@ -373,15 +407,29 @@ export function DrawingCanvas({
       renderer.drawStroke(current);
     }
 
-    // Grid + guide lines in canvas (world) coordinate space.
-    const topLeft = viewTransformRef.current.screenToCanvas(0, 0, container, baseScale);
-    const bottomRight = viewTransformRef.current.screenToCanvas(
-      container.width,
-      container.height,
-      container,
-      baseScale,
+    // Grid + guide lines in canvas (world) coordinate space. Under rotation
+    // the visible area is a rotated rect in world space, so pass its
+    // world-axis bounding box as the visible range.
+    const visible = emptyBoundingBox();
+    for (const [sx, sy] of [
+      [0, 0],
+      [container.width, 0],
+      [0, container.height],
+      [container.width, container.height],
+    ]) {
+      extendBoundingBox(
+        visible,
+        viewTransformRef.current.screenToCanvas(sx, sy, container, baseScale, true),
+      );
+    }
+    drawGrid(
+      ctx,
+      grid,
+      { x: visible.minX, y: visible.minY },
+      { x: visible.maxX, y: visible.maxY },
+      projected.scale,
+      GRID_CENTER,
     );
-    drawGrid(ctx, grid, topLeft, bottomRight, projected.scale, GRID_CENTER);
     drawGuideLines(ctx, guideLines, projected.scale);
 
     // Trace feedback (deviation bands) above strokes so the user can see
@@ -514,6 +562,7 @@ export function DrawingCanvas({
         screenY,
         containerSizeRef.current,
         getBaseScale(),
+        true,
       );
     },
     [isFlipped, getBaseScale],
@@ -531,6 +580,101 @@ export function DrawingCanvas({
       redrawAll();
     });
   }, [redrawAll]);
+
+  // Rotation animation (snap on pinch release, ▲ reset, keyboard steps).
+  // Intermediate frames emit 'gesture' (tail-debounced save), the last frame
+  // 'userRotate' (immediate save). `rotationAnimTargetRef` lets a key press
+  // that arrives mid-animation step from where the view is heading, not from
+  // the in-between angle.
+  const rotationAnimRafRef = useRef(0);
+  const rotationAnimTargetRef = useRef<number | null>(null);
+  const cancelRotationAnim = useCallback(() => {
+    if (rotationAnimRafRef.current) {
+      cancelAnimationFrame(rotationAnimRafRef.current);
+      rotationAnimRafRef.current = 0;
+    }
+    rotationAnimTargetRef.current = null;
+  }, []);
+  useEffect(() => cancelRotationAnim, [cancelRotationAnim]);
+
+  /** Animate the rotation to `target` about canvas-space pivot `(pivotX, pivotY)`. */
+  const animateRotationTo = useCallback(
+    (target: number, pivotX: number, pivotY: number) => {
+      cancelRotationAnim();
+      const vt = viewTransformRef.current;
+      const from = vt.getRotation();
+      const delta = shortestAngleDelta(from, target);
+      const finish = () => {
+        rotationAnimRafRef.current = 0;
+        rotationAnimTargetRef.current = null;
+        vt.setRotationAbout(
+          target,
+          pivotX,
+          pivotY,
+          containerSizeRef.current,
+          getBaseScale(),
+          'userRotate',
+        );
+        requestRedraw();
+      };
+      if (delta === 0) {
+        finish();
+        return;
+      }
+      rotationAnimTargetRef.current = target;
+      const start = performance.now();
+      const step = (now: number) => {
+        const t = Math.min(1, (now - start) / ROTATION_ANIM_MS);
+        if (t >= 1) {
+          finish();
+          return;
+        }
+        const eased = 1 - (1 - t) ** 3;
+        vt.setRotationAbout(
+          from + delta * eased,
+          pivotX,
+          pivotY,
+          containerSizeRef.current,
+          getBaseScale(),
+          'gesture',
+        );
+        requestRedraw();
+        rotationAnimRafRef.current = requestAnimationFrame(step);
+      };
+      rotationAnimRafRef.current = requestAnimationFrame(step);
+    },
+    [cancelRotationAnim, getBaseScale, requestRedraw],
+  );
+
+  // Discrete rotation requests (keyboard 4/5/6, navigator ▲ tap). Pivot is
+  // the canvas center. Not gated by pinchRotateEnabled — that switch only
+  // guards against an unintended twist during a pinch; an explicit key press
+  // or tap is always deliberate.
+  const isFlippedRef = useRef(isFlipped);
+  useEffect(() => {
+    isFlippedRef.current = isFlipped;
+  });
+  const animateRotationToRef = useRef(animateRotationTo);
+  useEffect(() => {
+    animateRotationToRef.current = animateRotationTo;
+  });
+  // Seeded with the mount-time seq so a remount (restore gate, panel swap)
+  // doesn't replay a command that was already applied.
+  const handledRotationSeqRef = useRef(rotationCommand?.seq ?? 0);
+  useEffect(() => {
+    if (!rotationCommand || rotationCommand.seq <= handledRotationSeqRef.current) return;
+    handledRotationSeqRef.current = rotationCommand.seq;
+    const container = containerSizeRef.current;
+    const cx = container.width / 2;
+    const cy = container.height / 2;
+    if (rotationCommand.kind === 'reset') {
+      animateRotationToRef.current(0, cx, cy);
+      return;
+    }
+    const from = rotationAnimTargetRef.current ?? viewTransformRef.current.getRotation();
+    const canvasDir = (isFlippedRef.current ? -rotationCommand.dir : rotationCommand.dir) as 1 | -1;
+    animateRotationToRef.current(nextRotationStep(from, canvasDir), cx, cy);
+  }, [rotationCommand]);
 
   // Load the underlay image only while it is wanted; a cached bitmap for the
   // same URL survives toggling off/on without a refetch. Prop changes
@@ -783,6 +927,7 @@ export function DrawingCanvas({
           0,
           container,
           baseScale,
+          { rotated: true },
         );
       } else {
         // Pan — flip horizontal delta when flipped
@@ -795,6 +940,7 @@ export function DrawingCanvas({
           -e.deltaY,
           container,
           baseScale,
+          { rotated: true },
         );
       }
 
@@ -974,19 +1120,30 @@ export function DrawingCanvas({
           }
         }
 
+        // The fingers take over the camera: stop any snap/reset animation.
+        cancelRotationAnim();
+
         const ids = Array.from(activeTouchesRef.current.keys());
         const t1 = activeTouchesRef.current.get(ids[0])!;
         const t2 = activeTouchesRef.current.get(ids[1])!;
         const dx = t2.x - t1.x;
         const dy = t2.y - t1.y;
+        const rect = canvasRef.current!.getBoundingClientRect();
+        const midX = (t1.x + t2.x) / 2;
+        const midY = (t1.y + t2.y) / 2;
         pinchRef.current = {
           id1: ids[0],
           id2: ids[1],
           lastDist: Math.sqrt(dx * dx + dy * dy),
-          lastMidX: (t1.x + t2.x) / 2,
-          lastMidY: (t1.y + t2.y) / 2,
+          lastMidX: midX,
+          lastMidY: midY,
+          lastAngle: Math.atan2(dy, dx),
+          twistAccum: 0,
+          rotating: false,
+          lastFocalX: isFlipped ? rect.right - midX : midX - rect.left,
+          lastFocalY: midY - rect.top,
         };
-        pinchRectRef.current = canvasRef.current!.getBoundingClientRect();
+        pinchRectRef.current = rect;
         return;
       }
 
@@ -1031,6 +1188,8 @@ export function DrawingCanvas({
       syncActiveTouchesFromEvent,
       clearStalePinchAfterTouchSync,
       noteTouch,
+      cancelRotationAnim,
+      isFlipped,
     ],
   );
 
@@ -1066,10 +1225,28 @@ export function DrawingCanvas({
           focalX = rect.width - focalX;
         }
 
-        const scaleDelta = dist / pinchRef.current.lastDist;
-        const rawTranslateX = midX - pinchRef.current.lastMidX;
+        const pinch = pinchRef.current;
+        const scaleDelta = dist / pinch.lastDist;
+        const rawTranslateX = midX - pinch.lastMidX;
         const translateX = isFlipped ? -rawTranslateX : rawTranslateX;
-        const translateY = midY - pinchRef.current.lastMidY;
+        const translateY = midY - pinch.lastMidY;
+
+        // Finger twist since the last move (screen direction). Canvas-space
+        // rotation is mirrored while flipped, like the X translation above.
+        const angle = Math.atan2(dy, dx);
+        const twist = shortestAngleDelta(pinch.lastAngle, angle);
+        pinch.lastAngle = angle;
+        let rotationDelta = 0;
+        if (pinchRotateEnabled) {
+          if (pinch.rotating) {
+            rotationDelta = screenToCanvasRotation(twist, isFlipped ?? false);
+          } else {
+            pinch.twistAccum += twist;
+            if (Math.abs(pinch.twistAccum) >= PINCH_ROTATE_START_THRESHOLD) {
+              pinch.rotating = true;
+            }
+          }
+        }
 
         viewTransformRef.current.applyGesture(
           focalX,
@@ -1079,11 +1256,14 @@ export function DrawingCanvas({
           translateY,
           containerSizeRef.current,
           getBaseScale(),
+          { rotated: true, rotationDelta },
         );
 
-        pinchRef.current.lastDist = dist;
-        pinchRef.current.lastMidX = midX;
-        pinchRef.current.lastMidY = midY;
+        pinch.lastDist = dist;
+        pinch.lastMidX = midX;
+        pinch.lastMidY = midY;
+        pinch.lastFocalX = focalX + translateX;
+        pinch.lastFocalY = focalY + translateY;
 
         requestRedraw();
         return;
@@ -1125,6 +1305,7 @@ export function DrawingCanvas({
       getBaseScale,
       advanceErasePending,
       noteTouch,
+      pinchRotateEnabled,
     ],
   );
 
@@ -1140,14 +1321,18 @@ export function DrawingCanvas({
         activeTouchesRef.current.delete(touch.identifier);
       }
 
-      // Clear pinch if one of the pinch fingers lifted
+      // Clear pinch if one of the pinch fingers lifted. A pinch that actually
+      // rotated settles onto a nearby 90° position (snap) about where the
+      // fingers were. touchcancel skips the snap — the system took the touch.
       if (pinchRef.current) {
-        if (
-          !activeTouchesRef.current.has(pinchRef.current.id1) ||
-          !activeTouchesRef.current.has(pinchRef.current.id2)
-        ) {
+        const pinch = pinchRef.current;
+        if (!activeTouchesRef.current.has(pinch.id1) || !activeTouchesRef.current.has(pinch.id2)) {
           pinchRef.current = null;
           pinchRectRef.current = null;
+          if (pinch.rotating && e.type !== 'touchcancel') {
+            const target = snapRotationTarget(viewTransformRef.current.getRotation());
+            if (target !== null) animateRotationTo(target, pinch.lastFocalX, pinch.lastFocalY);
+          }
         }
       }
 
@@ -1191,6 +1376,7 @@ export function DrawingCanvas({
       cancelLasso,
       onStrokeFinalized,
       noteTouch,
+      animateRotationTo,
     ],
   );
 

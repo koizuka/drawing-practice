@@ -2,6 +2,7 @@ import { render, fireEvent, cleanup, act } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DrawingCanvas, UNDERLAY_ALPHA, type DrawingMode } from './DrawingCanvas';
 import { StrokeManager } from '../drawing/StrokeManager';
+import { ViewTransform } from '../drawing/ViewTransform';
 import type { GridSettings } from '../guides/types';
 
 const grid: GridSettings = { mode: 'none' };
@@ -693,5 +694,136 @@ describe('DrawingCanvas reference underlay', () => {
       (c) => c.name === 'fillRect' && MASKS.some((m) => c.args[0] === m.x && c.args[1] === m.y),
     );
     expect(maskFills).toHaveLength(0);
+  });
+});
+
+describe('DrawingCanvas pinch rotation', () => {
+  const deg = (d: number) => (d * Math.PI) / 180;
+  function finger(identifier: number, clientX: number, clientY: number): Touch {
+    return { identifier, clientX, clientY, touchType: 'direct' } as Touch & { touchType: string };
+  }
+  // Two fingers 100px apart, centered on the canvas center (200,150), with
+  // the line between them at `angleDeg` — a pure twist (no zoom / pan).
+  function fingersAt(angleDeg: number): Touch[] {
+    const a = deg(angleDeg);
+    const dx = 50 * Math.cos(a);
+    const dy = 50 * Math.sin(a);
+    return [finger(1, 200 - dx, 150 - dy), finger(2, 200 + dx, 150 + dy)];
+  }
+
+  let rafQueue: FrameRequestCallback[];
+  beforeEach(() => {
+    rafQueue = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      rafQueue.push(cb);
+      return rafQueue.length;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  });
+  /** Run queued frames as if `ms` had elapsed (enough to finish any rotation animation). */
+  function flushFrames(ms = 1000) {
+    const now = performance.now() + ms;
+    for (let i = 0; i < 10 && rafQueue.length > 0; i++) {
+      const q = rafQueue;
+      rafQueue = [];
+      for (const cb of q) cb(now);
+    }
+  }
+
+  function renderRotatable(pinchRotateEnabled: boolean, isFlipped = false) {
+    const vt = new ViewTransform();
+    const view = render(
+      <DrawingCanvas
+        mode="pen"
+        highlightedStrokeIndex={null}
+        onHighlightStroke={vi.fn()}
+        onStrokeCountChange={vi.fn()}
+        strokeManager={new StrokeManager()}
+        redrawVersion={0}
+        viewResetVersion={0}
+        grid={grid}
+        guideLines={[]}
+        guideVersion={0}
+        viewTransform={vt}
+        pinchRotateEnabled={pinchRotateEnabled}
+        isFlipped={isFlipped}
+      />,
+    );
+    return { vt, canvas: view.container.querySelector('canvas')!, rerender: view.rerender };
+  }
+
+  function twist(canvas: HTMLCanvasElement, angles: number[]) {
+    fireEvent.touchStart(canvas, { touches: fingersAt(0), changedTouches: fingersAt(0) });
+    for (const a of angles) {
+      fireEvent.touchMove(canvas, { touches: fingersAt(a), changedTouches: fingersAt(a) });
+    }
+  }
+  function release(canvas: HTMLCanvasElement, angle: number) {
+    const [f1, f2] = fingersAt(angle);
+    fireEvent.touchEnd(canvas, { touches: [f1], changedTouches: [f2] });
+    fireEvent.touchEnd(canvas, { touches: [], changedTouches: [f1] });
+  }
+
+  it('does not rotate while the switch is off', () => {
+    const { vt, canvas } = renderRotatable(false);
+    twist(canvas, [20, 40, 60]);
+    release(canvas, 60);
+    flushFrames();
+    expect(vt.getRotation()).toBe(0);
+  });
+
+  it('ignores twists below the start threshold, then follows the fingers', () => {
+    const { vt, canvas } = renderRotatable(true);
+    twist(canvas, [5, 8]);
+    expect(vt.getRotation()).toBe(0);
+    // Crossing 10° engages rotation; later twists turn the view.
+    twist(canvas, [12, 40]);
+    expect(vt.getRotation()).toBeCloseTo(deg(28));
+    release(canvas, 40);
+    flushFrames();
+    // 28° is not near a 90° position — no snap.
+    expect(vt.getRotation()).toBeCloseTo(deg(28));
+  });
+
+  it('snaps to the nearest 90° on release when within 5°', () => {
+    const { vt, canvas } = renderRotatable(true);
+    twist(canvas, [12, 12 + 87]);
+    expect(vt.getRotation()).toBeCloseTo(deg(87));
+    release(canvas, 99);
+    flushFrames();
+    expect(vt.getRotation()).toBeCloseTo(deg(90));
+  });
+
+  it('a twist while flipped rotates the canvas the mirrored way', () => {
+    const { vt, canvas } = renderRotatable(true, true);
+    twist(canvas, [12, 42]);
+    expect(vt.getRotation()).toBeCloseTo(deg(-30));
+  });
+
+  it('rotation commands step on the 15° grid and reset upright, even with the switch off', () => {
+    const { vt, rerender } = renderRotatable(false);
+    const props = {
+      mode: 'pen' as const,
+      highlightedStrokeIndex: null,
+      onHighlightStroke: vi.fn(),
+      onStrokeCountChange: vi.fn(),
+      strokeManager: new StrokeManager(),
+      redrawVersion: 0,
+      viewResetVersion: 0,
+      grid,
+      guideLines: [],
+      guideVersion: 0,
+      viewTransform: vt,
+    };
+    rerender(<DrawingCanvas {...props} rotationCommand={{ seq: 1, kind: 'step', dir: 1 }} />);
+    flushFrames();
+    expect(vt.getRotation()).toBeCloseTo(deg(15));
+    rerender(<DrawingCanvas {...props} rotationCommand={{ seq: 2, kind: 'step', dir: 1 }} />);
+    flushFrames();
+    expect(vt.getRotation()).toBeCloseTo(deg(30));
+    rerender(<DrawingCanvas {...props} rotationCommand={{ seq: 3, kind: 'reset' }} />);
+    flushFrames();
+    expect(vt.getRotation()).toBe(0);
+    expect(vt.isDirty()).toBe(false);
   });
 });
