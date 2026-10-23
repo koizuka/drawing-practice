@@ -711,21 +711,25 @@ describe('DrawingCanvas pinch rotation', () => {
     return [finger(1, 200 - dx, 150 - dy), finger(2, 200 + dx, 150 + dy)];
   }
 
-  let rafQueue: FrameRequestCallback[];
+  let rafQueue: Map<number, FrameRequestCallback>;
+  let rafSeq: number;
   beforeEach(() => {
-    rafQueue = [];
+    rafQueue = new Map();
+    rafSeq = 0;
     vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
-      rafQueue.push(cb);
-      return rafQueue.length;
+      rafQueue.set(++rafSeq, cb);
+      return rafSeq;
     });
-    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id) => {
+      rafQueue.delete(id);
+    });
   });
   /** Run queued frames as if `ms` had elapsed (enough to finish any rotation animation). */
   function flushFrames(ms = 1000) {
     const now = performance.now() + ms;
-    for (let i = 0; i < 10 && rafQueue.length > 0; i++) {
-      const q = rafQueue;
-      rafQueue = [];
+    for (let i = 0; i < 10 && rafQueue.size > 0; i++) {
+      const q = [...rafQueue.values()];
+      rafQueue.clear();
       for (const cb of q) cb(now);
     }
   }
@@ -776,8 +780,11 @@ describe('DrawingCanvas pinch rotation', () => {
     const { vt, canvas } = renderRotatable(true);
     twist(canvas, [5, 8]);
     expect(vt.getRotation()).toBe(0);
-    // Crossing 10° engages rotation; later twists turn the view.
-    twist(canvas, [12, 40]);
+    // Same touch session: the twist accumulates, crossing 10° at 12° engages
+    // rotation, and later twists turn the view.
+    for (const a of [12, 40]) {
+      fireEvent.touchMove(canvas, { touches: fingersAt(a), changedTouches: fingersAt(a) });
+    }
     expect(vt.getRotation()).toBeCloseTo(deg(28));
     release(canvas, 40);
     flushFrames();
@@ -792,6 +799,32 @@ describe('DrawingCanvas pinch rotation', () => {
     release(canvas, 99);
     flushFrames();
     expect(vt.getRotation()).toBeCloseTo(deg(90));
+  });
+
+  it('a third finger joining keeps the engaged rotation and the release snap', () => {
+    const { vt, canvas } = renderRotatable(true);
+    twist(canvas, [12, 12 + 50]);
+    expect(vt.getRotation()).toBeCloseTo(deg(50));
+    const [f1, f2] = fingersAt(62);
+    const f3 = finger(3, 20, 20);
+    fireEvent.touchStart(canvas, { touches: [f1, f2, f3], changedTouches: [f3] });
+    // Still rotating after the extra finger: twist on to 12+87 → 87°.
+    fireEvent.touchMove(canvas, { touches: fingersAt(99), changedTouches: fingersAt(99) });
+    expect(vt.getRotation()).toBeCloseTo(deg(87));
+    fireEvent.touchEnd(canvas, { touches: fingersAt(99), changedTouches: [f3] });
+    release(canvas, 99);
+    flushFrames();
+    expect(vt.getRotation()).toBeCloseTo(deg(90));
+  });
+
+  it('a reset during the snap animation wins over the pending frames', () => {
+    const { vt, canvas } = renderRotatable(true);
+    twist(canvas, [12, 12 + 87]);
+    release(canvas, 99);
+    // Animation queued (target 90°); the user resets before it runs.
+    act(() => vt.userResetToHome());
+    flushFrames();
+    expect(vt.getRotation()).toBe(0);
   });
 
   it('a twist while flipped rotates the canvas the mirrored way', () => {

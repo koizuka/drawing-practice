@@ -241,11 +241,10 @@ export function DrawingPanel({
     [requestRotation],
   );
   const handleTogglePinchRotate = useCallback(() => {
-    setPinchRotateEnabled((prev) => {
-      persistPinchRotateEnabled(!prev);
-      return !prev;
-    });
-  }, []);
+    const next = !pinchRotateEnabled;
+    persistPinchRotateEnabled(next);
+    setPinchRotateEnabled(next);
+  }, [pinchRotateEnabled]);
   const [showGallery, setShowGallery] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);

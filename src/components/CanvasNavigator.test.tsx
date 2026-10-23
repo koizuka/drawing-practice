@@ -83,6 +83,31 @@ describe('CanvasNavigator', () => {
     expect(screen.getByRole('button', { name: t('resetRotation') })).toBeTruthy();
   });
 
+  it('a sub-degree tilt reads 0° but is not marked upright', () => {
+    const vt = new ViewTransform();
+    renderNavigator(vt);
+    act(() => {
+      vt.applyGesture(200, 150, 1, 0, 0, C, 1, { rotated: true, rotationDelta: deg(0.3) });
+    });
+    expect(screen.getByText('0°')).toBeTruthy();
+    expect(screen.queryByText(new RegExp(t('viewUpright')))).toBeNull();
+  });
+
+  it('keeps the ▲ up while the disc lingers after a reset lands at home', () => {
+    const vt = new ViewTransform();
+    vt.restoreCamera(0, 0, 1, deg(30));
+    renderNavigator(vt);
+    act(() => {
+      vt.setRotationAbout(0, 200, 150, C, 1, 'userRotate');
+    });
+    expect(vt.isDirty()).toBe(false);
+    expect(screen.getByRole('button', { name: t('resetRotation') })).toBeTruthy();
+    act(() => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect(screen.queryByRole('button', { name: t('resetRotation') })).toBeNull();
+  });
+
   it('marks the upright state and the flip', () => {
     const vt = new ViewTransform();
     renderNavigator(vt, true);

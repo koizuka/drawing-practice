@@ -69,7 +69,7 @@ export function CanvasNavigator({
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [container, setContainer] = useState({ width: 0, height: 0 });
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const [active, setActive] = useState(false);
   const [pulseKey, setPulseKey] = useState(0);
   const lingerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -135,13 +135,20 @@ export function CanvasNavigator({
 
   const ready = container.width > 0 && container.height > 0;
   const baseScale = computeBaseScale(container, fitSize);
-  const matrix = viewTransform.projectMatrix(container, baseScale, true);
-  const upAngle = worldUpScreenAngle(matrix, isFlipped);
+  const upAngle = worldUpScreenAngle(
+    viewTransform.projectMatrix(container, baseScale, true),
+    isFlipped,
+  );
   const degrees = displayRotationDegrees(viewTransform.getRotation(), isFlipped);
-  const upright = degrees === 0;
+  // Upright is the EXACT state (only snaps / key steps / resets land on it),
+  // not the rounded readout — a 0.3° tilt reads "0°" but must not go green.
+  const upright = viewTransform.getRotation() === 0;
   const dirty = viewTransform.isDirty();
   const showDisc = ready && active;
 
+  // Redraw only when something the map shows changed: camera (`tick`),
+  // layout, strokes, reference size or flip. Without deps this ran after
+  // every parent render (e.g. the timer's 1s tick) and re-walked all strokes.
   useEffect(() => {
     if (!showDisc) return;
     const canvas = canvasRef.current;
@@ -154,7 +161,10 @@ export function CanvasNavigator({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
     const { width: W, height: H } = container;
+    const matrix = viewTransform.projectMatrix(container, baseScale, true);
     const toScreen = makeWorldToScreen(matrix, W, isFlipped);
+    const markerAngle = worldUpScreenAngle(matrix, isFlipped);
+    const markerUpright = viewTransform.getRotation() === 0;
 
     const anchors: Point[] = [{ x: 0, y: 0 }];
     const { bbox, stride } = strokeSummary;
@@ -263,16 +273,26 @@ export function CanvasNavigator({
     // World-up marker on the rim, pointing outward.
     ctx.save();
     ctx.translate(half, half);
-    ctx.rotate(upAngle);
+    ctx.rotate(markerAngle);
     ctx.beginPath();
     ctx.moveTo(0, -half + 2);
     ctx.lineTo(-5, -half + 10);
     ctx.lineTo(5, -half + 10);
     ctx.closePath();
-    ctx.fillStyle = upright ? UPRIGHT_COLOR : TILTED_COLOR;
+    ctx.fillStyle = markerUpright ? UPRIGHT_COLOR : TILTED_COLOR;
     ctx.fill();
     ctx.restore();
-  });
+  }, [
+    showDisc,
+    tick,
+    container,
+    baseScale,
+    fitSize,
+    isFlipped,
+    viewTransform,
+    strokeManager,
+    strokeSummary,
+  ]);
 
   const label = upright ? `✓ ${t('viewUpright')}` : `${degrees > 0 ? '+' : ''}${degrees}°`;
 
@@ -282,7 +302,9 @@ export function CanvasNavigator({
       sx={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 4 }}
       data-testid="canvas-navigator"
     >
-      {dirty && (
+      {/* Also kept up while the disc lingers, so a reset that lands fully at
+          home still shows the upright pulse before the ▲ goes away. */}
+      {(dirty || showDisc) && (
         <Box
           component="button"
           type="button"

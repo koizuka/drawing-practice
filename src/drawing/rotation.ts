@@ -6,8 +6,8 @@
  * Convention: radians, normalized to (-π, π], positive = clockwise in canvas
  * space (y-down). The drawing panel's horizontal flip mirrors the canvas via
  * CSS, so a canvas-space rotation reads as the opposite direction on screen —
- * callers that deal in *screen* directions (finger angle, ←/→ keys, the
- * degree readout) convert with {@link screenToCanvasRotation}.
+ * callers that deal in *screen* directions (finger twist, the 4 / 6 keys,
+ * the degree readout) convert with {@link screenToCanvasRotation}.
  */
 import { normalizeRotation } from './ViewTransform';
 

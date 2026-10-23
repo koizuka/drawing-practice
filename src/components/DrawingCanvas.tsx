@@ -596,6 +596,17 @@ export function DrawingCanvas({
     rotationAnimTargetRef.current = null;
   }, []);
   useEffect(() => cancelRotationAnim, [cancelRotationAnim]);
+  // A reset / content load / restore that lands mid-animation wins: without
+  // this the next frame would re-apply the stale target over it.
+  useEffect(
+    () =>
+      viewTransformRef.current.subscribe((intent) => {
+        if (intent === 'userReset' || intent === 'contentLoad' || intent === 'restore') {
+          cancelRotationAnim();
+        }
+      }),
+    [cancelRotationAnim],
+  );
 
   /** Animate the rotation to `target` about canvas-space pivot `(pivotX, pivotY)`. */
   const animateRotationTo = useCallback(
@@ -1120,6 +1131,17 @@ export function DrawingCanvas({
           }
         }
 
+        // An extra finger joining a live pinch keeps it (and its rotation
+        // engagement) instead of re-arming from scratch.
+        const live = pinchRef.current;
+        if (
+          live &&
+          activeTouchesRef.current.has(live.id1) &&
+          activeTouchesRef.current.has(live.id2)
+        ) {
+          return;
+        }
+
         // The fingers take over the camera: stop any snap/reset animation.
         cancelRotationAnim();
 
@@ -1262,8 +1284,10 @@ export function DrawingCanvas({
         pinch.lastDist = dist;
         pinch.lastMidX = midX;
         pinch.lastMidY = midY;
-        pinch.lastFocalX = focalX + translateX;
-        pinch.lastFocalY = focalY + translateY;
+        // focal is already the current midpoint (the gesture moved the
+        // world point from the previous midpoint onto it).
+        pinch.lastFocalX = focalX;
+        pinch.lastFocalY = focalY;
 
         requestRedraw();
         return;
