@@ -42,7 +42,7 @@ jobs:
               - 'tsconfig*.json'
               - '.oxlintrc.json'
               - '.oxfmtrc.json'
-              - '.nvmrc'
+              - '.node-version'
               - '.github/workflows/test.yml'
 
   build:
@@ -55,11 +55,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            .nvmrc
+            .node-version
 
       - run: npm ci
       - name: Build
@@ -84,11 +84,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            .nvmrc
+            .node-version
 
       - run: npm ci
       - run: npm run lint
@@ -103,11 +103,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            .nvmrc
+            .node-version
 
       - run: npm ci
       - run: npm run test
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version-file: .nvmrc
+          node-version-file: .node-version
 
       # Report-only: this job never fails CI. `--package-lock-only` audits
       # straight from the lockfile (no install). The decision comes from the

@@ -101,8 +101,8 @@ drawing-practice の状況：✅ 全 Action を SHA 固定。✅ `permissions` �
   Actions の Summary は見落とされやすい。検出時のみ PR にスティッキーコメント
   を投稿すると気づきやすい（`actions/github-script` で実装、マーカーで重複防止
   し解消時は削除。実例は drawing-practice の `test.yml` の `audit` ジョブ）。
-- ☐ **Node バージョンを固定**する。`.nvmrc` を単一の真実とし、CI の
-  `setup-node` は `node-version-file: .nvmrc` で参照する（数値の二重管理を
+- ☐ **Node バージョンを固定**する。`.node-version` を単一の真実とし、CI の
+  `setup-node` は `node-version-file: .node-version` で参照する（数値の二重管理を
   避ける）。`package.json` の `engines` には依存が要求する下限を書く。
 - ☐ **ライフサイクルスクリプトを点検**する。`postinstall` / `preinstall` /
   `prepare` は `npm install` 時に任意コードを実行する。直接・推移依存に
@@ -118,7 +118,7 @@ drawing-practice の状況：✅ 全 Action を SHA 固定。✅ `permissions` �
 - ☐ 依存追加時はパッケージ名のタイポスクワッティングに注意（`crossenv` 等）。
 
 drawing-practice の状況：✅ lockfile コミット＆`npm ci`。✅ Dependabot
-`cooldown: 7`。✅ CI に `audit` ジョブ追加（report-only）。✅ `.nvmrc`（CI も
+`cooldown: 7`。✅ CI に `audit` ジョブ追加（report-only）。✅ `.node-version`（CI も
 `node-version-file` で参照）+ `engines: >=22.12.0`。✅ postinstall 等なし。
 
 ---
