@@ -18,7 +18,7 @@
     "@emotion/styled": "^11.14.1",
     "@mui/material": "^9.5.0",
     "@pixiv/three-vrm": "^3.5.5",
-    "dexie": "^4.4.6",
+    "dexie": "^4.4.7",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
