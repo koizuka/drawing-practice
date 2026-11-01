@@ -6,6 +6,9 @@ on:
 
 permissions:
   contents: write
+  # pr-preview-action v1.1.2+ looks up the state of every PR that has a
+  # preview directory; without this, lookups 403 and stale previews pile up.
+  pull-requests: read
 
 concurrency:
   group: pr-preview-cleanup
