@@ -4,7 +4,7 @@ import type { DraftData } from '../storage/sessionStore';
 import type { Stroke } from '../drawing/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
-import { isDefaultLayerState, type LayerState } from '../drawing/layers';
+import { docStateForStorage, hasStoredDocFields, type DocSnapshot } from '../drawing/docState';
 
 const DEBOUNCE_MS = 2000;
 
@@ -24,8 +24,8 @@ interface AutosaveState {
   flipped: boolean;
   underlayEnabled: boolean;
   gallerySaveDirty: boolean;
-  /** Absent / default single layer ⇒ not written (pre-layer draft shape). */
-  layerState?: LayerState;
+  /** Layers + frames. Parts at their default are not written (pre-layer draft shape). */
+  docState?: DocSnapshot;
 }
 
 export function useAutosave(
@@ -46,7 +46,8 @@ export function useAutosave(
     const state = getStateRef.current();
     const hasStrokes = state.strokes.length > 0;
     const hasReference = state.source !== 'none';
-    const hasLayers = !!state.layerState && !isDefaultLayerState(state.layerState);
+    const docFields = docStateForStorage(state.docState);
+    const hasLayers = hasStoredDocFields(docFields);
 
     // Persist a draft if the user has any in-progress signal — strokes, an
     // active reference, a layer setup, or a non-default layout (collapsed = free-drawing mode
@@ -77,12 +78,7 @@ export function useAutosave(
       flipped: state.flipped,
       underlayEnabled: state.underlayEnabled,
       gallerySaveDirty: state.gallerySaveDirty,
-      ...(state.layerState && !isDefaultLayerState(state.layerState)
-        ? {
-            layers: state.layerState.layers.map((l) => ({ ...l })),
-            activeLayerId: state.layerState.activeLayerId,
-          }
-        : {}),
+      ...docFields,
     };
 
     await saveDraft(data);

@@ -13,6 +13,11 @@ export interface Stroke {
    * default layer, so pre-layer data and single-layer drawings are unchanged.
    */
   layerId?: string;
+  /**
+   * Animation frame this stroke belongs to (see src/drawing/frames.ts).
+   * Absent ≡ the default frame; ignored for strokes on a `shared` layer.
+   */
+  frameId?: string;
 }
 
 /**

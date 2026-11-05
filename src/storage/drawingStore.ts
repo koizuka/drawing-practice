@@ -2,7 +2,7 @@ import { db, type DrawingRecord, COORD_VERSION_CURRENT } from './db';
 import type { Stroke } from '../drawing/types';
 import { quantizeStroke } from '../drawing/quantize';
 import type { ReferenceInfo } from '../types';
-import { isDefaultLayerState, type LayerState } from '../drawing/layers';
+import { docStateForStorage, type DocSnapshot } from '../drawing/docState';
 
 /**
  * Snap coordinates to 0.1px and drop collapsed points. Strokes coming from
@@ -19,15 +19,13 @@ export async function saveDrawing(
   thumbnail: string,
   reference: ReferenceInfo | null,
   elapsedMs: number,
-  layerState?: LayerState,
+  doc?: DocSnapshot,
 ): Promise<number> {
   const id = await db.drawings.add({
     strokes: quantizeStrokesForStorage(strokes),
-    // Single default layer ⇒ omit, so plain drawings stay byte-identical to
-    // pre-layer records.
-    ...(layerState && !isDefaultLayerState(layerState)
-      ? { layers: layerState.layers.map((l) => ({ ...l })) }
-      : {}),
+    // Default layer / frame state ⇒ omitted, so plain drawings stay
+    // byte-identical to pre-layer records.
+    ...docStateForStorage(doc),
     thumbnail,
     referenceInfo: reference?.title ?? '',
     reference: reference ?? undefined,

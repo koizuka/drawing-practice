@@ -1,6 +1,7 @@
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
 import { renderItemsForStoredDrawing, type Layer } from '../drawing/layers';
+import type { FrameView } from '../drawing/frames';
 
 const THUMBNAIL_SIZE = 200;
 
@@ -12,8 +13,10 @@ const THUMBNAIL_SIZE = 200;
 export function generateThumbnail(
   allStrokes: readonly Stroke[],
   layers?: readonly Layer[],
+  /** Animation: render this frame only (omit for single-frame drawings). */
+  frameView?: FrameView,
 ): string {
-  const items = renderItemsForStoredDrawing(allStrokes, layers);
+  const items = renderItemsForStoredDrawing(allStrokes, layers, frameView);
   const strokes = items.map((it) => it.stroke);
   if (strokes.length === 0) return '';
 

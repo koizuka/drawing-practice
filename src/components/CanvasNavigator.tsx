@@ -39,6 +39,12 @@ interface CanvasNavigatorProps {
   isFlipped: boolean;
   /** Bumped whenever the committed stroke set changes (DrawingPanel's redrawVersion). */
   contentVersion: number;
+  /**
+   * Animation frame to overview — the DISPLAYED frame (playback position while
+   * playing), which can differ from the manager's current frame. Absent ⇒
+   * the current frame.
+   */
+  frameId?: string;
   /** Rotate back upright (the ▲ tap). */
   onResetRotation: () => void;
   /** Top offset (CSS px) so the widget clears other top-right overlays. */
@@ -64,6 +70,7 @@ export function CanvasNavigator({
   fitSize,
   isFlipped,
   contentVersion,
+  frameId,
   onResetRotation,
   top = 8,
 }: CanvasNavigatorProps) {
@@ -121,7 +128,11 @@ export function CanvasNavigator({
   // Stroke bbox + subsampling stride, recomputed only when strokes change.
   const strokeSummary = useMemo(() => {
     void contentVersion;
-    const strokes = visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers());
+    const strokes = visibleStrokes(
+      strokeManager.getStrokes(),
+      strokeManager.getLayers(),
+      strokeManager.getFrameView(frameId),
+    );
     const bb = emptyBoundingBox();
     let total = 0;
     for (const s of strokes) {
@@ -132,7 +143,7 @@ export function CanvasNavigator({
       bbox: total > 0 ? bb : null,
       stride: Math.max(1, Math.ceil(total / STROKE_POINT_BUDGET)),
     };
-  }, [strokeManager, contentVersion]);
+  }, [strokeManager, contentVersion, frameId]);
 
   const ready = container.width > 0 && container.height > 0;
   const baseScale = computeBaseScale(container, fitSize);
@@ -229,7 +240,11 @@ export function CanvasNavigator({
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.beginPath();
-    for (const s of visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers())) {
+    for (const s of visibleStrokes(
+      strokeManager.getStrokes(),
+      strokeManager.getLayers(),
+      strokeManager.getFrameView(frameId),
+    )) {
       const pts = s.points;
       if (pts.length === 0) continue;
       const first = toNav(pts[0]);
@@ -293,6 +308,7 @@ export function CanvasNavigator({
     viewTransform,
     strokeManager,
     strokeSummary,
+    frameId,
   ]);
 
   const label = upright ? `✓ ${t('viewUpright')}` : `${degrees > 0 ? '+' : ''}${degrees}°`;

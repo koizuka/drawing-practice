@@ -4,22 +4,22 @@
 
 Two workflows want strokes grouped and shown independently:
 
-1. **Draft → ink (this change, phase 1)**: rough lines on a faint blue layer,
+1. **Draft → ink (phase 1, PR #408)**: rough lines on a faint blue layer,
    clean lines on top, then hide the draft and save — the thumbnail / export
    show only the ink, while the record keeps the draft so it stays
    re-editable.
-2. **Line animation (phase 2, planned)**: frames × layers. A second,
-   orthogonal per-stroke attribute (`frame`) plus onion skin / filmstrip /
-   playback. Phase 1 deliberately keeps the model open for that axis — see
-   "Phase 2" below.
+2. **Line animation (phase 2)**: frames × layers. A second, orthogonal
+   per-stroke attribute (`frameId`) plus onion skin / filmstrip / playback —
+   see "Frames" below.
 
 ## Data model (`src/drawing/layers.ts`)
 
 ```ts
 type LayerColor = 'ink' | 'blue' | 'red';
-interface Layer { id; name; visible; opacity /* 0.1–1 */; locked; color }
+interface Layer { id; name; visible; opacity /* 0.1–1 */; locked; color; shared?: boolean }
 interface LayerState { layers: Layer[] /* bottom → top, never empty */; activeLayerId }
-interface Stroke { points; timestamp; layerId?: string }
+interface Stroke { points; timestamp; layerId?: string; frameId?: string }
+// `shared` and `frameId` belong to the animation axis — see "Frames" below.
 ```
 
 - **One chronological stroke array** stays in `StrokeManager`. A stroke only
@@ -111,13 +111,98 @@ and delete-layer with in-place ✓/✗ confirm; deleting an empty layer skips th
 confirm). Slider drag / typing use the debounced autosave; discrete edits
 flush.
 
-## Phase 2 (animation) — planned
+## Frames (phase 2 — line animation)
 
-- `Stroke.frame?: number` (absent ≡ 0), `Layer.animated?: boolean` (false ⇒
-  shown on every frame, e.g. background), session `frameCount` / `fps` / onion
-  settings.
-- Render filter = layer visible ∧ (¬animated ∨ frame = current); onion skin =
-  ±N frames of animated layers in red/blue at low alpha.
-- Editable additionally requires `frame === currentFrame` for animated layers.
-- Frame insert / delete / duplicate need undo entries (renumber `frame`).
-- Filmstrip + scrub bar + play/pause at the bottom of the drawing panel.
+### Model (`src/drawing/frames.ts`)
+
+```ts
+interface FrameState { frames: string[] /* playback order, never empty */; currentFrameId; fps }
+interface Stroke { …; frameId?: string }   // absent ≡ DEFAULT_FRAME_ID ('frame-0')
+interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (background)
+```
+
+- Frames are **stable ids**, not indices. The plan originally said
+  `frame: number`, but insert / reorder / delete would then have to renumber
+  strokes, and undo entries hold references to stroke objects — mutating or
+  replacing them would desync history. With ids, frame edits only touch the
+  `frames` list (plus the strokes being added / removed).
+- Ids come from a monotonic `frameSeq` (same reason as `layerSeq`).
+- `resolveFrameId(stroke, frames)`: a stroke whose frame no longer exists
+  resolves to the first frame (only reachable via a shared→per-frame toggle
+  after a frame delete), so nothing becomes unreachable.
+- **Visible on frame F** = layer visible ∧ (layer.shared ∨ resolveFrameId = F)
+  — `isStrokeInFrame`, applied by `orderStrokesForRender(…, frameView)`.
+- **Editable** (erase tap, lasso, `clearLayer`) = the stroke is on the
+  active layer ∧ that layer is visible and unlocked ∧ the stroke is visible
+  on the current frame (shared layers: any frame).
+- `startStroke` records the current frame, or the `SHARED_FRAME_ID` marker
+  when the active layer is shared. Turning sharing OFF moves exactly the
+  marker-tagged strokes onto the current frame (mutated in place so undo
+  entries holding the same objects stay consistent); without the marker they
+  would be indistinguishable from frame-0 strokes and would vanish from the
+  frame being viewed.
+- Selecting a frame bumps gallery-dirty (not undoable): the thumbnail /
+  export of a save show the current frame, so a different frame is a
+  different save.
+- `MAX_FRAMES = 120`, fps ∈ {4, 6, 8, 12, 24} (default 8).
+
+### Undo
+
+- `frame-add` (empty, or duplicate carrying fresh-timestamp copies of the
+  current frame's per-frame strokes) and `frame-delete` (frame + its
+  per-frame strokes with array indices; shared-layer strokes survive) are
+  undo entries, same shape on both stacks. Tentative-clear commit and
+  `discardStrokes` filter their stroke lists like `layer-delete`.
+- Selecting a frame is not undoable but bumps gallery-dirty (see above);
+  reorder and fps are non-undoable settings that bump gallery-dirty too.
+
+### Rendering
+
+- `DrawingCanvas` renders `strokeManager.getFrameView(playbackFrameId ?? current)`.
+- Onion skin (`onionSkinItems`): per-frame, visible layers' strokes on ±N
+  neighbor frames — earlier warm red, later green, nearest ~35% alpha fading
+  out, multiplied by the layer's opacity; ordered farther frames first, then
+  layer z-order, then chronological — drawn under the current frame. Shared layers are never onioned
+  (they're already on screen). Off during playback.
+- Thumbnail / export / overlay compare use the current frame (record:
+  `currentFrameId`); `CanvasNavigator` uses the DISPLAYED frame (the playback
+  position while playing). GIF / sheet export is phase 3.
+
+### Playback & UI (`AnimationTimeline`)
+
+- Toggle = `Film` button on the drawing toolbar (badge = frame count while
+  closed). Timeline open / onion range are per-user prefs in localStorage
+  (`drawing.timelineOpen`, `drawing.onionRange`), not drawing data.
+- Row 1: prev / play-stop / next, scrub `Slider` (mid-drag = debounced
+  autosave, commit = flush), `n / N`, fps select, onion `なし/±1/±2`.
+- Row 2: thumbnail filmstrip (shared world bbox across frames so motion
+  reads) ending in a dashed "+" cell that appends a frame at the END (placed
+  where the new frame appears, not with the far-right ops); then duplicate
+  (inserted right after the current frame) / move earlier / later / delete
+  (in-place ✓/✗ for non-empty frames; a pending confirm is dropped when the
+  current frame changes and is disabled during playback).
+- Playback is a DrawingPanel interval over `frames[playIndex]`, passed to the
+  canvas as `playbackFrameId` — it does NOT change the manager's current frame
+  (no autosave per tick). Stopping commits the shown frame as current. A
+  canvas `onPointerDownCapture` stops playback synchronously before the
+  canvas handlers run, so a pen-down during playback draws on the frame that
+  was showing. Undo / redo / trash / save also stop it (save commits the
+  shown frame first so the record's `currentFrameId` matches the screen); a
+  gallery load drops it without committing. `CanvasNavigator` gets the
+  displayed frame id so its overview follows playback.
+- Keyboard: `,` / `.` = previous / next frame.
+- The layer popover shows the "全コマ共通" (shared) switch while the
+  timeline is open or the drawing has >1 frame.
+
+### Persistence
+
+Session draft and gallery record carry optional `frames` / `currentFrameId` /
+`fps` (written only when not the default single frame — `docStateForStorage`
+in `src/drawing/docState.ts`, which also handles the layer fields). No Dexie
+bump. All restore paths pass them through `pickStoredDocFields` →
+`StrokeManager.loadState(…, doc)`.
+
+## Next
+
+- Phase 3: GIF / contact-sheet export.
+- Phase 4: rotoscope — step a YouTube reference in sync with frames.
