@@ -93,7 +93,11 @@ export function sanitizeFrameState(
   if (Array.isArray(raw.frames)) {
     for (const f of raw.frames) {
       if (frames.length >= MAX_FRAMES) break;
-      if (typeof f === 'string' && f !== '' && !frames.includes(f)) frames.push(f);
+      // SHARED_FRAME_ID is a reserved stroke marker, never a real frame — a
+      // persisted frame by that name would make real strokes look shared-origin.
+      if (typeof f === 'string' && f !== '' && f !== SHARED_FRAME_ID && !frames.includes(f)) {
+        frames.push(f);
+      }
     }
   }
   if (frames.length === 0) frames.push(DEFAULT_FRAME_ID);

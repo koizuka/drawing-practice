@@ -16,9 +16,10 @@ Two workflows want strokes grouped and shown independently:
 
 ```ts
 type LayerColor = 'ink' | 'blue' | 'red';
-interface Layer { id; name; visible; opacity /* 0.1–1 */; locked; color }
+interface Layer { id; name; visible; opacity /* 0.1–1 */; locked; color; shared?: boolean }
 interface LayerState { layers: Layer[] /* bottom → top, never empty */; activeLayerId }
-interface Stroke { points; timestamp; layerId?: string }
+interface Stroke { points; timestamp; layerId?: string; frameId?: string }
+// `shared` and `frameId` belong to the animation axis — see "Frames" below.
 ```
 
 - **One chronological stroke array** stays in `StrokeManager`. A stroke only
@@ -163,8 +164,9 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   out, multiplied by the layer's opacity; ordered farther frames first, then
   layer z-order, then chronological — drawn under the current frame. Shared layers are never onioned
   (they're already on screen). Off during playback.
-- Thumbnail / export / overlay compare / navigator use the current frame
-  (record: `currentFrameId`). GIF / sheet export is phase 3.
+- Thumbnail / export / overlay compare use the current frame (record:
+  `currentFrameId`); `CanvasNavigator` uses the DISPLAYED frame (the playback
+  position while playing). GIF / sheet export is phase 3.
 
 ### Playback & UI (`AnimationTimeline`)
 

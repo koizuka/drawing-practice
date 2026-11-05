@@ -36,7 +36,7 @@ describe('StrokeManager frames', () => {
     expect(m.getFrames().indexOf(f1)).toBe(2);
   });
 
-  it('shared layers show on every frame and record no frame', () => {
+  it('shared layers show on every frame and tag strokes with the SHARED marker', () => {
     m.updateLayer(m.getActiveLayerId(), { shared: true });
     const bg = draw(m, 0);
     expect(bg.frameId).toBe(SHARED_FRAME_ID);
@@ -137,6 +137,12 @@ describe('StrokeManager frames', () => {
     expect(items.map((i) => i.stroke.points[0].x)).toEqual([20, 10]);
     expect(items[0].opacity).toBeCloseTo(items[1].opacity * 0.5);
     expect(top).toBeTruthy();
+  });
+
+  it('never accepts the reserved SHARED marker as a persisted frame id', () => {
+    m.loadState([], [], { frames: [SHARED_FRAME_ID, 'frame-3'], currentFrameId: SHARED_FRAME_ID });
+    expect(m.getFrames()).toEqual(['frame-3']);
+    expect(m.getCurrentFrameId()).toBe('frame-3');
   });
 
   it('refuses to delete the last frame', () => {

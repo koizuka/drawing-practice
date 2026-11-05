@@ -93,17 +93,19 @@ const FrameThumb = memo(function FrameThumb({
 function computeFrameThumbs(strokeManager: StrokeManager) {
   const strokes = strokeManager.getStrokes();
   const layers = strokeManager.getLayers();
+  // The union over frames == all visible strokes, so walk points once (not
+  // per frame — shared-layer strokes appear in every frame).
   const bb = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const it of orderStrokesForRender(strokes, layers)) {
+    for (const p of it.stroke.points) {
+      if (p.x < bb.minX) bb.minX = p.x;
+      if (p.y < bb.minY) bb.minY = p.y;
+      if (p.x > bb.maxX) bb.maxX = p.x;
+      if (p.y > bb.maxY) bb.maxY = p.y;
+    }
+  }
   const perFrame = strokeManager.getFrames().map((frameId) => {
     const items = orderStrokesForRender(strokes, layers, strokeManager.getFrameView(frameId));
-    for (const it of items) {
-      for (const p of it.stroke.points) {
-        if (p.x < bb.minX) bb.minX = p.x;
-        if (p.y < bb.minY) bb.minY = p.y;
-        if (p.x > bb.maxX) bb.maxX = p.x;
-        if (p.y > bb.maxY) bb.maxY = p.y;
-      }
-    }
     return {
       frameId,
       strokes: items.map((i) => i.stroke),
