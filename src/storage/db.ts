@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type { Stroke } from '../drawing/types';
+import type { Layer } from '../drawing/layers';
 import type { GuideLine, GridSettings, MaskRect } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource } from '../types';
 import type { PexelsLastSearch, PexelsOrientationFilter } from '../utils/pexels';
@@ -24,6 +25,13 @@ export const COORD_VERSION_CURRENT = 2;
 export interface DrawingRecord {
   id?: number;
   strokes: Stroke[];
+  /**
+   * Layer list (bottom → top). Absent ≡ the single untouched default layer
+   * (pre-layer records, and drawings whose layer state `isDefaultLayerState`
+   * — any renamed / tinted / hidden / locked / extra layer is written). See
+   * src/drawing/layers.ts.
+   */
+  layers?: Layer[];
   thumbnail: string; // data URL (PNG)
   referenceInfo: string; // legacy: plain string description
   reference?: ReferenceInfo; // structured reference info (v2)
@@ -58,6 +66,12 @@ export interface SessionDraft {
    * before this field existed; `rotation` absent ≡ 0 (pre-rotation drafts).
    */
   camera?: { viewCenterX: number; viewCenterY: number; zoom: number; rotation?: number };
+  /**
+   * Drawing layers + active layer. Optional for back-compat; absent ≡ the
+   * single default layer (sanitized by StrokeManager.loadState).
+   */
+  layers?: Layer[];
+  activeLayerId?: string;
   /** Drawing panel flipped horizontally. Optional for back-compat. */
   flipped?: boolean;
   /**
@@ -331,6 +345,9 @@ db.version(16).stores({
 // garbage via sanitizeMasks (absent masksHidden ≡ true).
 // Likewise the additive, optional session.underlayEnabled flag (reference
 // underlay on the drawing canvas) needs no bump: absent ≡ false on restore.
+// Drawing layers (session.layers / activeLayerId, drawings.layers, and the
+// per-stroke optional layerId) are additive and unindexed too: absent ≡ the
+// single default layer, healed by sanitizeLayerState on load.
 db.version(17).stores({
   drawings: '++id, createdAt',
   session: 'id',

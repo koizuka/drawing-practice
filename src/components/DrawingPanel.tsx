@@ -49,6 +49,7 @@ import { useGuides } from '../guides/useGuides';
 import { PerspectiveController } from './PerspectiveController';
 import { GridModePopoverButton } from './GridModePopoverButton';
 import { MaskRevealButton } from './MaskRevealButton';
+import { LayerPopoverButton } from './LayerPopoverButton';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
 import { saveDrawing, type DrawingRecord } from '../storage';
@@ -389,6 +390,34 @@ export function DrawingPanel({
     onOverlayClear?.();
   }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
 
+  // Layer edits from the layer popover. Clear/delete-layer remove strokes, so
+  // resync trace scoring like the other erase paths; a pending highlight index
+  // may point at a now-hidden or shifted stroke, so drop it.
+  const handleLayersChanged = useCallback(
+    (opts?: { flush?: boolean }) => {
+      setHighlightedStrokeIndex(null);
+      triggerRedraw(opts);
+      onTraceSyncAttempts?.();
+    },
+    [triggerRedraw, onTraceSyncAttempts],
+  );
+
+  // Pen-down on a hidden / locked active layer: show a short explanation
+  // instead of silently ignoring the pen.
+  const [strokeBlockedHint, setStrokeBlockedHint] = useState(false);
+  const strokeBlockedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleStrokeBlocked = useCallback(() => {
+    setStrokeBlockedHint(true);
+    if (strokeBlockedTimerRef.current) clearTimeout(strokeBlockedTimerRef.current);
+    strokeBlockedTimerRef.current = setTimeout(() => setStrokeBlockedHint(false), 2500);
+  }, []);
+  useEffect(
+    () => () => {
+      if (strokeBlockedTimerRef.current) clearTimeout(strokeBlockedTimerRef.current);
+    },
+    [],
+  );
+
   const handleDeleteHighlighted = useCallback(() => {
     if (highlightedStrokeIndex !== null) {
       strokeManager.deleteStroke(highlightedStrokeIndex);
@@ -488,8 +517,10 @@ export function DrawingPanel({
     savingRef.current = true;
     setSaving(true);
     try {
-      const thumbnail = generateThumbnail(strokes);
-      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs);
+      // Hidden layers stay in the record (re-editable) but not in the thumbnail.
+      const layerState = strokeManager.getLayerState();
+      const thumbnail = generateThumbnail(strokes, layerState.layers);
+      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs, layerState);
       strokeManager.markSavedToGallery();
       onGallerySaved?.();
       timer.pause();
@@ -811,6 +842,10 @@ export function DrawingPanel({
           </IconButton>
         </ToolbarTooltip>
 
+        {/* Layers sit with the drawing tools: the active layer decides where
+            the pen draws and what the eraser can touch. */}
+        <LayerPopoverButton strokeManager={strokeManager} onChanged={handleLayersChanged} />
+
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
         {/* Edit */}
@@ -1080,6 +1115,7 @@ export function DrawingPanel({
             onStrokeFinalized={handleStrokeFinalized}
             dimmedStrokeTimestamps={dimmedStrokeTimestamps}
             onStrokeStart={handleStrokeStart}
+            onStrokeBlocked={handleStrokeBlocked}
             placingPerspectiveCenter={placingCenter}
             onPlacePerspectiveCenter={placePerspectiveCenter}
             underlayImageUrl={underlayImageUrl}
@@ -1090,6 +1126,29 @@ export function DrawingPanel({
             rotationCommand={rotationCommand}
           />
         </Box>
+        {strokeBlockedHint && (
+          // Outside the CSS-flipped wrapper so the text never mirrors.
+          <Box
+            role="status"
+            sx={{
+              position: 'absolute',
+              left: '50%',
+              bottom: 16,
+              transform: 'translateX(-50%)',
+              px: 1.5,
+              py: 0.75,
+              borderRadius: 1,
+              bgcolor: 'rgba(0,0,0,0.75)',
+              color: 'white',
+              fontSize: 13,
+              pointerEvents: 'none',
+              maxWidth: 'calc(100% - 32px)',
+              textAlign: 'center',
+            }}
+          >
+            {t('layerBlocked')}
+          </Box>
+        )}
       </Box>
 
       {showGallery && (

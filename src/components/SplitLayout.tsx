@@ -42,6 +42,7 @@ import type { SketchfabModelMeta } from './SketchfabViewer';
 import type { PexelsGestureSessionConfig } from './PexelsSearcher';
 import { t } from '../i18n';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
+import { visibleStrokes, type LayerState } from '../drawing/layers';
 import type { GuideState } from '../guides/types';
 import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types';
 
@@ -359,6 +360,8 @@ function SplitLayoutInner() {
   const pendingMigrationRef = useRef<{
     strokes: Stroke[];
     redoStack: Stroke[];
+    /** Layer list to restore alongside the migrated strokes (absent ≡ default). */
+    layerState?: Partial<LayerState>;
     guides?: GuideState;
     gallerySaveDirty: boolean;
     skipUserStartGuard?: boolean;
@@ -536,8 +539,8 @@ function SplitLayoutInner() {
         const dy = -height / 2;
         const migratedStrokes = shiftStrokes(pending.strokes, dx, dy);
         const migratedRedo = shiftStrokes(pending.redoStack, dx, dy);
-        if (migratedStrokes.length > 0 || migratedRedo.length > 0) {
-          strokeManager.loadState(migratedStrokes, migratedRedo);
+        if (migratedStrokes.length > 0 || migratedRedo.length > 0 || pending.layerState) {
+          strokeManager.loadState(migratedStrokes, migratedRedo, pending.layerState);
           if (!pending.gallerySaveDirty) {
             strokeManager.markSavedToGallery();
           }
@@ -610,7 +613,7 @@ function SplitLayoutInner() {
     setOverlayActive((prev) => {
       const next = !prev;
       if (next) {
-        setOverlayStrokes([...strokeManager.getStrokes()]);
+        setOverlayStrokes(visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers()));
       } else {
         setOverlayStrokes(null);
       }
@@ -628,7 +631,9 @@ function SplitLayoutInner() {
   const handleStrokesChanged = useCallback(
     (opts?: { flush?: boolean }) => {
       if (overlayActive) {
-        setOverlayStrokes([...strokeManager.getStrokes()]);
+        // Overlay compare shows what the drawing looks like: hidden layers
+        // (e.g. a hidden draft) stay out of the comparison.
+        setOverlayStrokes(visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers()));
       }
       // Discrete editing buttons (undo / redo / clear / delete-highlighted) flush
       // immediately — same user intent as the other discrete UI operations
@@ -684,8 +689,15 @@ function SplitLayoutInner() {
     if (strokes.length === 0) return;
     if (!strokeManager.isDirtySinceGallerySave()) return;
     try {
-      const thumbnail = generateThumbnail(strokes);
-      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timerElapsedRef.current);
+      const layerState = strokeManager.getLayerState();
+      const thumbnail = generateThumbnail(strokes, layerState.layers);
+      await saveDrawing(
+        strokes,
+        thumbnail,
+        referenceInfo ?? null,
+        timerElapsedRef.current,
+        layerState,
+      );
       strokeManager.markSavedToGallery();
     } catch (err) {
       console.error('Gesture session save failed:', err);
@@ -984,6 +996,7 @@ function SplitLayoutInner() {
         pendingMigrationRef.current = {
           strokes: drawing.strokes,
           redoStack: [],
+          layerState: { layers: drawing.layers },
           gallerySaveDirty: false,
           skipUserStartGuard: true,
           centerCameraOnStrokes: true,
@@ -1001,7 +1014,7 @@ function SplitLayoutInner() {
           isLegacyCoords && knownSize
             ? shiftStrokes(drawing.strokes, -knownSize.width / 2, -knownSize.height / 2)
             : drawing.strokes;
-        strokeManager.loadState(strokes, []);
+        strokeManager.loadState(strokes, [], { layers: drawing.layers });
         // The loaded strokes are bit-identical to the gallery record — mark
         // clean so the Save button can't immediately write a duplicate.
         strokeManager.markSavedToGallery();
@@ -1114,6 +1127,7 @@ function SplitLayoutInner() {
       camera: viewTransform.getCamera(),
       flipped: isFlipped,
       underlayEnabled,
+      layerState: strokeManager.getLayerState(),
       // Read at call time — the dirty flag deliberately is not in the deps.
       // `useAutosave` re-invokes this getter when `changeVersion` (bumped by
       // stroke mutations) or `flushVersion` (bumped by `onGallerySaved`)
@@ -1299,17 +1313,21 @@ function SplitLayoutInner() {
         // dirty-tracking feature shipped — never silently disable Save). Only
         // an explicit `false` disables the button across reload.
         const restoredDirty = draft.gallerySaveDirty ?? true;
+        const draftLayerState = draft.layers
+          ? { layers: draft.layers, activeLayerId: draft.activeLayerId }
+          : undefined;
 
         if (deferStrokesForMigration) {
           pendingMigrationRef.current = {
             strokes: draft.strokes,
             redoStack: draft.redoStack,
+            layerState: draftLayerState,
             guides: draft.guideState ?? { grid: { mode: 'none' }, lines: [] },
             gallerySaveDirty: restoredDirty,
           };
         } else {
-          if (draft.strokes.length > 0 || draft.redoStack.length > 0) {
-            strokeManager.loadState(draft.strokes, draft.redoStack);
+          if (draft.strokes.length > 0 || draft.redoStack.length > 0 || draftLayerState) {
+            strokeManager.loadState(draft.strokes, draft.redoStack, draftLayerState);
             // loadState bumps mutationCount, so isDirtySinceGallerySave() is
             // true here unless we explicitly mark the restored state as saved.
             if (!restoredDirty) {

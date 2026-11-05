@@ -8,6 +8,11 @@ export interface Point {
 export interface Stroke {
   points: Point[];
   timestamp: number;
+  /**
+   * Layer this stroke belongs to (see src/drawing/layers.ts). Absent ≡ the
+   * default layer, so pre-layer data and single-layer drawings are unchanged.
+   */
+  layerId?: string;
 }
 
 /**

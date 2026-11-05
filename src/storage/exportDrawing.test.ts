@@ -291,3 +291,36 @@ describe('exportDrawingAsSvg', () => {
     expect(text.match(/<path /g)?.length).toBe(1);
   });
 });
+
+describe('exportDrawingAsSvg with layers', () => {
+  const s = (x: number, layerId?: string): Stroke => ({
+    points: [
+      { x, y: 0 },
+      { x: x + 10, y: 10 },
+    ],
+    timestamp: x,
+    ...(layerId ? { layerId } : {}),
+  });
+
+  it('skips hidden layers and carries layer tint / opacity', async () => {
+    const drawing = makeDrawing([s(0), s(100, 'layer-1'), s(200, 'layer-2')], {
+      layers: [
+        { id: 'base', name: '', visible: true, opacity: 0.5, locked: false, color: 'blue' },
+        { id: 'layer-1', name: '', visible: false, opacity: 1, locked: false, color: 'ink' },
+        { id: 'layer-2', name: '', visible: true, opacity: 1, locked: false, color: 'ink' },
+      ],
+    });
+    const svg = await blobToText(exportDrawingAsSvg(drawing));
+    expect(svg.match(/<path /g)).toHaveLength(2);
+    expect(svg).toContain('stroke="#2f6fdf" stroke-opacity="0.5"');
+    expect(svg).not.toContain('M100 0');
+  });
+
+  it('renders everything when every layer is hidden', async () => {
+    const drawing = makeDrawing([s(0)], {
+      layers: [{ id: 'base', name: '', visible: false, opacity: 1, locked: false, color: 'ink' }],
+    });
+    const svg = await blobToText(exportDrawingAsSvg(drawing));
+    expect(svg.match(/<path /g)).toHaveLength(1);
+  });
+});

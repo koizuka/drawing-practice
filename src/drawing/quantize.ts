@@ -34,5 +34,6 @@ export function quantizeStroke(stroke: Stroke): Stroke {
     prevX = x;
     prevY = y;
   }
-  return { points: out, timestamp: stroke.timestamp };
+  // Spread so per-stroke metadata (layerId, …) survives quantization.
+  return { ...stroke, points: out };
 }

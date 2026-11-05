@@ -1,9 +1,20 @@
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
+import { renderItemsForStoredDrawing, type Layer } from '../drawing/layers';
 
 const THUMBNAIL_SIZE = 200;
 
-export function generateThumbnail(strokes: readonly Stroke[]): string {
+/**
+ * Render a small PNG of the drawing. With `layers`, hidden layers are left
+ * out and layer tint/opacity apply (so "hide the draft, then save" yields a
+ * clean-line thumbnail).
+ */
+export function generateThumbnail(
+  allStrokes: readonly Stroke[],
+  layers?: readonly Layer[],
+): string {
+  const items = renderItemsForStoredDrawing(allStrokes, layers);
+  const strokes = items.map((it) => it.stroke);
   if (strokes.length === 0) return '';
 
   // Find bounding box
@@ -46,7 +57,6 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   ctx.scale(scale, scale);
   ctx.translate(-minX + padding, -minY + padding);
 
-  ctx.strokeStyle = '#000000';
   // Pure scale: 1 world unit, same as the live canvas. The earlier
   // `0.75 / scale` floor inflated strokes far thicker than the drawing-screen
   // appearance for any sizable drawing.
@@ -54,8 +64,10 @@ export function generateThumbnail(strokes: readonly Stroke[]): string {
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  for (const stroke of strokes) {
+  for (const { stroke, color, opacity } of items) {
     if (stroke.points.length < 2) continue;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.beginPath();
     ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
     for (let i = 1; i < stroke.points.length; i++) {
