@@ -43,7 +43,8 @@ const messages = {
     layerClearConfirm: 'Erase lines?',
     layerDelete: 'Delete layer',
     layerDeleteConfirm: 'Delete layer?',
-    layerBlocked: 'The current layer is hidden or locked — drawing is disabled',
+    layerBlocked: 'The current layer is hidden or locked — drawing and erasing are disabled',
+    layerSelect: 'Select layer',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',
@@ -301,10 +302,11 @@ const messages = {
     layerMoveUp: 'レイヤーを上へ',
     layerMoveDown: 'レイヤーを下へ',
     layerClear: 'このレイヤーの線をすべて消す',
-    layerClearConfirm: '線を消しますか?',
+    layerClearConfirm: '線を消しますか？',
     layerDelete: 'レイヤーを削除',
-    layerDeleteConfirm: '削除しますか?',
-    layerBlocked: '選択中のレイヤーが非表示またはロック中のため描けません',
+    layerDeleteConfirm: '削除しますか？',
+    layerBlocked: '選択中のレイヤーが非表示またはロック中のため、描画・消去できません',
+    layerSelect: 'レイヤーを選択',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',

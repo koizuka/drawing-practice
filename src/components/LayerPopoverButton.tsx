@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Box,
   Button,
+  ButtonBase,
   IconButton,
   Popover,
   Slider,
@@ -144,7 +145,11 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
       >
         <Box sx={{ p: 1, width: 280, display: 'flex', flexDirection: 'column', gap: 1 }}>
           {/* Layer list, top layer first (as in every paint app). */}
-          <Box role="listbox" aria-label={t('layers')}>
+          {/* Layer list, top layer first (as in every paint app). Plain
+              list + buttons (no listbox roles): each row is [eye][lock]
+              [select button], so every control is natively focusable and
+              Enter/Space-activatable without nesting buttons in an option. */}
+          <Box component="ul" aria-label={t('layers')} sx={{ listStyle: 'none', m: 0, p: 0 }}>
             {layers
               .map((layer, index) => ({ layer, index }))
               .reverse()
@@ -152,33 +157,22 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                 const isActive = layer.id === activeId;
                 return (
                   <Box
+                    component="li"
                     key={layer.id}
-                    role="option"
-                    aria-selected={isActive}
-                    onClick={() => {
-                      if (strokeManager.setActiveLayer(layer.id)) {
-                        setConfirm(null);
-                        // Active layer is persisted but doesn't change the drawing.
-                        change();
-                      }
-                    }}
                     sx={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: 0.5,
                       px: 0.5,
                       borderRadius: 1,
-                      cursor: 'pointer',
                       bgcolor: isActive ? 'action.selected' : 'transparent',
-                      '&:hover': { bgcolor: isActive ? 'action.selected' : 'action.hover' },
                     }}
                   >
                     <IconButton
                       size="small"
                       aria-label={layer.visible ? t('layerHide') : t('layerShow')}
                       aria-pressed={!layer.visible}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() => {
                         strokeManager.updateLayer(layer.id, { visible: !layer.visible });
                         change();
                       }}
@@ -189,8 +183,7 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                       size="small"
                       aria-label={layer.locked ? t('layerUnlock') : t('layerLock')}
                       aria-pressed={layer.locked}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={() => {
                         strokeManager.updateLayer(layer.id, { locked: !layer.locked });
                         change();
                       }}
@@ -198,31 +191,56 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                     >
                       {layer.locked ? <Lock size={16} /> : <LockOpen size={16} />}
                     </IconButton>
-                    <Box
-                      aria-hidden
-                      sx={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: '50%',
-                        flexShrink: 0,
-                        bgcolor: LAYER_COLOR_HEX[layer.color],
-                        opacity: layer.opacity,
+                    <ButtonBase
+                      aria-pressed={isActive}
+                      aria-label={`${t('layerSelect')}: ${layerDisplayName(layer, index)}`}
+                      onClick={() => {
+                        if (strokeManager.setActiveLayer(layer.id)) {
+                          setConfirm(null);
+                          // Active layer is persisted but doesn't change the drawing.
+                          change();
+                        }
                       }}
-                    />
-                    <Typography
-                      variant="body2"
-                      noWrap
                       sx={{
                         flex: 1,
-                        fontWeight: isActive ? 700 : 400,
-                        opacity: layer.visible ? 1 : 0.5,
+                        minWidth: 0,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.75,
+                        py: 0.75,
+                        px: 0.5,
+                        borderRadius: 1,
+                        justifyContent: 'flex-start',
+                        '&:hover': { bgcolor: 'action.hover' },
                       }}
                     >
-                      {layerDisplayName(layer, index)}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {strokeManager.getLayerStrokeCount(layer.id)}
-                    </Typography>
+                      <Box
+                        aria-hidden
+                        sx={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          bgcolor: LAYER_COLOR_HEX[layer.color],
+                          opacity: layer.opacity,
+                        }}
+                      />
+                      <Typography
+                        variant="body2"
+                        noWrap
+                        sx={{
+                          flex: 1,
+                          textAlign: 'left',
+                          fontWeight: isActive ? 700 : 400,
+                          opacity: layer.visible ? 1 : 0.5,
+                        }}
+                      >
+                        {layerDisplayName(layer, index)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {strokeManager.getLayerStrokeCount(layer.id)}
+                      </Typography>
+                    </ButtonBase>
                   </Box>
                 );
               })}
@@ -364,7 +382,7 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                   </Typography>
                   <IconButton
                     size="small"
-                    aria-label={t('delete')}
+                    aria-label={pendingConfirm === 'delete' ? t('layerDelete') : t('layerClear')}
                     sx={{ color: 'error.main' }}
                     onClick={() => {
                       if (pendingConfirm === 'delete') strokeManager.deleteLayer(active.id);
@@ -390,7 +408,9 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                       <IconButton
                         size="small"
                         aria-label={t('layerClear')}
-                        disabled={strokeManager.getLayerStrokeCount(active.id) === 0}
+                        // Same protection as the eraser: a hidden / locked
+                        // layer can't be bulk-erased either.
+                        disabled={blocked || strokeManager.getLayerStrokeCount(active.id) === 0}
                         onClick={() => setConfirm({ kind: 'clear', layerId: active.id })}
                       >
                         <Eraser size={18} />

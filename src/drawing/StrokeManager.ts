@@ -6,7 +6,7 @@ import {
   MIN_LAYER_OPACITY,
   createDefaultLayerState,
   layerIdOf,
-  nextLayerId,
+  maxLayerSeq,
   sanitizeLayerState,
   withLayerId,
   type Layer,
@@ -124,6 +124,13 @@ export class StrokeManager {
   /** Layers bottom → top. Never empty. See src/drawing/layers.ts. */
   private layers: Layer[] = createDefaultLayerState().layers;
   private activeLayerId: string = DEFAULT_LAYER_ID;
+  /**
+   * Highest `layer-N` number ever issued or loaded this session. Monotonic so
+   * a deleted layer's id (still restorable by undo/redo) is never reissued to
+   * a new layer — two layers sharing an id would mix their settings and let a
+   * redo of the old deletion take the new layer's strokes with it.
+   */
+  private layerSeq = 0;
 
   private nextTimestamp(): number {
     const now = Date.now();
@@ -644,6 +651,7 @@ export class StrokeManager {
     const ls = sanitizeLayerState(layerState?.layers, layerState?.activeLayerId);
     this.layers = ls.layers;
     this.activeLayerId = ls.activeLayerId;
+    this.layerSeq = Math.max(this.layerSeq, maxLayerSeq(ls.layers));
     const known = new Set(ls.layers.map((l) => l.id));
     const fallback = ls.layers[0].id;
     const normalize = (s: Stroke): Stroke => {
@@ -758,8 +766,9 @@ export class StrokeManager {
    */
   addLayer(init: LayerPatch = {}): Layer | null {
     if (this.layers.length >= MAX_LAYERS) return null;
+    this.layerSeq = Math.max(this.layerSeq, maxLayerSeq(this.layers)) + 1;
     const layer: Layer = {
-      id: nextLayerId(this.layers),
+      id: `layer-${this.layerSeq}`,
       name: '',
       visible: true,
       opacity: 1,
@@ -819,8 +828,13 @@ export class StrokeManager {
     return true;
   }
 
-  /** Erase every stroke on a layer as one (undoable) lasso-delete entry. */
+  /**
+   * Erase every stroke on the active layer as one (undoable) lasso-delete
+   * entry. Same protection as the eraser: only the active, visible, unlocked
+   * layer — a lock must also guard against bulk erase.
+   */
   clearLayer(id: string): Stroke[] | null {
+    if (id !== this.activeLayerId || !this.canDrawOnActiveLayer()) return null;
     const indices: number[] = [];
     this.strokes.forEach((s, i) => {
       if (layerIdOf(s) === id) indices.push(i);

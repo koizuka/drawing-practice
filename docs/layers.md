@@ -5,7 +5,9 @@
 Two workflows want strokes grouped and shown independently:
 
 1. **Draft → ink (this change, phase 1)**: rough lines on a faint blue layer,
-   clean lines on top, then hide the draft and save only the ink.
+   clean lines on top, then hide the draft and save — the thumbnail / export
+   show only the ink, while the record keeps the draft so it stays
+   re-editable.
 2. **Line animation (phase 2, planned)**: frames × layers. A second,
    orthogonal per-stroke attribute (`frame`) plus onion skin / filmstrip /
    playback. Phase 1 deliberately keeps the model open for that axis — see
@@ -34,6 +36,11 @@ interface Stroke { points; timestamp; layerId?: string }
 - Copy helpers must spread the stroke (`quantizeStroke`, `shiftStroke`) so
   `layerId` (and phase 2's `frame`) survive.
 - `MAX_LAYERS = 8`.
+- New ids are `layer-N` from a **monotonic** counter in `StrokeManager`
+  (`layerSeq`, raised past every loaded id). A deleted layer can come back
+  via undo, so reusing its id for a new layer would create two layers with
+  the same id (mixed settings; a redo of the old delete would take the new
+  layer's strokes too).
 
 ## StrokeManager
 
@@ -41,14 +48,17 @@ Layer list + active id live in `StrokeManager` (it is the drawing document).
 
 - `startStroke` tags the new stroke with the active layer.
 - **Editable = on the active layer AND the active layer is visible and
-  unlocked** (`isStrokeEditable`). `findNearestStroke` (erase tap) and the
-  lasso candidate scan in `DrawingCanvas` both honor it, so you can fix the
-  ink without touching the draft.
-- Pen-down on a hidden/locked active layer is refused in `DrawingCanvas`
-  (`canDrawOnActiveLayer`) before `onStrokeStart` — no stroke, no timer start —
-  and `onStrokeBlocked` shows a short hint. The toolbar layer button turns
-  warning-colored in that state.
-- **Undo policy**: only `deleteLayer` is undoable — a `layer-delete` entry
+  unlocked** (`isStrokeEditable`). `findNearestStroke` (erase tap), the
+  lasso candidate scan in `DrawingCanvas`, and `clearLayer` all honor it, so
+  you can fix the ink without touching the draft and a lock really protects.
+- A press (pen OR erase) on a hidden/locked active layer is refused in
+  `DrawingCanvas` (`canDrawOnActiveLayer`) before `onStrokeStart` — no stroke,
+  no timer start — and `onStrokeBlocked` shows a short hint. The toolbar
+  layer button turns warning-colored in that state.
+- The in-progress stroke is painted at its layer's z-position (after that
+  layer's committed strokes), not on top of everything.
+- **Undo policy**: only stroke-removing layer ops are undoable. `deleteLayer`
+  pushes a `layer-delete` entry
   (layer, its index, its strokes with their array indices, previous active
   id), same shape on both stacks. Undo re-inserts the layer and splices the
   strokes back ascending (indices clamped, since a committed tentative clear
@@ -82,7 +92,7 @@ Layer list + active id live in `StrokeManager` (it is the drawing document).
 | Consumer | Behavior |
 |---|---|
 | `DrawingCanvas` | layer order, tint, opacity (× trace dim); in-progress stroke in the active layer's style |
-| Thumbnail / export (SVG, PNG, JPEG, gallery preview) | `renderItemsForStoredDrawing`: visible layers with tint/opacity; if every layer is hidden, render all (never export a blank) |
+| Thumbnail / export (SVG, PNG, JPEG, gallery preview) | `renderItemsForStoredDrawing`: visible layers with tint/opacity; only if EVERY layer is hidden, render all (never export a blank) — a visible-but-empty layer does not trigger the fallback |
 | Overlay compare, `CanvasNavigator` | visible strokes only, untinted |
 | Trace scoring | unchanged — it scores the just-committed stroke, which is on the active layer |
 

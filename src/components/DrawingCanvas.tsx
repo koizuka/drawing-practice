@@ -380,7 +380,25 @@ export function DrawingCanvas({
     // hovered) strokes ignore the dim — the highlight is a stronger UI
     // signal. Layer order / visibility / tint / opacity come from
     // orderStrokesForRender (hidden layers are skipped entirely).
+    // The in-progress stroke is painted at its layer's z-position (right after
+    // that layer's committed strokes), so a draft-layer line drawn under the
+    // ink doesn't flash on top until pen-up.
+    const current = strokeManager.getCurrentStroke();
+    const activeLayer = strokeManager.getActiveLayer();
+    const activeLayerIndex = strokeManager.getLayers().indexOf(activeLayer);
+    let currentDrawn = !current || current.points.length < 2;
+    const drawCurrent = () => {
+      if (currentDrawn || !current) return;
+      currentDrawn = true;
+      renderer.drawStroke(
+        current,
+        LAYER_COLOR_HEX[activeLayer.color],
+        undefined,
+        activeLayer.opacity,
+      );
+    };
     for (const item of orderStrokesForRender(strokes, strokeManager.getLayers())) {
+      if (item.layerIndex > activeLayerIndex) drawCurrent();
       if (lassoSelected && lassoSelected.has(item.index)) {
         renderer.drawHighlightedStroke(item.stroke);
         continue;
@@ -391,19 +409,13 @@ export function DrawingCanvas({
           : 1;
       renderer.drawStroke(item.stroke, item.color, undefined, item.opacity * dim);
     }
+    drawCurrent();
 
     // Draw highlighted stroke
     if (highlightedStrokeIndex !== null) {
       if (highlightedStrokeIndex < strokes.length) {
         renderer.drawHighlightedStroke(strokes[highlightedStrokeIndex]);
       }
-    }
-
-    // Draw current in-progress stroke
-    const current = strokeManager.getCurrentStroke();
-    if (current && current.points.length >= 2) {
-      const active = strokeManager.getActiveLayer();
-      renderer.drawStroke(current, LAYER_COLOR_HEX[active.color], undefined, active.opacity);
     }
 
     // Grid + guide lines in canvas (world) coordinate space. Under rotation
@@ -1185,16 +1197,18 @@ export function DrawingCanvas({
         return;
       }
 
+      // Hidden / locked active layer: refuse pen AND erase (the eraser only
+      // ever touches the active layer, so it would silently do nothing) and
+      // explain why. No stroke → no timer start.
+      if (!strokeManager.canDrawOnActiveLayer()) {
+        onStrokeBlocked?.();
+        return;
+      }
+
       if (mode === 'erase') {
         // Arm pending state only — tap vs lasso is decided on move/up.
         beginErasePending(touch.clientX, touch.clientY, point);
       } else {
-        // Hidden / locked active layer: refuse the stroke (and don't start
-        // the timer) instead of drawing something invisible or "locked".
-        if (!strokeManager.canDrawOnActiveLayer()) {
-          onStrokeBlocked?.();
-          return;
-        }
         // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
         // can clear its lingering feedback in the same React batch as the
         // first redraw — the user sees the red bands disappear the instant
@@ -1495,14 +1509,16 @@ export function DrawingCanvas({
         return;
       }
 
+      // See handleTouchStart — a hidden / locked active layer blocks both modes.
+      if (!strokeManager.canDrawOnActiveLayer()) {
+        isMouseDownRef.current = false;
+        onStrokeBlocked?.();
+        return;
+      }
+
       if (mode === 'erase') {
         beginErasePending(e.clientX, e.clientY, point);
       } else {
-        if (!strokeManager.canDrawOnActiveLayer()) {
-          isMouseDownRef.current = false;
-          onStrokeBlocked?.();
-          return;
-        }
         // See handleTouchStart — fire onStrokeStart before startStroke so the
         // trace-scoring feedback clears on pointer-down.
         onStrokeStart?.();

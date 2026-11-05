@@ -125,20 +125,22 @@ export function sanitizeLayerState(raw: unknown, rawActive?: unknown): LayerStat
   return { layers, activeLayerId };
 }
 
-/** Next unused `layer-N` id. */
-export function nextLayerId(layers: readonly Layer[]): string {
+/** Highest N among `layer-N` ids (0 if none). */
+export function maxLayerSeq(layers: readonly Layer[]): number {
   let max = 0;
   for (const l of layers) {
     const m = /^layer-(\d+)$/.exec(l.id);
     if (m) max = Math.max(max, Number(m[1]));
   }
-  return `layer-${max + 1}`;
+  return max;
 }
 
 export interface StrokeRenderItem {
   stroke: Stroke;
   /** Index in the StrokeManager's chronological stroke array. */
   index: number;
+  /** Position of the stroke's layer in the (bottom → top) layer list. */
+  layerIndex: number;
   color: string;
   opacity: number;
 }
@@ -156,6 +158,7 @@ export function orderStrokesForRender(
     return strokes.map((stroke, index) => ({
       stroke,
       index,
+      layerIndex: 0,
       color: LAYER_COLOR_HEX.ink,
       opacity: 1,
     }));
@@ -171,6 +174,7 @@ export function orderStrokesForRender(
     buckets[li].push({
       stroke,
       index,
+      layerIndex: li,
       color: LAYER_COLOR_HEX[layer.color],
       opacity: layer.opacity,
     });
@@ -182,7 +186,8 @@ export function orderStrokesForRender(
  * Render items for a stored drawing (gallery record / export). `layers`
  * absent ⇒ pre-layer record (one default layer). If every layer is hidden the
  * result would be blank, so fall back to rendering everything — an export or
- * thumbnail of nothing is never what the user wants.
+ * thumbnail of nothing is never what the user wants. (A visible layer that is
+ * merely empty does NOT trigger the fallback.)
  */
 export function renderItemsForStoredDrawing(
   strokes: readonly Stroke[],
@@ -190,7 +195,9 @@ export function renderItemsForStoredDrawing(
 ): StrokeRenderItem[] {
   const ls = sanitizeLayerState(layers).layers;
   const items = orderStrokesForRender(strokes, ls);
-  if (items.length > 0 || strokes.length === 0) return items;
+  // Fall back only when EVERY layer is hidden — a visible-but-empty layer
+  // must not leak the hidden ones into an export.
+  if (ls.some((l) => l.visible)) return items;
   return orderStrokesForRender(
     strokes,
     ls.map((l) => ({ ...l, visible: true })),

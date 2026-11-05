@@ -26,9 +26,10 @@ export interface DrawingRecord {
   id?: number;
   strokes: Stroke[];
   /**
-   * Layer list (bottom → top) when the drawing used layers. Absent ≡ the
-   * single default layer (pre-layer records, and single-layer drawings are
-   * saved without it). See src/drawing/layers.ts.
+   * Layer list (bottom → top). Absent ≡ the single untouched default layer
+   * (pre-layer records, and drawings whose layer state `isDefaultLayerState`
+   * — any renamed / tinted / hidden / locked / extra layer is written). See
+   * src/drawing/layers.ts.
    */
   layers?: Layer[];
   thumbnail: string; // data URL (PNG)

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { quantizeStrokesForStorage } from './drawingStore';
 import type { Stroke } from '../drawing/types';
 
@@ -154,5 +154,25 @@ describe('quantizeStrokesForStorage layer metadata', () => {
       },
     ]);
     expect(out[0].layerId).toBe('layer-1');
+  });
+});
+
+describe('saveDrawing layer persistence', () => {
+  it('omits layers for the default state and writes them otherwise', async () => {
+    vi.resetModules();
+    const add = vi.fn().mockResolvedValue(1);
+    vi.doMock('./db', async (orig) => ({
+      ...(await orig<typeof import('./db')>()),
+      db: { drawings: { add } },
+    }));
+    const { saveDrawing } = await import('./drawingStore');
+    const { createDefaultLayerState } = await import('../drawing/layers');
+    await saveDrawing([], '', null, 0, createDefaultLayerState());
+    expect(add.mock.calls[0][0]).not.toHaveProperty('layers');
+    const custom = createDefaultLayerState();
+    custom.layers[0].color = 'blue';
+    await saveDrawing([], '', null, 0, custom);
+    expect(add.mock.calls[1][0].layers).toEqual(custom.layers);
+    vi.doUnmock('./db');
   });
 });

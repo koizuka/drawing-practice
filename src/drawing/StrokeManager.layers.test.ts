@@ -73,6 +73,28 @@ describe('StrokeManager layers', () => {
     expect(m.getStrokes().map((s) => s.points[0].x)).toEqual([0, 200]);
   });
 
+  it('never reissues the id of a deleted (undo-restorable) layer', () => {
+    const l1 = m.addLayer()!;
+    const l2 = m.addLayer()!;
+    m.deleteLayer(l2.id);
+    const l3 = m.addLayer()!;
+    expect(l3.id).not.toBe(l2.id);
+    m.undo(); // restore l2
+    const ids = m.getLayers().map((l) => l.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toContain(l1.id);
+  });
+
+  it('clearLayer refuses a locked or non-active layer', () => {
+    draw(m, 0);
+    const l2 = m.addLayer()!;
+    expect(m.clearLayer(DEFAULT_LAYER_ID)).toBeNull();
+    draw(m, 100);
+    m.updateLayer(l2.id, { locked: true });
+    expect(m.clearLayer(l2.id)).toBeNull();
+    expect(m.getStrokes()).toHaveLength(2);
+  });
+
   it('refuses to delete the last layer', () => {
     expect(m.deleteLayer(DEFAULT_LAYER_ID)).toBe(false);
   });

@@ -4,8 +4,9 @@ import {
   MAX_LAYERS,
   isDefaultLayerState,
   createDefaultLayerState,
-  nextLayerId,
+  maxLayerSeq,
   orderStrokesForRender,
+  renderItemsForStoredDrawing,
   sanitizeLayerState,
   withLayerId,
   type Layer,
@@ -56,8 +57,16 @@ describe('layers helpers', () => {
     expect(s.activeLayerId).toBe(s.layers[s.layers.length - 1].id);
   });
 
-  it('nextLayerId skips existing numbers', () => {
-    expect(nextLayerId([layer('base'), layer('layer-3')])).toBe('layer-4');
+  it('maxLayerSeq reads the highest layer-N number', () => {
+    expect(maxLayerSeq([layer('base'), layer('layer-3'), layer('layer-1')])).toBe(3);
+  });
+
+  it('does not fall back to hidden layers when a visible layer is just empty', () => {
+    const items = renderItemsForStoredDrawing(
+      [stroke(1)],
+      [layer(DEFAULT_LAYER_ID, { visible: false }), layer('layer-1')],
+    );
+    expect(items).toHaveLength(0);
   });
 
   it('withLayerId omits the field for the default layer', () => {
