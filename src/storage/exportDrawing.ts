@@ -1,6 +1,7 @@
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
 import { renderItemsForStoredDrawing } from '../drawing/layers';
+import { storedFrameView } from '../drawing/docState';
 import { canvasToBlob } from '../utils/imageResize';
 import type { DrawingRecord } from './db';
 
@@ -134,7 +135,12 @@ export function pointsToPathData(stroke: Stroke): string {
 }
 
 export function exportDrawingAsSvg(drawing: DrawingRecord): Blob {
-  const items = renderItemsForStoredDrawing(drawing.strokes, drawing.layers);
+  const items = renderItemsForStoredDrawing(
+    drawing.strokes,
+    drawing.layers,
+    // Animation: export the frame that was showing when saved.
+    storedFrameView(drawing),
+  );
   const box = paddedBox(computeStrokesBoundingBox(items.map((it) => it.stroke)));
   const viewBox = `${formatNum(box.x)} ${formatNum(box.y)} ${formatNum(box.width)} ${formatNum(box.height)}`;
   let paths = '';
@@ -171,7 +177,12 @@ export function rasterScale(boxWidth: number, boxHeight: number): number {
  * stored thumbnail would be too blurry to blow up.
  */
 export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement {
-  const items = renderItemsForStoredDrawing(drawing.strokes, drawing.layers);
+  const items = renderItemsForStoredDrawing(
+    drawing.strokes,
+    drawing.layers,
+    // Animation: export the frame that was showing when saved.
+    storedFrameView(drawing),
+  );
   const box = paddedBox(computeStrokesBoundingBox(items.map((it) => it.stroke)));
   const scale = rasterScale(box.width, box.height);
   const canvas = document.createElement('canvas');

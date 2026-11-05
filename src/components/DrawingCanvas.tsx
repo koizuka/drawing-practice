@@ -2,7 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { Box } from '@mui/material';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { CanvasRenderer } from '../drawing/CanvasRenderer';
-import { LAYER_COLOR_HEX, orderStrokesForRender } from '../drawing/layers';
+import { LAYER_COLOR_HEX, onionSkinItems, orderStrokesForRender } from '../drawing/layers';
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import {
   computeBaseScale,
@@ -134,6 +134,13 @@ interface DrawingCanvasProps {
   pinchRotateEnabled?: boolean;
   /** Latest discrete rotation request (keyboard / ▲ tap). */
   rotationCommand?: RotationCommand | null;
+  /**
+   * Animation playback: render this frame instead of the StrokeManager's
+   * current frame (no onion skin, no in-progress stroke). null = edit view.
+   */
+  playbackFrameId?: string | null;
+  /** Onion skin: number of neighbor frames shown on each side (0 = off). */
+  onionRange?: number;
 }
 
 /**
@@ -202,6 +209,8 @@ export function DrawingCanvas({
   masksHidden = true,
   pinchRotateEnabled = false,
   rotationCommand = null,
+  playbackFrameId = null,
+  onionRange = 0,
 }: DrawingCanvasProps) {
   const inputFrozenRef = useRef(inputFrozen);
   useEffect(() => {
@@ -383,7 +392,7 @@ export function DrawingCanvas({
     // The in-progress stroke is painted at its layer's z-position (right after
     // that layer's committed strokes), so a draft-layer line drawn under the
     // ink doesn't flash on top until pen-up.
-    const current = strokeManager.getCurrentStroke();
+    const current = playbackFrameId ? null : strokeManager.getCurrentStroke();
     const activeLayer = strokeManager.getActiveLayer();
     const activeLayerIndex = strokeManager.getLayers().indexOf(activeLayer);
     let currentDrawn = !current || current.points.length < 2;
@@ -397,7 +406,16 @@ export function DrawingCanvas({
         activeLayer.opacity,
       );
     };
-    for (const item of orderStrokesForRender(strokes, strokeManager.getLayers())) {
+    const layers = strokeManager.getLayers();
+    const frameView = strokeManager.getFrameView(playbackFrameId ?? undefined);
+    // Onion skin (neighbor frames, tinted) under the current frame. Off during
+    // playback — the motion itself is what's being judged then.
+    if (!playbackFrameId && onionRange > 0 && frameView.frames.length > 1) {
+      for (const o of onionSkinItems(strokes, layers, frameView, onionRange)) {
+        renderer.drawStroke(o.stroke, o.color, undefined, o.opacity);
+      }
+    }
+    for (const item of orderStrokesForRender(strokes, layers, frameView)) {
       if (item.layerIndex > activeLayerIndex) drawCurrent();
       if (lassoSelected && lassoSelected.has(item.index)) {
         renderer.drawHighlightedStroke(item.stroke);
@@ -477,6 +495,8 @@ export function DrawingCanvas({
     underlayEnabled,
     masks,
     masksHidden,
+    playbackFrameId,
+    onionRange,
   ]);
 
   // Setup canvas with DPR

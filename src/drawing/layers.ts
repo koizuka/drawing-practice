@@ -1,4 +1,5 @@
 import type { Stroke } from './types';
+import { onionFrames, resolveFrameId, type FrameView } from './frames';
 
 /**
  * Drawing layers (see docs/layers.md).
@@ -21,6 +22,11 @@ export interface Layer {
   opacity: number;
   locked: boolean;
   color: LayerColor;
+  /**
+   * Animation: when true the layer ignores frames and its strokes show on
+   * every frame (background / construction). Absent ≡ false (per-frame).
+   */
+  shared?: boolean;
 }
 
 /** Layer list + active layer, as persisted in the session draft / gallery record. */
@@ -82,6 +88,7 @@ export function isDefaultLayerState(state: LayerState): boolean {
     l.opacity === d.opacity &&
     l.locked === d.locked &&
     l.color === d.color &&
+    !l.shared &&
     state.activeLayerId === d.id
   );
 }
@@ -116,6 +123,7 @@ export function sanitizeLayerState(raw: unknown, rawActive?: unknown): LayerStat
         opacity: clampOpacity(r.opacity),
         locked: r.locked === true,
         color: LAYER_COLORS.includes(r.color as LayerColor) ? (r.color as LayerColor) : 'ink',
+        ...(r.shared === true ? { shared: true } : {}),
       });
     }
   }
@@ -145,14 +153,28 @@ export interface StrokeRenderItem {
   opacity: number;
 }
 
+/** True when `stroke` (on `layer`) is part of the frame `view` shows. */
+export function isStrokeInFrame(
+  stroke: Stroke,
+  layer: Layer,
+  view: FrameView | undefined,
+): boolean {
+  if (!view || layer.shared) return true;
+  return resolveFrameId(stroke, view.frames) === view.frameId;
+}
+
 /**
  * Strokes in render order: layers bottom (index 0) → top, chronological within
  * a layer, hidden layers skipped. Strokes whose layer is unknown render with
- * the bottom layer (defensive — StrokeManager remaps them on load).
+ * the bottom layer (defensive — StrokeManager remaps them on load). With a
+ * `frameView`, per-frame layers only contribute that frame's strokes (shared
+ * layers always contribute); without one, frames are not filtered (pre-
+ * animation data has a single frame anyway).
  */
 export function orderStrokesForRender(
   strokes: readonly Stroke[],
   layers: readonly Layer[],
+  frameView?: FrameView,
 ): StrokeRenderItem[] {
   if (layers.length === 0) {
     return strokes.map((stroke, index) => ({
@@ -171,6 +193,7 @@ export function orderStrokesForRender(
     const li = order.get(layerIdOf(stroke)) ?? 0;
     const layer = layers[li];
     if (!layer.visible) continue;
+    if (!isStrokeInFrame(stroke, layer, frameView)) continue;
     buckets[li].push({
       stroke,
       index,
@@ -192,19 +215,63 @@ export function orderStrokesForRender(
 export function renderItemsForStoredDrawing(
   strokes: readonly Stroke[],
   layers: readonly Layer[] | undefined,
+  frameView?: FrameView,
 ): StrokeRenderItem[] {
   const ls = sanitizeLayerState(layers).layers;
-  const items = orderStrokesForRender(strokes, ls);
+  const items = orderStrokesForRender(strokes, ls, frameView);
   // Fall back only when EVERY layer is hidden — a visible-but-empty layer
   // must not leak the hidden ones into an export.
   if (ls.some((l) => l.visible)) return items;
   return orderStrokesForRender(
     strokes,
     ls.map((l) => ({ ...l, visible: true })),
+    frameView,
   );
 }
 
 /** Visible strokes only (render order), for consumers that ignore styling. */
-export function visibleStrokes(strokes: readonly Stroke[], layers: readonly Layer[]): Stroke[] {
-  return orderStrokesForRender(strokes, layers).map((it) => it.stroke);
+export function visibleStrokes(
+  strokes: readonly Stroke[],
+  layers: readonly Layer[],
+  frameView?: FrameView,
+): Stroke[] {
+  return orderStrokesForRender(strokes, layers, frameView).map((it) => it.stroke);
+}
+
+export const ONION_BEFORE_COLOR = '#e0533d';
+export const ONION_AFTER_COLOR = '#2a9d5c';
+/** Opacity of the nearest onion frame; farther frames fade linearly. */
+const ONION_BASE_ALPHA = 0.35;
+
+/**
+ * Onion-skin strokes for `view.frameId`: the per-frame (non-shared), visible
+ * layers' strokes on the `range` frames before (warm) and after (green). Shared
+ * layers are excluded — they already show on the current frame. Farther frames
+ * are drawn first so nearer ones sit on top.
+ */
+export function onionSkinItems(
+  strokes: readonly Stroke[],
+  layers: readonly Layer[],
+  view: FrameView,
+  range: number,
+): { stroke: Stroke; color: string; opacity: number }[] {
+  const { before, after } = onionFrames(view.frames, view.frameId, range);
+  if (before.length === 0 && after.length === 0) return [];
+  const byId = new Map(layers.map((l) => [l.id, l]));
+  const style = new Map<string, { color: string; opacity: number }>();
+  const fade = (k: number) => ONION_BASE_ALPHA * (1 - k / (range + 1));
+  before.forEach((f, k) => style.set(f, { color: ONION_BEFORE_COLOR, opacity: fade(k) }));
+  after.forEach((f, k) => style.set(f, { color: ONION_AFTER_COLOR, opacity: fade(k) }));
+  const out: { stroke: Stroke; color: string; opacity: number; dist: number }[] = [];
+  for (const stroke of strokes) {
+    const layer = byId.get(layerIdOf(stroke)) ?? layers[0];
+    if (!layer || !layer.visible || layer.shared) continue;
+    const f = resolveFrameId(stroke, view.frames);
+    const st = style.get(f);
+    if (!st) continue;
+    const dist = Math.abs(view.frames.indexOf(f) - view.frames.indexOf(view.frameId));
+    out.push({ stroke, ...st, dist });
+  }
+  out.sort((a, b) => b.dist - a.dist);
+  return out.map(({ stroke, color, opacity }) => ({ stroke, color, opacity }));
 }

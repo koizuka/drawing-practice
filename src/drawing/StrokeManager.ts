@@ -5,6 +5,7 @@ import {
   MAX_LAYERS,
   MIN_LAYER_OPACITY,
   createDefaultLayerState,
+  isStrokeInFrame,
   layerIdOf,
   maxLayerSeq,
   sanitizeLayerState,
@@ -12,6 +13,17 @@ import {
   type Layer,
   type LayerState,
 } from './layers';
+import {
+  MAX_FRAMES,
+  FPS_OPTIONS,
+  createDefaultFrameState,
+  maxFrameSeq,
+  resolveFrameId,
+  sanitizeFrameState,
+  withFrameId,
+  type FrameState,
+  type FrameView,
+} from './frames';
 
 /** Maximum number of reference-change entries kept in history to bound memory. */
 const MAX_REFERENCE_HISTORY = 20;
@@ -42,7 +54,31 @@ type UndoEntry =
   | { type: 'lasso-delete'; items: LassoDeleteItem[] }
   | { type: 'reference'; prev: ReferenceSnapshot }
   | { type: 'clear'; strokes: Stroke[] }
-  | LayerDeleteEntry;
+  | LayerDeleteEntry
+  | FrameAddEntry
+  | FrameDeleteEntry;
+
+/**
+ * A frame inserted (empty, or as a duplicate carrying copies of the source
+ * frame's strokes). Undo removes the frame and those strokes; redo re-inserts
+ * both. Same shape on both stacks.
+ */
+interface FrameAddEntry {
+  type: 'frame-add';
+  frameId: string;
+  frameIndex: number;
+  strokes: Stroke[];
+  prevCurrentFrameId: string;
+}
+
+/** A frame removed together with its per-frame strokes (shape like layer-delete). */
+interface FrameDeleteEntry {
+  type: 'frame-delete';
+  frameId: string;
+  frameIndex: number;
+  items: LassoDeleteItem[];
+  prevCurrentFrameId: string;
+}
 
 /**
  * A layer removed together with its strokes. Undo re-inserts the layer at
@@ -59,7 +95,12 @@ interface LayerDeleteEntry {
 }
 
 /** Fields of a layer the UI may change in place (non-undoable view/settings edits). */
-export type LayerPatch = Partial<Pick<Layer, 'name' | 'visible' | 'opacity' | 'locked' | 'color'>>;
+export type LayerPatch = Partial<
+  Pick<Layer, 'name' | 'visible' | 'opacity' | 'locked' | 'color' | 'shared'>
+>;
+
+/** Document-level state restored by `loadState` (all parts optional). */
+export type DocState = Partial<LayerState> & Partial<FrameState>;
 
 /** An entry on the redo stack stores enough data to replay the action. */
 type RedoEntry =
@@ -68,7 +109,9 @@ type RedoEntry =
   | { type: 'lasso-delete'; items: LassoDeleteItem[] }
   | { type: 'reference'; next: ReferenceSnapshot }
   | { type: 'clear'; strokes: Stroke[] }
-  | LayerDeleteEntry;
+  | LayerDeleteEntry
+  | FrameAddEntry
+  | FrameDeleteEntry;
 
 /** Result returned from undo()/redo() so callers can distinguish what changed. */
 export type UndoResult =
@@ -76,6 +119,7 @@ export type UndoResult =
   | { kind: 'strokes'; strokes: Stroke[] }
   | { kind: 'reference' }
   | { kind: 'layer' }
+  | { kind: 'frame' }
   | null;
 
 /**
@@ -131,6 +175,12 @@ export class StrokeManager {
    * redo of the old deletion take the new layer's strokes with it.
    */
   private layerSeq = 0;
+  /** Animation frames (ids in playback order) — see src/drawing/frames.ts. */
+  private frames: string[] = createDefaultFrameState().frames;
+  private currentFrameId: string = createDefaultFrameState().currentFrameId;
+  private fps: number = createDefaultFrameState().fps;
+  /** Monotonic, for the same reason as `layerSeq`. */
+  private frameSeq = 0;
 
   private nextTimestamp(): number {
     const now = Date.now();
@@ -157,9 +207,14 @@ export class StrokeManager {
   // future whole-stroke refinement (RDP simplification, smoothing, end-snap).
 
   startStroke(point: Point): void {
-    this.currentStroke = withLayerId(
+    const base = withLayerId(
       { points: [quantizePoint(point)], timestamp: this.nextTimestamp() },
       this.activeLayerId,
+    );
+    // Shared (all-frames) layers don't record a frame.
+    this.currentStroke = withFrameId(
+      base,
+      this.getActiveLayer().shared ? null : this.currentFrameId,
     );
   }
 
@@ -311,11 +366,18 @@ export class StrokeManager {
         survived.push({ type: 'lasso-delete', items: remainingItems });
         continue;
       }
-      if (e.type === 'layer-delete') {
-        // Keep the entry even when no strokes remain: undo still restores the layer.
+      if (e.type === 'layer-delete' || e.type === 'frame-delete') {
+        // Keep the entry even when no strokes remain: undo still restores the layer / frame.
         survived.push({
           ...e,
           items: e.items.filter((it) => !clearedTimestamps.has(it.stroke.timestamp)),
+        });
+        continue;
+      }
+      if (e.type === 'frame-add') {
+        survived.push({
+          ...e,
+          strokes: e.strokes.filter((st) => !clearedTimestamps.has(st.timestamp)),
         });
         continue;
       }
@@ -400,6 +462,29 @@ export class StrokeManager {
       this.bumpMutation();
       return { kind: 'layer' };
     }
+    if (entry.type === 'frame-add') {
+      const ts = new Set(entry.strokes.map((st) => st.timestamp));
+      this.strokes = this.strokes.filter((st) => !ts.has(st.timestamp));
+      this.removeFrameId(entry.frameId);
+      if (this.frames.includes(entry.prevCurrentFrameId)) {
+        this.currentFrameId = entry.prevCurrentFrameId;
+      }
+      this.redoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'frame' };
+    }
+    if (entry.type === 'frame-delete') {
+      this.frames.splice(Math.min(entry.frameIndex, this.frames.length), 0, entry.frameId);
+      for (const item of entry.items) {
+        this.strokes.splice(Math.min(item.index, this.strokes.length), 0, item.stroke);
+      }
+      this.currentFrameId = this.frames.includes(entry.prevCurrentFrameId)
+        ? entry.prevCurrentFrameId
+        : entry.frameId;
+      this.redoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'frame' };
+    }
     // entry.type === 'reference'
     this.undoReferenceCount--;
     const current = captureCurrentRef?.();
@@ -462,6 +547,20 @@ export class StrokeManager {
       this.undoStack.push(entry);
       this.bumpMutation();
       return { kind: 'layer' };
+    }
+    if (entry.type === 'frame-add') {
+      this.frames.splice(Math.min(entry.frameIndex, this.frames.length), 0, entry.frameId);
+      this.strokes.push(...entry.strokes);
+      this.currentFrameId = entry.frameId;
+      this.undoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'frame' };
+    }
+    if (entry.type === 'frame-delete') {
+      this.removeFrameAndStrokes(entry.frameId);
+      this.undoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'frame' };
     }
     // entry.type === 'reference'
     const current = captureCurrentRef?.();
@@ -539,11 +638,15 @@ export class StrokeManager {
         survived.push({ type: 'lasso-delete', items: remainingItems });
         continue;
       }
-      if (e.type === 'layer-delete') {
+      if (e.type === 'layer-delete' || e.type === 'frame-delete') {
         survived.push({
           ...e,
           items: e.items.filter((it) => !timestamps.has(it.stroke.timestamp)),
         });
+        continue;
+      }
+      if (e.type === 'frame-add') {
+        survived.push({ ...e, strokes: e.strokes.filter((st) => !timestamps.has(st.timestamp)) });
         continue;
       }
       // reference / clear entries unaffected. (clear entries may carry stroke
@@ -647,8 +750,16 @@ export class StrokeManager {
    * not in the list are reassigned to the bottom layer so nothing becomes
    * unreachable.
    */
-  loadState(strokes: Stroke[], redoStack: Stroke[], layerState?: Partial<LayerState>): void {
+  loadState(strokes: Stroke[], redoStack: Stroke[], layerState?: DocState): void {
     const ls = sanitizeLayerState(layerState?.layers, layerState?.activeLayerId);
+    // Frames: absent ⇒ a single default frame (pre-animation data). Strokes on
+    // an unknown frame are left as-is — resolveFrameId maps them to the first
+    // frame wherever frames are evaluated.
+    const fs = sanitizeFrameState(layerState ?? {});
+    this.frames = fs.frames;
+    this.currentFrameId = fs.currentFrameId;
+    this.fps = fs.fps;
+    this.frameSeq = Math.max(this.frameSeq, maxFrameSeq(fs.frames));
     this.layers = ls.layers;
     this.activeLayerId = ls.activeLayerId;
     this.layerSeq = Math.max(this.layerSeq, maxLayerSeq(ls.layers));
@@ -749,9 +860,16 @@ export class StrokeManager {
     return l.visible && !l.locked;
   }
 
-  /** Erase tools (tap / lasso) only touch strokes on the drawable active layer. */
+  /**
+   * Erase tools (tap / lasso / clear-layer) only touch strokes on the drawable
+   * active layer that are part of the current frame (shared layers: any).
+   */
   isStrokeEditable(stroke: Stroke): boolean {
-    return layerIdOf(stroke) === this.activeLayerId && this.canDrawOnActiveLayer();
+    return (
+      layerIdOf(stroke) === this.activeLayerId &&
+      this.canDrawOnActiveLayer() &&
+      isStrokeInFrame(stroke, this.getActiveLayer(), this.getFrameView())
+    );
   }
 
   getLayerStrokeCount(id: string): number {
@@ -835,9 +953,10 @@ export class StrokeManager {
    */
   clearLayer(id: string): Stroke[] | null {
     if (id !== this.activeLayerId || !this.canDrawOnActiveLayer()) return null;
+    // With animation this is "the active layer's lines on the current frame".
     const indices: number[] = [];
     this.strokes.forEach((s, i) => {
-      if (layerIdOf(s) === id) indices.push(i);
+      if (this.isStrokeEditable(s)) indices.push(i);
     });
     return this.lassoDelete(indices);
   }
@@ -851,6 +970,157 @@ export class StrokeManager {
     if (this.activeLayerId === id) {
       // Prefer the layer that was below, else the new bottom.
       this.activeLayerId = this.layers[Math.max(0, layerIndex - 1)].id;
+    }
+  }
+
+  // ── Frames ───────────────────────────────────────────────────────────────
+  // Frame add / duplicate / delete are undoable (they change the animation's
+  // content; duplicate creates strokes). Selecting a frame is view state (no
+  // dirty bump); reorder and fps are non-undoable settings that bump dirty.
+
+  getFrames(): readonly string[] {
+    return this.frames;
+  }
+
+  getCurrentFrameId(): string {
+    return this.currentFrameId;
+  }
+
+  getCurrentFrameIndex(): number {
+    return Math.max(0, this.frames.indexOf(this.currentFrameId));
+  }
+
+  getFrameView(frameId: string = this.currentFrameId): FrameView {
+    return { frames: this.frames, frameId };
+  }
+
+  getFps(): number {
+    return this.fps;
+  }
+
+  /** Layers + frames snapshot for persistence. */
+  getDocState(): LayerState & FrameState {
+    return { ...this.getLayerState(), ...this.getFrameState() };
+  }
+
+  /** Snapshot for persistence. */
+  getFrameState(): FrameState {
+    return { frames: this.frames.slice(), currentFrameId: this.currentFrameId, fps: this.fps };
+  }
+
+  setFps(fps: number): boolean {
+    if (fps === this.fps || !(FPS_OPTIONS as readonly number[]).includes(fps)) return false;
+    this.fps = fps;
+    this.bumpMutation();
+    return true;
+  }
+
+  setCurrentFrame(id: string): boolean {
+    if (id === this.currentFrameId || !this.frames.includes(id)) return false;
+    this.currentFrameId = id;
+    return true;
+  }
+
+  /**
+   * Insert a frame and select it — right after the current one by default, or
+   * at the end with `atEnd` (the filmstrip's trailing "+" cell). With
+   * `duplicate`, the current frame's per-frame strokes (non-shared layers) are
+   * copied onto it. Returns the new frame id, or null at MAX_FRAMES.
+   */
+  addFrame(opts: { duplicate?: boolean; atEnd?: boolean } = {}): string | null {
+    if (this.frames.length >= MAX_FRAMES) return null;
+    this.frameSeq = Math.max(this.frameSeq, maxFrameSeq(this.frames)) + 1;
+    const frameId = `frame-${this.frameSeq}`;
+    const frameIndex = opts.atEnd ? this.frames.length : this.getCurrentFrameIndex() + 1;
+    const copies: Stroke[] = [];
+    if (opts.duplicate) {
+      const byId = new Map(this.layers.map((l) => [l.id, l]));
+      for (const st of this.strokes) {
+        const layer = byId.get(layerIdOf(st)) ?? this.layers[0];
+        if (layer.shared) continue;
+        if (resolveFrameId(st, this.frames) !== this.currentFrameId) continue;
+        copies.push(
+          withFrameId(
+            { ...st, points: st.points.map((p) => ({ ...p })), timestamp: this.nextTimestamp() },
+            frameId,
+          ),
+        );
+      }
+    }
+    const entry: FrameAddEntry = {
+      type: 'frame-add',
+      frameId,
+      frameIndex,
+      strokes: copies,
+      prevCurrentFrameId: this.currentFrameId,
+    };
+    this.frames.splice(frameIndex, 0, frameId);
+    this.strokes.push(...copies);
+    this.currentFrameId = frameId;
+    this.undoStack.push(entry);
+    this.redoStack = [];
+    this.bumpMutation();
+    return frameId;
+  }
+
+  /** Delete a frame and its per-frame strokes as ONE undo entry (never the last frame). */
+  deleteFrame(id: string): boolean {
+    if (this.frames.length <= 1) return false;
+    const frameIndex = this.frames.indexOf(id);
+    if (frameIndex < 0) return false;
+    const entry: FrameDeleteEntry = {
+      type: 'frame-delete',
+      frameId: id,
+      frameIndex,
+      items: [],
+      prevCurrentFrameId: this.currentFrameId,
+    };
+    this.strokes.forEach((stroke, index) => {
+      if (this.isOnFrame(stroke, id)) entry.items.push({ stroke, index });
+    });
+    this.removeFrameAndStrokes(id);
+    this.undoStack.push(entry);
+    this.redoStack = [];
+    this.bumpMutation();
+    return true;
+  }
+
+  /** Move a frame earlier (-1) or later (+1) in playback order. */
+  moveFrame(id: string, delta: 1 | -1): boolean {
+    const i = this.frames.indexOf(id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= this.frames.length) return false;
+    [this.frames[i], this.frames[j]] = [this.frames[j], this.frames[i]];
+    this.bumpMutation();
+    return true;
+  }
+
+  /** Per-frame stroke count for a frame (shared layers excluded). */
+  getFrameStrokeCount(id: string): number {
+    let n = 0;
+    for (const s of this.strokes) if (this.isOnFrame(s, id)) n++;
+    return n;
+  }
+
+  /** True when `stroke` is a per-frame stroke living on frame `id`. */
+  private isOnFrame(stroke: Stroke, id: string): boolean {
+    const layer = this.layers.find((l) => l.id === layerIdOf(stroke)) ?? this.layers[0];
+    return !layer.shared && resolveFrameId(stroke, this.frames) === id;
+  }
+
+  private removeFrameAndStrokes(id: string): void {
+    const doomed = new Set(this.strokes.filter((st) => this.isOnFrame(st, id)));
+    this.strokes = this.strokes.filter((st) => !doomed.has(st));
+    this.removeFrameId(id);
+  }
+
+  /** Drop a frame id, moving the selection to the previous frame when needed. */
+  private removeFrameId(id: string): void {
+    const i = this.frames.indexOf(id);
+    if (i < 0) return;
+    this.frames.splice(i, 1);
+    if (this.currentFrameId === id) {
+      this.currentFrameId = this.frames[Math.max(0, i - 1)];
     }
   }
 

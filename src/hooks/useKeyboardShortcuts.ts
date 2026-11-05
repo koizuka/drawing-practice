@@ -23,6 +23,9 @@ interface ShortcutActions {
   onRotateRight?: () => void;
   /** Rotate the drawing view back upright (Krita's 5). */
   onResetRotation?: () => void;
+  /** Animation: previous / next frame (`,` / `.`). */
+  onPrevFrame?: () => void;
+  onNextFrame?: () => void;
 }
 
 interface UseKeyboardShortcutsOptions {
@@ -94,6 +97,22 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
         if (rotate) {
           e.preventDefault();
           rotate();
+          return;
+        }
+      }
+
+      // Animation frame stepping (no modifiers): `,` / `.` like most
+      // animation tools. Matched on e.code for layout independence.
+      if (!mod && !e.altKey && !e.shiftKey) {
+        const step =
+          e.code === 'Comma'
+            ? actions.onPrevFrame
+            : e.code === 'Period'
+              ? actions.onNextFrame
+              : undefined;
+        if (step) {
+          e.preventDefault();
+          step();
           return;
         }
       }

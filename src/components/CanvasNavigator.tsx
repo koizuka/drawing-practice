@@ -121,7 +121,11 @@ export function CanvasNavigator({
   // Stroke bbox + subsampling stride, recomputed only when strokes change.
   const strokeSummary = useMemo(() => {
     void contentVersion;
-    const strokes = visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers());
+    const strokes = visibleStrokes(
+      strokeManager.getStrokes(),
+      strokeManager.getLayers(),
+      strokeManager.getFrameView(),
+    );
     const bb = emptyBoundingBox();
     let total = 0;
     for (const s of strokes) {
@@ -229,7 +233,11 @@ export function CanvasNavigator({
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.beginPath();
-    for (const s of visibleStrokes(strokeManager.getStrokes(), strokeManager.getLayers())) {
+    for (const s of visibleStrokes(
+      strokeManager.getStrokes(),
+      strokeManager.getLayers(),
+      strokeManager.getFrameView(),
+    )) {
       const pts = s.points;
       if (pts.length === 0) continue;
       const first = toNav(pts[0]);

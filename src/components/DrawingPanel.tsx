@@ -38,6 +38,7 @@ import {
   RotateCwSquare,
   Lock,
   Layers,
+  Film,
 } from 'lucide-react';
 import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
 import type { Orientation } from '../hooks/useOrientation';
@@ -50,6 +51,7 @@ import { PerspectiveController } from './PerspectiveController';
 import { GridModePopoverButton } from './GridModePopoverButton';
 import { MaskRevealButton } from './MaskRevealButton';
 import { LayerPopoverButton } from './LayerPopoverButton';
+import { AnimationTimeline } from './AnimationTimeline';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
 import { saveDrawing, type DrawingRecord } from '../storage';
@@ -75,6 +77,27 @@ function loadPinchRotateEnabled(): boolean {
 function persistPinchRotateEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(PINCH_ROTATE_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+// Animation timeline visibility + onion-skin range are per-user view
+// preferences (like pinch-rotate), not part of the drawing — localStorage.
+const TIMELINE_OPEN_STORAGE_KEY = 'drawing.timelineOpen';
+const ONION_RANGE_STORAGE_KEY = 'drawing.onionRange';
+
+function loadPref(key: string, fallback: string): string {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function savePref(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
   } catch {
     /* ignore */
   }
@@ -248,6 +271,24 @@ export function DrawingPanel({
     setPinchRotateEnabled(next);
   }, [pinchRotateEnabled]);
   const [showGallery, setShowGallery] = useState(false);
+
+  // ── Animation ─────────────────────────────────────────────────────────────
+  const [timelineOpen, setTimelineOpen] = useState(
+    () => loadPref(TIMELINE_OPEN_STORAGE_KEY, '0') === '1',
+  );
+  const [onionRange, setOnionRange] = useState(() => {
+    const v = Number(loadPref(ONION_RANGE_STORAGE_KEY, '1'));
+    return v === 0 || v === 1 || v === 2 ? v : 1;
+  });
+  // Playback renders `frames[playIndex]` via DrawingCanvas.playbackFrameId
+  // without touching the StrokeManager's current frame; stopping commits the
+  // shown frame as the new current one (so you draw where you stopped).
+  const [playing, setPlaying] = useState(false);
+  const [playIndex, setPlayIndex] = useState(0);
+  const playStateRef = useRef({ playing: false, playIndex: 0 });
+  useEffect(() => {
+    playStateRef.current = { playing, playIndex };
+  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   // Gallery "continue this drawing" awaiting overwrite confirmation. Set only
@@ -333,7 +374,84 @@ export function DrawingPanel({
     [onStrokesChanged],
   );
 
+  const frameCount = strokeManager.getFrames().length;
+  const fps = strokeManager.getFps();
+  useEffect(() => {
+    if (!playing || frameCount <= 1) return;
+    const id = setInterval(() => setPlayIndex((i) => (i + 1) % frameCount), 1000 / fps);
+    return () => clearInterval(id);
+  }, [playing, fps, frameCount]);
+
+  /**
+   * Stop playback synchronously (safe to call from a pointer-down capture
+   * before the canvas starts a stroke): the shown frame becomes current.
+   */
+  const stopPlayback = useCallback(() => {
+    const { playing: isPlaying, playIndex: idx } = playStateRef.current;
+    if (!isPlaying) return;
+    playStateRef.current = { playing: false, playIndex: idx };
+    const frames = strokeManager.getFrames();
+    strokeManager.setCurrentFrame(frames[idx % frames.length]);
+    setPlaying(false);
+    setRedrawVersion((v) => v + 1);
+    onStrokesChanged?.({ flush: true });
+  }, [strokeManager, onStrokesChanged]);
+
+  const handleTogglePlay = useCallback(() => {
+    if (playStateRef.current.playing) {
+      stopPlayback();
+      return;
+    }
+    if (strokeManager.getFrames().length <= 1) return;
+    setHighlightedStrokeIndex(null);
+    const start = strokeManager.getCurrentFrameIndex();
+    playStateRef.current = { playing: true, playIndex: start };
+    setPlayIndex(start);
+    setPlaying(true);
+  }, [strokeManager, stopPlayback]);
+
+  const handleSelectFrame = useCallback(
+    (frameId: string, opts?: { transient?: boolean }) => {
+      if (playStateRef.current.playing) {
+        playStateRef.current = { playing: false, playIndex: 0 };
+        setPlaying(false);
+      }
+      strokeManager.setCurrentFrame(frameId);
+      setHighlightedStrokeIndex(null);
+      setRedrawVersion((v) => v + 1);
+      // Mid-scrub selections ride the debounce; discrete picks flush.
+      onStrokesChanged?.(opts?.transient ? undefined : { flush: true });
+    },
+    [strokeManager, onStrokesChanged],
+  );
+
+  const stepFrame = useCallback(
+    (dir: 1 | -1) => {
+      const frames = strokeManager.getFrames();
+      const base = playStateRef.current.playing
+        ? playStateRef.current.playIndex
+        : strokeManager.getCurrentFrameIndex();
+      const next = frames[base + dir];
+      if (next) handleSelectFrame(next);
+    },
+    [strokeManager, handleSelectFrame],
+  );
+
+  const handleToggleTimeline = useCallback(() => {
+    const next = !timelineOpen;
+    if (!next) stopPlayback();
+    savePref(TIMELINE_OPEN_STORAGE_KEY, next ? '1' : '0');
+    setTimelineOpen(next);
+    setRedrawVersion((v) => v + 1);
+  }, [timelineOpen, stopPlayback]);
+
+  const handleOnionRangeChange = useCallback((range: number) => {
+    savePref(ONION_RANGE_STORAGE_KEY, String(range));
+    setOnionRange(range);
+  }, []);
+
   const handleUndo = useCallback(() => {
+    stopPlayback();
     strokeManager.undo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw({ flush: true });
@@ -344,9 +462,17 @@ export function DrawingPanel({
     if (!strokeManager.canUndo()) {
       timer.reset();
     }
-  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer, onTraceSyncAttempts]);
+  }, [
+    strokeManager,
+    triggerRedraw,
+    captureReferenceSnapshot,
+    timer,
+    onTraceSyncAttempts,
+    stopPlayback,
+  ]);
 
   const handleRedo = useCallback(() => {
+    stopPlayback();
     strokeManager.redo(captureReferenceSnapshot);
     setHighlightedStrokeIndex(null);
     triggerRedraw({ flush: true });
@@ -354,13 +480,21 @@ export function DrawingPanel({
     if (!timer.isRunning && strokeManager.getStrokes().length > 0) {
       timer.start();
     }
-  }, [strokeManager, triggerRedraw, captureReferenceSnapshot, timer, onTraceSyncAttempts]);
+  }, [
+    strokeManager,
+    triggerRedraw,
+    captureReferenceSnapshot,
+    timer,
+    onTraceSyncAttempts,
+    stopPlayback,
+  ]);
 
   const handleClear = useCallback(() => {
     // Bail out if there is nothing the user could perceive as "clearing"
     // (canvas already empty and no tentative state to extend). Without this
     // guard we'd still run the trace-scoring reset below on a no-op click.
     if (strokeManager.getStrokes().length === 0 && !strokeManager.isTentativeClearActive()) return;
+    stopPlayback();
     // Reset trace scoring BEFORE tentativeClear. `resetScores` calls
     // `discardStrokes(scoredTimestamps)` which only works while the
     // matching strokes are still in `strokeManager.getStrokes()` — running
@@ -388,7 +522,7 @@ export function DrawingPanel({
     setViewResetVersion((v) => v + 1);
     triggerRedraw({ flush: true });
     onOverlayClear?.();
-  }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores]);
+  }, [strokeManager, triggerRedraw, timer, onOverlayClear, onTraceResetScores, stopPlayback]);
 
   // Layer edits from the layer popover. Clear/delete-layer remove strokes, so
   // resync trace scoring like the other erase paths; a pending highlight index
@@ -517,10 +651,11 @@ export function DrawingPanel({
     savingRef.current = true;
     setSaving(true);
     try {
-      // Hidden layers stay in the record (re-editable) but not in the thumbnail.
-      const layerState = strokeManager.getLayerState();
-      const thumbnail = generateThumbnail(strokes, layerState.layers);
-      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs, layerState);
+      // Hidden layers / other frames stay in the record (re-editable) but the
+      // thumbnail shows what's on screen: visible layers of the current frame.
+      const doc = strokeManager.getDocState();
+      const thumbnail = generateThumbnail(strokes, doc.layers, strokeManager.getFrameView());
+      await saveDrawing(strokes, thumbnail, referenceInfo ?? null, timer.elapsedMs, doc);
       strokeManager.markSavedToGallery();
       onGallerySaved?.();
       timer.pause();
@@ -596,6 +731,8 @@ export function DrawingPanel({
         onRotateLeft: () => requestRotation({ kind: 'step', dir: -1 }),
         onRotateRight: () => requestRotation({ kind: 'step', dir: 1 }),
         onResetRotation: handleResetRotation,
+        onPrevFrame: () => stepFrame(-1),
+        onNextFrame: () => stepFrame(1),
       }),
       [
         handleUndo,
@@ -605,6 +742,7 @@ export function DrawingPanel({
         handleSave,
         requestRotation,
         handleResetRotation,
+        stepFrame,
       ],
     ),
   });
@@ -844,7 +982,50 @@ export function DrawingPanel({
 
         {/* Layers sit with the drawing tools: the active layer decides where
             the pen draws and what the eraser can touch. */}
-        <LayerPopoverButton strokeManager={strokeManager} onChanged={handleLayersChanged} />
+        <LayerPopoverButton
+          strokeManager={strokeManager}
+          onChanged={handleLayersChanged}
+          showFrameOptions={timelineOpen || frameCount > 1}
+        />
+
+        <ToolbarTooltip title={t('animation')}>
+          <IconButton
+            size="small"
+            onClick={handleToggleTimeline}
+            aria-label={t('animation')}
+            aria-pressed={timelineOpen}
+            sx={{
+              position: 'relative',
+              bgcolor: timelineOpen ? 'primary.main' : 'transparent',
+              color: timelineOpen ? 'white' : frameCount > 1 ? 'primary.main' : 'inherit',
+              '&:hover': { bgcolor: timelineOpen ? 'primary.dark' : 'action.hover' },
+            }}
+          >
+            <Film size={20} />
+            {!timelineOpen && frameCount > 1 && (
+              <Box
+                component="span"
+                aria-hidden
+                sx={{
+                  position: 'absolute',
+                  right: -2,
+                  bottom: 0,
+                  minWidth: 14,
+                  height: 14,
+                  px: '2px',
+                  borderRadius: '7px',
+                  fontSize: 10,
+                  lineHeight: '14px',
+                  fontWeight: 700,
+                  bgcolor: 'primary.main',
+                  color: 'white',
+                }}
+              >
+                {frameCount}
+              </Box>
+            )}
+          </IconButton>
+        </ToolbarTooltip>
 
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.5 }} />
 
@@ -1090,6 +1271,10 @@ export function DrawingPanel({
           />
         )}
         <Box
+          // Any press on the canvas stops playback first (capture phase, so it
+          // runs before the canvas's own handlers start a stroke) — the stroke
+          // then lands on the frame that was showing.
+          onPointerDownCapture={stopPlayback}
           sx={{ width: '100%', height: '100%', transform: isFlipped ? 'scaleX(-1)' : undefined }}
         >
           <DrawingCanvas
@@ -1124,6 +1309,8 @@ export function DrawingPanel({
             masksHidden={effectiveMasksHidden}
             pinchRotateEnabled={pinchRotateEnabled}
             rotationCommand={rotationCommand}
+            playbackFrameId={playing ? strokeManager.getFrames()[playIndex % frameCount] : null}
+            onionRange={timelineOpen ? onionRange : 0}
           />
         </Box>
         {strokeBlockedHint && (
@@ -1150,6 +1337,20 @@ export function DrawingPanel({
           </Box>
         )}
       </Box>
+
+      {timelineOpen && (
+        <AnimationTimeline
+          strokeManager={strokeManager}
+          contentVersion={redrawVersion + (historySyncVersion ?? 0)}
+          playing={playing}
+          displayIndex={playing ? playIndex % frameCount : strokeManager.getCurrentFrameIndex()}
+          onTogglePlay={handleTogglePlay}
+          onSelectFrame={handleSelectFrame}
+          onChanged={() => handleLayersChanged({ flush: true })}
+          onionRange={onionRange}
+          onOnionRangeChange={handleOnionRangeChange}
+        />
+      )}
 
       {showGallery && (
         <LazyErrorBoundary>

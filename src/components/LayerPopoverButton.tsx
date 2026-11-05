@@ -5,7 +5,9 @@ import {
   ButtonBase,
   IconButton,
   Popover,
+  FormControlLabel,
   Slider,
+  Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
@@ -52,6 +54,8 @@ interface LayerPopoverButtonProps {
    * which ride the 2s autosave debounce.
    */
   onChanged: (opts?: { flush?: boolean }) => void;
+  /** Show animation-only layer settings (the "all frames" switch). */
+  showFrameOptions?: boolean;
 }
 
 /**
@@ -59,7 +63,11 @@ interface LayerPopoverButtonProps {
  * inline from the StrokeManager on each render — the parent re-renders after
  * `onChanged`, same pattern as canUndo/canRedo.
  */
-export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverButtonProps) {
+export function LayerPopoverButton({
+  strokeManager,
+  onChanged,
+  showFrameOptions = false,
+}: LayerPopoverButtonProps) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   // In-place destructive confirm (ui-design-principles §4): which action is
   // pending for the active layer. Reset whenever the active layer changes.
@@ -327,6 +335,22 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                 </ToggleButton>
               ))}
             </ToggleButtonGroup>
+            {showFrameOptions && (
+              <FormControlLabel
+                sx={{ mx: 0.5 }}
+                control={
+                  <Switch
+                    size="small"
+                    checked={active.shared === true}
+                    onChange={(e) => {
+                      strokeManager.updateLayer(active.id, { shared: e.target.checked });
+                      change();
+                    }}
+                  />
+                }
+                label={<Typography variant="body2">{t('layerShared')}</Typography>}
+              />
+            )}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, px: 1 }}>
               <Typography variant="caption" sx={{ whiteSpace: 'nowrap' }}>
                 {t('layerOpacity')}
