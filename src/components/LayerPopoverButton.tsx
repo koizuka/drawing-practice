@@ -215,6 +215,7 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                       }}
                     >
                       <Box
+                        component="span"
                         aria-hidden
                         sx={{
                           width: 10,
@@ -226,6 +227,7 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                         }}
                       />
                       <Typography
+                        component="span"
                         variant="body2"
                         noWrap
                         sx={{
@@ -237,7 +239,7 @@ export function LayerPopoverButton({ strokeManager, onChanged }: LayerPopoverBut
                       >
                         {layerDisplayName(layer, index)}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography component="span" variant="caption" color="text.secondary">
                         {strokeManager.getLayerStrokeCount(layer.id)}
                       </Typography>
                     </ButtonBase>
