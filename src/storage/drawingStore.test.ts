@@ -140,3 +140,19 @@ describe('quantizeStrokesForStorage', () => {
     expect(out[0].points[0]).toEqual({ x: 0.1, y: -0.1 });
   });
 });
+
+describe('quantizeStrokesForStorage layer metadata', () => {
+  it('preserves layerId', () => {
+    const out = quantizeStrokesForStorage([
+      {
+        points: [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+        ],
+        timestamp: 1,
+        layerId: 'layer-1',
+      },
+    ]);
+    expect(out[0].layerId).toBe('layer-1');
+  });
+});

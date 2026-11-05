@@ -14,6 +14,7 @@ Single chronological undo/redo stack shared by **strokes AND reference changes**
 - `delete` — single stroke erased (erase-mode tap: a press that releases without crossing the lasso threshold)
 - `lasso-delete` — batch erase: N strokes deleted as one undo unit (erase-mode lasso: a press that drags past the threshold and encloses strokes). Items stored ascending by index; undo splices them back in ascending order, redo splices out in descending order so indices stay valid.
 - `reference` — reference (source/mode/image/Sketchfab angle) changed
+- `layer-delete` — a layer removed together with its strokes (see `docs/layers.md`). Stored with the layer's list index, each stroke's array index (undo splices back ascending, clamped), and the previous active layer. `commitTentativeClear` / `discardStrokes` filter its items but keep the entry. Other layer edits are NOT undo entries.
 - `clear` — tentative clear: captures the live strokes so Undo can restore them, plus the empty visible state. Drawing a new stroke commits the clear (entry + the pre-clear `add` / `delete` / `lasso-delete` entries that referenced the cleared strokes are dropped together — see "Tentative clear" below).
 
 Reference entries are restored via an injected `ReferenceRestorer` callback. `undo(captureCurrentRef)` / `redo(captureCurrentRef)` accept a snapshot factory so the opposite stack can record the "current" reference before swapping.

@@ -8,8 +8,8 @@ import type { GuideLine, GuideState, MaskRect, PerspectiveSettings } from '../gu
  */
 function shiftStroke(stroke: Stroke, dx: number, dy: number): Stroke {
   return {
+    ...stroke,
     points: stroke.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
-    timestamp: stroke.timestamp,
   };
 }
 

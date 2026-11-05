@@ -1,5 +1,17 @@
 import type { Point, ReferenceSnapshot, Stroke } from './types';
 import { quantizePoint, quantizeStroke } from './quantize';
+import {
+  DEFAULT_LAYER_ID,
+  MAX_LAYERS,
+  MIN_LAYER_OPACITY,
+  createDefaultLayerState,
+  layerIdOf,
+  nextLayerId,
+  sanitizeLayerState,
+  withLayerId,
+  type Layer,
+  type LayerState,
+} from './layers';
 
 /** Maximum number of reference-change entries kept in history to bound memory. */
 const MAX_REFERENCE_HISTORY = 20;
@@ -29,7 +41,25 @@ type UndoEntry =
   | { type: 'delete'; stroke: Stroke; index: number }
   | { type: 'lasso-delete'; items: LassoDeleteItem[] }
   | { type: 'reference'; prev: ReferenceSnapshot }
-  | { type: 'clear'; strokes: Stroke[] };
+  | { type: 'clear'; strokes: Stroke[] }
+  | LayerDeleteEntry;
+
+/**
+ * A layer removed together with its strokes. Undo re-inserts the layer at
+ * `layerIndex` and splices the strokes back (ascending, like lasso-delete);
+ * redo removes them again. Same shape on both stacks.
+ */
+interface LayerDeleteEntry {
+  type: 'layer-delete';
+  layer: Layer;
+  layerIndex: number;
+  items: LassoDeleteItem[];
+  /** Active layer before the deletion, restored on undo. */
+  prevActiveLayerId: string;
+}
+
+/** Fields of a layer the UI may change in place (non-undoable view/settings edits). */
+export type LayerPatch = Partial<Pick<Layer, 'name' | 'visible' | 'opacity' | 'locked' | 'color'>>;
 
 /** An entry on the redo stack stores enough data to replay the action. */
 type RedoEntry =
@@ -37,13 +67,15 @@ type RedoEntry =
   | { type: 'delete'; stroke: Stroke; index: number }
   | { type: 'lasso-delete'; items: LassoDeleteItem[] }
   | { type: 'reference'; next: ReferenceSnapshot }
-  | { type: 'clear'; strokes: Stroke[] };
+  | { type: 'clear'; strokes: Stroke[] }
+  | LayerDeleteEntry;
 
 /** Result returned from undo()/redo() so callers can distinguish what changed. */
 export type UndoResult =
   | { kind: 'stroke'; stroke: Stroke }
   | { kind: 'strokes'; strokes: Stroke[] }
   | { kind: 'reference' }
+  | { kind: 'layer' }
   | null;
 
 /**
@@ -89,6 +121,9 @@ export class StrokeManager {
    * rather than assuming it sits at the top.
    */
   private tentativeClearState: { savedStrokes: Stroke[] } | null = null;
+  /** Layers bottom → top. Never empty. See src/drawing/layers.ts. */
+  private layers: Layer[] = createDefaultLayerState().layers;
+  private activeLayerId: string = DEFAULT_LAYER_ID;
 
   private nextTimestamp(): number {
     const now = Date.now();
@@ -115,10 +150,10 @@ export class StrokeManager {
   // future whole-stroke refinement (RDP simplification, smoothing, end-snap).
 
   startStroke(point: Point): void {
-    this.currentStroke = {
-      points: [quantizePoint(point)],
-      timestamp: this.nextTimestamp(),
-    };
+    this.currentStroke = withLayerId(
+      { points: [quantizePoint(point)], timestamp: this.nextTimestamp() },
+      this.activeLayerId,
+    );
   }
 
   /**
@@ -269,6 +304,14 @@ export class StrokeManager {
         survived.push({ type: 'lasso-delete', items: remainingItems });
         continue;
       }
+      if (e.type === 'layer-delete') {
+        // Keep the entry even when no strokes remain: undo still restores the layer.
+        survived.push({
+          ...e,
+          items: e.items.filter((it) => !clearedTimestamps.has(it.stroke.timestamp)),
+        });
+        continue;
+      }
       // reference entries unaffected
       survived.push(e);
     }
@@ -336,6 +379,20 @@ export class StrokeManager {
       // Undo round-trip cleanly without triggering a duplicate gallery save.
       return { kind: 'strokes', strokes: this.strokes };
     }
+    if (entry.type === 'layer-delete') {
+      const layerIndex = Math.min(entry.layerIndex, this.layers.length);
+      this.layers.splice(layerIndex, 0, entry.layer);
+      for (const item of entry.items) {
+        // Clamp: a committed tentative clear may have shrunk the array since.
+        this.strokes.splice(Math.min(item.index, this.strokes.length), 0, item.stroke);
+      }
+      if (this.layers.some((l) => l.id === entry.prevActiveLayerId)) {
+        this.activeLayerId = entry.prevActiveLayerId;
+      }
+      this.redoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'layer' };
+    }
     // entry.type === 'reference'
     this.undoReferenceCount--;
     const current = captureCurrentRef?.();
@@ -392,6 +449,12 @@ export class StrokeManager {
       // No bumpMutation — re-entering tentative is the inverse of undo-of-clear
       // and must preserve gallery-dirty parity. See `tentativeClear()`.
       return { kind: 'strokes', strokes: [] };
+    }
+    if (entry.type === 'layer-delete') {
+      this.removeLayerAndStrokes(entry.layer.id);
+      this.undoStack.push(entry);
+      this.bumpMutation();
+      return { kind: 'layer' };
     }
     // entry.type === 'reference'
     const current = captureCurrentRef?.();
@@ -469,6 +532,13 @@ export class StrokeManager {
         survived.push({ type: 'lasso-delete', items: remainingItems });
         continue;
       }
+      if (e.type === 'layer-delete') {
+        survived.push({
+          ...e,
+          items: e.items.filter((it) => !timestamps.has(it.stroke.timestamp)),
+        });
+        continue;
+      }
       // reference / clear entries unaffected. (clear entries may carry stroke
       // references whose scoring has been wiped — Undo restores them as
       // untracked ghosts. Documented MVP limitation.)
@@ -539,13 +609,17 @@ export class StrokeManager {
     return items.map((it) => it.stroke);
   }
 
-  /** Find the nearest stroke to a point within the given threshold distance. */
+  /**
+   * Find the nearest stroke to a point within the given threshold distance.
+   * Only strokes the erase tools may touch (`isStrokeEditable`) are candidates.
+   */
   findNearestStroke(point: Point, threshold: number): number | null {
     let bestIndex: number | null = null;
     let bestDist = threshold;
 
     for (let i = 0; i < this.strokes.length; i++) {
       const stroke = this.strokes[i];
+      if (!this.isStrokeEditable(stroke)) continue;
       for (const p of stroke.points) {
         const dx = p.x - point.x;
         const dy = p.y - point.y;
@@ -560,10 +634,25 @@ export class StrokeManager {
     return bestIndex;
   }
 
-  loadState(strokes: Stroke[], redoStack: Stroke[]): void {
+  /**
+   * Replace the whole drawing. `layerState` absent ⇒ the default single layer
+   * (pre-layer drafts / gallery records). Strokes pointing at a layer that is
+   * not in the list are reassigned to the bottom layer so nothing becomes
+   * unreachable.
+   */
+  loadState(strokes: Stroke[], redoStack: Stroke[], layerState?: Partial<LayerState>): void {
+    const ls = sanitizeLayerState(layerState?.layers, layerState?.activeLayerId);
+    this.layers = ls.layers;
+    this.activeLayerId = ls.activeLayerId;
+    const known = new Set(ls.layers.map((l) => l.id));
+    const fallback = ls.layers[0].id;
+    const normalize = (s: Stroke): Stroke => {
+      const q = quantizeStroke(s);
+      return known.has(layerIdOf(q)) ? q : withLayerId(q, fallback);
+    };
     // Quantize on entry so legacy session drafts and gallery loads land in the
     // same already-quantized state as freshly-drawn strokes.
-    const quantizedStrokes = strokes.map(quantizeStroke);
+    const quantizedStrokes = strokes.map(normalize);
     this.strokes = quantizedStrokes;
     this.undoStack = quantizedStrokes.map((s) => ({
       type: 'add' as const,
@@ -571,7 +660,7 @@ export class StrokeManager {
     }));
     this.redoStack = redoStack.map((stroke) => ({
       type: 'add' as const,
-      stroke: quantizeStroke(stroke),
+      stroke: normalize(stroke),
     }));
     this.currentStroke = null;
     this.undoReferenceCount = 0;
@@ -613,6 +702,142 @@ export class StrokeManager {
     this.undoReferenceCount = 0;
     this.tentativeClearState = null;
     this.bumpMutation();
+  }
+
+  // ── Layers ───────────────────────────────────────────────────────────────
+  // Settings edits (add / rename / visibility / opacity / lock / color /
+  // reorder / active) are NOT undoable — like masksHidden they are view-ish
+  // state, and keeping them off the stack means stroke undo never has to
+  // reason about a layer that moved. Only `deleteLayer` (which destroys
+  // strokes) is recorded. Every layer edit except `setActiveLayer` bumps the
+  // gallery-dirty counter because it changes what a save would write.
+
+  getLayers(): readonly Layer[] {
+    return this.layers;
+  }
+
+  getActiveLayerId(): string {
+    return this.activeLayerId;
+  }
+
+  getActiveLayer(): Layer {
+    return this.layers.find((l) => l.id === this.activeLayerId) ?? this.layers[0];
+  }
+
+  /** Snapshot for persistence. */
+  getLayerState(): LayerState {
+    return { layers: this.layers.map((l) => ({ ...l })), activeLayerId: this.activeLayerId };
+  }
+
+  setActiveLayer(id: string): boolean {
+    if (id === this.activeLayerId || !this.layers.some((l) => l.id === id)) return false;
+    this.activeLayerId = id;
+    return true;
+  }
+
+  /** Pen input is accepted only on a visible, unlocked active layer. */
+  canDrawOnActiveLayer(): boolean {
+    const l = this.getActiveLayer();
+    return l.visible && !l.locked;
+  }
+
+  /** Erase tools (tap / lasso) only touch strokes on the drawable active layer. */
+  isStrokeEditable(stroke: Stroke): boolean {
+    return layerIdOf(stroke) === this.activeLayerId && this.canDrawOnActiveLayer();
+  }
+
+  getLayerStrokeCount(id: string): number {
+    let n = 0;
+    for (const s of this.strokes) if (layerIdOf(s) === id) n++;
+    return n;
+  }
+
+  /**
+   * Add a layer directly above the active one and make it active. Returns
+   * null at MAX_LAYERS.
+   */
+  addLayer(init: LayerPatch = {}): Layer | null {
+    if (this.layers.length >= MAX_LAYERS) return null;
+    const layer: Layer = {
+      id: nextLayerId(this.layers),
+      name: '',
+      visible: true,
+      opacity: 1,
+      locked: false,
+      color: 'ink',
+      ...init,
+    };
+    const at = this.layers.findIndex((l) => l.id === this.activeLayerId);
+    this.layers.splice(at + 1, 0, layer);
+    this.activeLayerId = layer.id;
+    this.bumpMutation();
+    return layer;
+  }
+
+  updateLayer(id: string, patch: LayerPatch): boolean {
+    const i = this.layers.findIndex((l) => l.id === id);
+    if (i < 0) return false;
+    const next: Layer = { ...this.layers[i], ...patch };
+    next.opacity = Math.min(1, Math.max(MIN_LAYER_OPACITY, next.opacity));
+    this.layers[i] = next;
+    this.bumpMutation();
+    return true;
+  }
+
+  /** Move a layer up (+1, towards the top) or down (-1) in z-order. */
+  moveLayer(id: string, delta: 1 | -1): boolean {
+    const i = this.layers.findIndex((l) => l.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= this.layers.length) return false;
+    [this.layers[i], this.layers[j]] = [this.layers[j], this.layers[i]];
+    this.bumpMutation();
+    return true;
+  }
+
+  /**
+   * Delete a layer and all its strokes as ONE undo entry. The last remaining
+   * layer cannot be deleted (use the trash button / clearLayer instead).
+   */
+  deleteLayer(id: string): boolean {
+    if (this.layers.length <= 1) return false;
+    const layerIndex = this.layers.findIndex((l) => l.id === id);
+    if (layerIndex < 0) return false;
+    const entry: LayerDeleteEntry = {
+      type: 'layer-delete',
+      layer: this.layers[layerIndex],
+      layerIndex,
+      items: [],
+      prevActiveLayerId: this.activeLayerId,
+    };
+    this.strokes.forEach((stroke, index) => {
+      if (layerIdOf(stroke) === id) entry.items.push({ stroke, index });
+    });
+    this.removeLayerAndStrokes(id);
+    this.undoStack.push(entry);
+    this.redoStack = [];
+    this.bumpMutation();
+    return true;
+  }
+
+  /** Erase every stroke on a layer as one (undoable) lasso-delete entry. */
+  clearLayer(id: string): Stroke[] | null {
+    const indices: number[] = [];
+    this.strokes.forEach((s, i) => {
+      if (layerIdOf(s) === id) indices.push(i);
+    });
+    return this.lassoDelete(indices);
+  }
+
+  /** Shared by deleteLayer / redo: drop the layer + its strokes, fix up the active id. */
+  private removeLayerAndStrokes(id: string): void {
+    const layerIndex = this.layers.findIndex((l) => l.id === id);
+    if (layerIndex < 0) return;
+    this.strokes = this.strokes.filter((s) => layerIdOf(s) !== id);
+    this.layers.splice(layerIndex, 1);
+    if (this.activeLayerId === id) {
+      // Prefer the layer that was below, else the new bottom.
+      this.activeLayerId = this.layers[Math.max(0, layerIndex - 1)].id;
+    }
   }
 
   /**

@@ -2,6 +2,7 @@ import { useRef, useEffect, useCallback } from 'react';
 import { Box } from '@mui/material';
 import { StrokeManager } from '../drawing/StrokeManager';
 import { CanvasRenderer } from '../drawing/CanvasRenderer';
+import { LAYER_COLOR_HEX, orderStrokesForRender } from '../drawing/layers';
 import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import {
   computeBaseScale,
@@ -106,6 +107,11 @@ interface DrawingCanvasProps {
    * the lingering deviation feedback so the re-trace surface is clean.
    */
   onStrokeStart?: () => void;
+  /**
+   * Pen-down rejected because the active layer is hidden or locked (no stroke
+   * starts, no timer start). Lets the panel explain why nothing is drawn.
+   */
+  onStrokeBlocked?: () => void;
   /** When true, the next tap places the perspective grid anchor instead of drawing/erasing. */
   placingPerspectiveCenter?: boolean;
   onPlacePerspectiveCenter?: (x: number, y: number) => void;
@@ -187,6 +193,7 @@ export function DrawingCanvas({
   onStrokeFinalized,
   dimmedStrokeTimestamps = null,
   onStrokeStart,
+  onStrokeBlocked,
   placingPerspectiveCenter = false,
   onPlacePerspectiveCenter,
   underlayImageUrl = null,
@@ -371,27 +378,18 @@ export function DrawingCanvas({
     // semi-transparent template guide stays readable underneath when the
     // user starts re-tracing. Highlighted (lasso-preselected or eraser-
     // hovered) strokes ignore the dim — the highlight is a stronger UI
-    // signal.
-    const opacityFor = (s: Stroke) =>
-      dimmedStrokeTimestamps && dimmedStrokeTimestamps.has(s.timestamp)
-        ? DIMMED_STROKE_OPACITY
-        : undefined;
-    if (lassoSelected && lassoSelected.size > 0) {
-      // Draw enclosed strokes in the highlight color so the user can see what
-      // releasing the lasso right now would delete.
-      for (let i = 0; i < strokes.length; i++) {
-        if (lassoSelected.has(i)) {
-          renderer.drawHighlightedStroke(strokes[i]);
-        } else {
-          renderer.drawStroke(strokes[i], undefined, undefined, opacityFor(strokes[i]));
-        }
+    // signal. Layer order / visibility / tint / opacity come from
+    // orderStrokesForRender (hidden layers are skipped entirely).
+    for (const item of orderStrokesForRender(strokes, strokeManager.getLayers())) {
+      if (lassoSelected && lassoSelected.has(item.index)) {
+        renderer.drawHighlightedStroke(item.stroke);
+        continue;
       }
-    } else if (dimmedStrokeTimestamps && dimmedStrokeTimestamps.size > 0) {
-      for (const s of strokes) {
-        renderer.drawStroke(s, undefined, undefined, opacityFor(s));
-      }
-    } else {
-      renderer.drawStrokes(strokes);
+      const dim =
+        dimmedStrokeTimestamps && dimmedStrokeTimestamps.has(item.stroke.timestamp)
+          ? DIMMED_STROKE_OPACITY
+          : 1;
+      renderer.drawStroke(item.stroke, item.color, undefined, item.opacity * dim);
     }
 
     // Draw highlighted stroke
@@ -404,7 +402,8 @@ export function DrawingCanvas({
     // Draw current in-progress stroke
     const current = strokeManager.getCurrentStroke();
     if (current && current.points.length >= 2) {
-      renderer.drawStroke(current);
+      const active = strokeManager.getActiveLayer();
+      renderer.drawStroke(current, LAYER_COLOR_HEX[active.color], undefined, active.opacity);
     }
 
     // Grid + guide lines in canvas (world) coordinate space. Under rotation
@@ -839,6 +838,8 @@ export function DrawingCanvas({
     const strokes = strokeManager.getStrokes();
     const selected = new Set<number>();
     for (let i = 0; i < strokes.length; i++) {
+      // Lasso only erases on the drawable active layer (same rule as the tap).
+      if (!strokeManager.isStrokeEditable(strokes[i])) continue;
       const pts = strokes[i].points;
       if (pts.length === 0) continue;
       let allInside = true;
@@ -1188,6 +1189,12 @@ export function DrawingCanvas({
         // Arm pending state only — tap vs lasso is decided on move/up.
         beginErasePending(touch.clientX, touch.clientY, point);
       } else {
+        // Hidden / locked active layer: refuse the stroke (and don't start
+        // the timer) instead of drawing something invisible or "locked".
+        if (!strokeManager.canDrawOnActiveLayer()) {
+          onStrokeBlocked?.();
+          return;
+        }
         // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
         // can clear its lingering feedback in the same React batch as the
         // first redraw — the user sees the red bands disappear the instant
@@ -1205,6 +1212,7 @@ export function DrawingCanvas({
       cancelLasso,
       beginErasePending,
       onStrokeStart,
+      onStrokeBlocked,
       placingPerspectiveCenter,
       onPlacePerspectiveCenter,
       syncActiveTouchesFromEvent,
@@ -1490,6 +1498,11 @@ export function DrawingCanvas({
       if (mode === 'erase') {
         beginErasePending(e.clientX, e.clientY, point);
       } else {
+        if (!strokeManager.canDrawOnActiveLayer()) {
+          isMouseDownRef.current = false;
+          onStrokeBlocked?.();
+          return;
+        }
         // See handleTouchStart — fire onStrokeStart before startStroke so the
         // trace-scoring feedback clears on pointer-down.
         onStrokeStart?.();
@@ -1502,6 +1515,7 @@ export function DrawingCanvas({
       strokeManager,
       beginErasePending,
       onStrokeStart,
+      onStrokeBlocked,
       placingPerspectiveCenter,
       onPlacePerspectiveCenter,
     ],

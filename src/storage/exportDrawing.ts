@@ -1,5 +1,6 @@
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
+import { renderItemsForStoredDrawing } from '../drawing/layers';
 import { canvasToBlob } from '../utils/imageResize';
 import type { DrawingRecord } from './db';
 
@@ -133,12 +134,18 @@ export function pointsToPathData(stroke: Stroke): string {
 }
 
 export function exportDrawingAsSvg(drawing: DrawingRecord): Blob {
-  const box = paddedBox(computeStrokesBoundingBox(drawing.strokes));
+  const items = renderItemsForStoredDrawing(drawing.strokes, drawing.layers);
+  const box = paddedBox(computeStrokesBoundingBox(items.map((it) => it.stroke)));
   const viewBox = `${formatNum(box.x)} ${formatNum(box.y)} ${formatNum(box.width)} ${formatNum(box.height)}`;
   let paths = '';
-  for (const s of drawing.strokes) {
-    const d = pointsToPathData(s);
-    if (d.length > 0) paths += `<path d="${d}"/>`;
+  for (const { stroke, color, opacity } of items) {
+    const d = pointsToPathData(stroke);
+    if (d.length === 0) continue;
+    // Default ink at full opacity inherits from the <g>; layered strokes
+    // carry their own tint / opacity.
+    const colorAttr = color !== '#000000' ? ` stroke="${color}"` : '';
+    const opacityAttr = opacity !== 1 ? ` stroke-opacity="${formatNum(opacity)}"` : '';
+    paths += `<path d="${d}"${colorAttr}${opacityAttr}/>`;
   }
   const svg =
     `<?xml version="1.0" encoding="UTF-8"?>` +
@@ -164,7 +171,8 @@ export function rasterScale(boxWidth: number, boxHeight: number): number {
  * stored thumbnail would be too blurry to blow up.
  */
 export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement {
-  const box = paddedBox(computeStrokesBoundingBox(drawing.strokes));
+  const items = renderItemsForStoredDrawing(drawing.strokes, drawing.layers);
+  const box = paddedBox(computeStrokesBoundingBox(items.map((it) => it.stroke)));
   const scale = rasterScale(box.width, box.height);
   const canvas = document.createElement('canvas');
   canvas.width = Math.max(1, Math.round(box.width * scale));
@@ -177,14 +185,15 @@ export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement
 
   ctx.scale(scale, scale);
   ctx.translate(-box.x, -box.y);
-  ctx.strokeStyle = '#000000';
   ctx.lineWidth = STROKE_WIDTH;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  for (const stroke of drawing.strokes) {
+  for (const { stroke, color, opacity } of items) {
     const pts = stroke.points;
     if (pts.length === 0) continue;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = opacity;
     ctx.beginPath();
     ctx.moveTo(pts[0].x, pts[0].y);
     if (pts.length === 1) {
