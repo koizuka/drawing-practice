@@ -262,16 +262,34 @@ export function onionSkinItems(
   const fade = (k: number) => ONION_BASE_ALPHA * (1 - k / (range + 1));
   before.forEach((f, k) => style.set(f, { color: ONION_BEFORE_COLOR, opacity: fade(k) }));
   after.forEach((f, k) => style.set(f, { color: ONION_AFTER_COLOR, opacity: fade(k) }));
-  const out: { stroke: Stroke; color: string; opacity: number; dist: number }[] = [];
-  for (const stroke of strokes) {
+  const layerIndex = new Map(layers.map((l, i) => [l.id, i]));
+  const out: {
+    stroke: Stroke;
+    color: string;
+    opacity: number;
+    dist: number;
+    li: number;
+    index: number;
+  }[] = [];
+  strokes.forEach((stroke, index) => {
     const layer = byId.get(layerIdOf(stroke)) ?? layers[0];
-    if (!layer || !layer.visible || layer.shared) continue;
+    if (!layer || !layer.visible || layer.shared) return;
     const f = resolveFrameId(stroke, view.frames);
     const st = style.get(f);
-    if (!st) continue;
+    if (!st) return;
     const dist = Math.abs(view.frames.indexOf(f) - view.frames.indexOf(view.frameId));
-    out.push({ stroke, ...st, dist });
-  }
-  out.sort((a, b) => b.dist - a.dist);
+    // The layer's own opacity still applies (a 50% draft stays fainter).
+    out.push({
+      stroke,
+      color: st.color,
+      opacity: st.opacity * layer.opacity,
+      dist,
+      li: layerIndex.get(layer.id) ?? 0,
+      index,
+    });
+  });
+  // Farther frames first (nearer ones on top); within a frame keep layer
+  // z-order, then chronological order — same as the normal render.
+  out.sort((a, b) => b.dist - a.dist || a.li - b.li || a.index - b.index);
   return out.map(({ stroke, color, opacity }) => ({ stroke, color, opacity }));
 }

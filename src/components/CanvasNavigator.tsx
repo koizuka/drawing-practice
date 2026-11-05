@@ -39,6 +39,12 @@ interface CanvasNavigatorProps {
   isFlipped: boolean;
   /** Bumped whenever the committed stroke set changes (DrawingPanel's redrawVersion). */
   contentVersion: number;
+  /**
+   * Animation frame to overview — the DISPLAYED frame (playback position while
+   * playing), which can differ from the manager's current frame. Absent ⇒
+   * the current frame.
+   */
+  frameId?: string;
   /** Rotate back upright (the ▲ tap). */
   onResetRotation: () => void;
   /** Top offset (CSS px) so the widget clears other top-right overlays. */
@@ -64,6 +70,7 @@ export function CanvasNavigator({
   fitSize,
   isFlipped,
   contentVersion,
+  frameId,
   onResetRotation,
   top = 8,
 }: CanvasNavigatorProps) {
@@ -124,7 +131,7 @@ export function CanvasNavigator({
     const strokes = visibleStrokes(
       strokeManager.getStrokes(),
       strokeManager.getLayers(),
-      strokeManager.getFrameView(),
+      strokeManager.getFrameView(frameId),
     );
     const bb = emptyBoundingBox();
     let total = 0;
@@ -136,7 +143,7 @@ export function CanvasNavigator({
       bbox: total > 0 ? bb : null,
       stride: Math.max(1, Math.ceil(total / STROKE_POINT_BUDGET)),
     };
-  }, [strokeManager, contentVersion]);
+  }, [strokeManager, contentVersion, frameId]);
 
   const ready = container.width > 0 && container.height > 0;
   const baseScale = computeBaseScale(container, fitSize);
@@ -236,7 +243,7 @@ export function CanvasNavigator({
     for (const s of visibleStrokes(
       strokeManager.getStrokes(),
       strokeManager.getLayers(),
-      strokeManager.getFrameView(),
+      strokeManager.getFrameView(frameId),
     )) {
       const pts = s.points;
       if (pts.length === 0) continue;
@@ -301,6 +308,7 @@ export function CanvasNavigator({
     viewTransform,
     strokeManager,
     strokeSummary,
+    frameId,
   ]);
 
   const label = upright ? `✓ ${t('viewUpright')}` : `${degrees > 0 ? '+' : ''}${degrees}°`;

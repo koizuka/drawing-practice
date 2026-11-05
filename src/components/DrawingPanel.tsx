@@ -643,6 +643,9 @@ export function DrawingPanel({
   const savingRef = useRef(false);
   const handleSave = useCallback(async () => {
     if (savingRef.current) return;
+    // Saving during playback: commit the frame on screen first so the record's
+    // currentFrameId (thumbnail / export) is the one the user was looking at.
+    stopPlayback();
     const strokes = strokeManager.getStrokes();
     if (strokes.length === 0) return;
     // Guard: nothing has changed since the last gallery save (also covers
@@ -667,10 +670,14 @@ export function DrawingPanel({
       savingRef.current = false;
       setSaving(false);
     }
-  }, [strokeManager, referenceInfo, timer, onGallerySaved]);
+  }, [strokeManager, referenceInfo, timer, onGallerySaved, stopPlayback]);
 
   const executeLoadDrawing = useCallback(
     (drawing: DrawingRecord) => {
+      // Drop playback without committing a frame: the loaded drawing brings
+      // its own current frame.
+      playStateRef.current = { playing: false, playIndex: 0 };
+      setPlaying(false);
       setPendingLoadDrawing(null);
       setShowGallery(false);
       setHighlightedStrokeIndex(null);
@@ -1265,6 +1272,7 @@ export function DrawingPanel({
             fitSize={referenceSize ?? undefined}
             isFlipped={isFlipped ?? false}
             contentVersion={redrawVersion}
+            frameId={playing ? strokeManager.getFrames()[playIndex % frameCount] : undefined}
             onResetRotation={handleResetRotation}
             // Clear the trace score badge pinned to the same corner.
             top={templateStrokes && templateStrokes.length > 0 ? 44 : 8}

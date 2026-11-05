@@ -103,7 +103,9 @@ export function useKeyboardShortcuts({ disabled, actions }: UseKeyboardShortcuts
 
       // Animation frame stepping (no modifiers): `,` / `.` like most
       // animation tools. Matched on e.code for layout independence.
-      if (!mod && !e.altKey && !e.shiftKey) {
+      // Both platform modifiers are excluded (not just `mod`): Ctrl+, on macOS
+      // or Win+. on Windows must not step frames.
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
         const step =
           e.code === 'Comma'
             ? actions.onPrevFrame

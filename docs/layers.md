@@ -4,14 +4,13 @@
 
 Two workflows want strokes grouped and shown independently:
 
-1. **Draft → ink (this change, phase 1)**: rough lines on a faint blue layer,
+1. **Draft → ink (phase 1, PR #408)**: rough lines on a faint blue layer,
    clean lines on top, then hide the draft and save — the thumbnail / export
    show only the ink, while the record keeps the draft so it stays
    re-editable.
-2. **Line animation (phase 2, planned)**: frames × layers. A second,
-   orthogonal per-stroke attribute (`frame`) plus onion skin / filmstrip /
-   playback. Phase 1 deliberately keeps the model open for that axis — see
-   "Phase 2" below.
+2. **Line animation (phase 2)**: frames × layers. A second, orthogonal
+   per-stroke attribute (`frameId`) plus onion skin / filmstrip / playback —
+   see "Frames" below.
 
 ## Data model (`src/drawing/layers.ts`)
 
@@ -132,8 +131,18 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   after a frame delete), so nothing becomes unreachable.
 - **Visible on frame F** = layer visible ∧ (layer.shared ∨ resolveFrameId = F)
   — `isStrokeInFrame`, applied by `orderStrokesForRender(…, frameView)`.
-  **Editable** additionally requires that (erase tap / lasso / clearLayer).
-  `startStroke` records the current frame unless the active layer is shared.
+- **Editable** (erase tap, lasso, `clearLayer`) = the stroke is on the
+  active layer ∧ that layer is visible and unlocked ∧ the stroke is visible
+  on the current frame (shared layers: any frame).
+- `startStroke` records the current frame, or the `SHARED_FRAME_ID` marker
+  when the active layer is shared. Turning sharing OFF moves exactly the
+  marker-tagged strokes onto the current frame (mutated in place so undo
+  entries holding the same objects stay consistent); without the marker they
+  would be indistinguishable from frame-0 strokes and would vanish from the
+  frame being viewed.
+- Selecting a frame bumps gallery-dirty (not undoable): the thumbnail /
+  export of a save show the current frame, so a different frame is a
+  different save.
 - `MAX_FRAMES = 120`, fps ∈ {4, 6, 8, 12, 24} (default 8).
 
 ### Undo
@@ -143,15 +152,16 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   per-frame strokes with array indices; shared-layer strokes survive) are
   undo entries, same shape on both stacks. Tentative-clear commit and
   `discardStrokes` filter their stroke lists like `layer-delete`.
-- Selecting a frame is view state (no dirty bump, not undoable); reorder and
-  fps are non-undoable settings that bump gallery-dirty.
+- Selecting a frame is not undoable but bumps gallery-dirty (see above);
+  reorder and fps are non-undoable settings that bump gallery-dirty too.
 
 ### Rendering
 
 - `DrawingCanvas` renders `strokeManager.getFrameView(playbackFrameId ?? current)`.
 - Onion skin (`onionSkinItems`): per-frame, visible layers' strokes on ±N
   neighbor frames — earlier warm red, later green, nearest ~35% alpha fading
-  out — drawn under the current frame. Shared layers are never onioned
+  out, multiplied by the layer's opacity; ordered farther frames first, then
+  layer z-order, then chronological — drawn under the current frame. Shared layers are never onioned
   (they're already on screen). Off during playback.
 - Thumbnail / export / overlay compare / navigator use the current frame
   (record: `currentFrameId`). GIF / sheet export is phase 3.
@@ -167,13 +177,17 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   reads) ending in a dashed "+" cell that appends a frame at the END (placed
   where the new frame appears, not with the far-right ops); then duplicate
   (inserted right after the current frame) / move earlier / later / delete
-  (in-place ✓/✗ for non-empty frames).
+  (in-place ✓/✗ for non-empty frames; a pending confirm is dropped when the
+  current frame changes and is disabled during playback).
 - Playback is a DrawingPanel interval over `frames[playIndex]`, passed to the
   canvas as `playbackFrameId` — it does NOT change the manager's current frame
   (no autosave per tick). Stopping commits the shown frame as current. A
   canvas `onPointerDownCapture` stops playback synchronously before the
   canvas handlers run, so a pen-down during playback draws on the frame that
-  was showing. Undo / redo / trash also stop it.
+  was showing. Undo / redo / trash / save also stop it (save commits the
+  shown frame first so the record's `currentFrameId` matches the screen); a
+  gallery load drops it without committing. `CanvasNavigator` gets the
+  displayed frame id so its overview follows playback.
 - Keyboard: `,` / `.` = previous / next frame.
 - The layer popover shows the "全コマ共通" (shared) switch while the
   timeline is open or the drawing has >1 frame.

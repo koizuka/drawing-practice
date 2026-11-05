@@ -157,6 +157,14 @@ export function AnimationTimeline({
   const currentIndex = strokeManager.getCurrentFrameIndex();
   const n = frames.length;
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // A pending confirm belongs to the moment it was asked: drop it as soon as
+  // the current frame changes (render-time prev-prop pattern, no effect) so
+  // coming back to that frame later doesn't resurrect it.
+  const [prevCurrentId, setPrevCurrentId] = useState(currentId);
+  if (prevCurrentId !== currentId) {
+    setPrevCurrentId(currentId);
+    if (confirmDeleteId !== null) setConfirmDeleteId(null);
+  }
   const pendingDelete = confirmDeleteId === currentId;
   const stripRef = useRef<HTMLDivElement>(null);
 
@@ -404,7 +412,7 @@ export function AnimationTimeline({
                 setConfirmDeleteId(null);
                 onChanged();
               },
-              false,
+              playing,
               'error.main',
             )}
             {iconBtn(t('cancel'), <X size={18} />, () => setConfirmDeleteId(null))}

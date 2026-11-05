@@ -13,6 +13,13 @@ import type { Stroke } from './types';
  */
 
 export const DEFAULT_FRAME_ID = 'frame-0';
+/**
+ * Marker frameId for strokes drawn on a `shared` layer. Never a real frame
+ * (resolves to the first frame if ever evaluated), but lets "turn sharing
+ * off" move exactly the strokes drawn while shared onto the current frame —
+ * without it they'd be indistinguishable from frame-0 strokes.
+ */
+export const SHARED_FRAME_ID = 'shared';
 export const MAX_FRAMES = 120;
 export const FPS_OPTIONS = [4, 6, 8, 12, 24] as const;
 export const DEFAULT_FPS = 8;

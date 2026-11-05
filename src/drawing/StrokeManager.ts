@@ -14,7 +14,9 @@ import {
   type LayerState,
 } from './layers';
 import {
+  DEFAULT_FRAME_ID,
   MAX_FRAMES,
+  SHARED_FRAME_ID,
   FPS_OPTIONS,
   createDefaultFrameState,
   maxFrameSeq,
@@ -211,10 +213,10 @@ export class StrokeManager {
       { points: [quantizePoint(point)], timestamp: this.nextTimestamp() },
       this.activeLayerId,
     );
-    // Shared (all-frames) layers don't record a frame.
+    // Shared (all-frames) layers record the SHARED marker instead of a frame.
     this.currentStroke = withFrameId(
       base,
-      this.getActiveLayer().shared ? null : this.currentFrameId,
+      this.getActiveLayer().shared ? SHARED_FRAME_ID : this.currentFrameId,
     );
   }
 
@@ -904,9 +906,23 @@ export class StrokeManager {
   updateLayer(id: string, patch: LayerPatch): boolean {
     const i = this.layers.findIndex((l) => l.id === id);
     if (i < 0) return false;
-    const next: Layer = { ...this.layers[i], ...patch };
+    const prev = this.layers[i];
+    const next: Layer = { ...prev, ...patch };
     next.opacity = Math.min(1, Math.max(MIN_LAYER_OPACITY, next.opacity));
+    if (!next.shared) delete next.shared;
     this.layers[i] = next;
+    if (prev.shared && !next.shared) {
+      // Turning sharing off: the strokes drawn while shared move onto the
+      // current frame (otherwise they'd fall back to the first frame and
+      // vanish from the frame the user is looking at). Mutated IN PLACE so
+      // undo entries holding these same objects stay consistent.
+      for (const s of this.strokes) {
+        if (layerIdOf(s) === id && s.frameId === SHARED_FRAME_ID) {
+          if (this.currentFrameId === DEFAULT_FRAME_ID) delete s.frameId;
+          else s.frameId = this.currentFrameId;
+        }
+      }
+    }
     this.bumpMutation();
     return true;
   }
@@ -1018,6 +1034,9 @@ export class StrokeManager {
   setCurrentFrame(id: string): boolean {
     if (id === this.currentFrameId || !this.frames.includes(id)) return false;
     this.currentFrameId = id;
+    // Not undoable, but it changes what a gallery save shows (thumbnail /
+    // export use the current frame), so it counts as a saveable change.
+    this.bumpMutation();
     return true;
   }
 

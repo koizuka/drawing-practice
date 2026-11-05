@@ -1,5 +1,5 @@
 import { StrokeManager } from './StrokeManager';
-import { DEFAULT_FRAME_ID, frameIdOf } from './frames';
+import { DEFAULT_FRAME_ID, SHARED_FRAME_ID, frameIdOf } from './frames';
 import { orderStrokesForRender, onionSkinItems } from './layers';
 
 function draw(m: StrokeManager, x: number) {
@@ -39,7 +39,7 @@ describe('StrokeManager frames', () => {
   it('shared layers show on every frame and record no frame', () => {
     m.updateLayer(m.getActiveLayerId(), { shared: true });
     const bg = draw(m, 0);
-    expect('frameId' in bg).toBe(false);
+    expect(bg.frameId).toBe(SHARED_FRAME_ID);
     const ink = m.addLayer()!;
     m.addFrame();
     draw(m, 100);
@@ -91,6 +91,52 @@ describe('StrokeManager frames', () => {
     expect(m.getCurrentFrameId()).toBe(f2);
     m.undo();
     expect(m.getFrames()).toEqual([DEFAULT_FRAME_ID, f1]);
+  });
+
+  it('turning sharing off moves strokes drawn while shared onto the current frame', () => {
+    draw(m, 0); // per-frame stroke on frame-0 — must stay there
+    const f1 = m.addFrame()!;
+    m.updateLayer(m.getActiveLayerId(), { shared: true });
+    draw(m, 50); // drawn while shared
+    m.updateLayer(m.getActiveLayerId(), { shared: false });
+    expect(m.getStrokes().map(frameIdOf)).toEqual([DEFAULT_FRAME_ID, f1]);
+    expect(visibleXs(m)).toEqual([50]);
+    expect('shared' in m.getActiveLayer()).toBe(false);
+  });
+
+  it('loadState keeps stroke frame tags and per-frame visibility', () => {
+    const src = new StrokeManager();
+    draw(src, 0);
+    const f1 = src.addFrame()!;
+    draw(src, 100);
+    const m2 = new StrokeManager();
+    m2.loadState([...src.getStrokes()], [], src.getDocState());
+    expect(m2.getStrokes().map(frameIdOf)).toEqual([DEFAULT_FRAME_ID, f1]);
+    expect(m2.getCurrentFrameId()).toBe(f1);
+    expect(visibleXs(m2)).toEqual([100]);
+    m2.setCurrentFrame(DEFAULT_FRAME_ID);
+    expect(visibleXs(m2)).toEqual([0]);
+  });
+
+  it('selecting a frame marks the drawing dirty (it changes the saved view)', () => {
+    m.addFrame();
+    m.markSavedToGallery();
+    m.setCurrentFrame(DEFAULT_FRAME_ID);
+    expect(m.isDirtySinceGallerySave()).toBe(true);
+  });
+
+  it('onion skin keeps layer z-order and applies layer opacity', () => {
+    const bottom = m.getActiveLayerId();
+    m.updateLayer(bottom, { opacity: 0.5 });
+    const top = m.addLayer()!;
+    draw(m, 10); // top layer, frame-0, drawn FIRST
+    m.setActiveLayer(bottom);
+    draw(m, 20); // bottom layer, frame-0
+    m.addFrame();
+    const items = onionSkinItems(m.getStrokes(), m.getLayers(), m.getFrameView(), 1);
+    expect(items.map((i) => i.stroke.points[0].x)).toEqual([20, 10]);
+    expect(items[0].opacity).toBeCloseTo(items[1].opacity * 0.5);
+    expect(top).toBeTruthy();
   });
 
   it('refuses to delete the last frame', () => {
