@@ -93,6 +93,9 @@ describe('record helpers', () => {
     expect(isAnimatedDrawing(base)).toBe(false);
     expect(isAnimatedDrawing({ frames: ['frame-0'] })).toBe(false);
     expect(isAnimatedDrawing({ frames: ['frame-0', 'frame-1'] })).toBe(true);
+    // Sanitized like the export: duplicates / reserved ids don't count.
+    expect(isAnimatedDrawing({ frames: ['frame-0', 'frame-0'] })).toBe(false);
+    expect(isAnimatedDrawing({ frames: ['frame-0', 'shared', ''] })).toBe(false);
   });
 
   it('fills defaults for single-frame records', () => {

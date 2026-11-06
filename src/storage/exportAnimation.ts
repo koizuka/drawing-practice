@@ -54,7 +54,9 @@ const WHITE = 0xffffff;
 
 /** True for stored drawings worth an animation export (more than one frame). */
 export function isAnimatedDrawing(d: StoredDocFields): boolean {
-  return (d.frames?.length ?? 0) > 1;
+  // Judge by the sanitized list the export will actually use, so duplicate /
+  // invalid ids can't offer a "GIF" of what is really one frame.
+  return d.frames !== undefined && sanitizeFrameState({ frames: d.frames }).frames.length > 1;
 }
 
 export function animationSourceFromRecord(d: DrawingRecord): AnimationSource {
