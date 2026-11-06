@@ -50,7 +50,8 @@ import { useGuides } from '../guides/useGuides';
 import { PerspectiveController } from './PerspectiveController';
 import { GridModePopoverButton } from './GridModePopoverButton';
 import { MaskRevealButton } from './MaskRevealButton';
-import { LayerPopoverButton } from './LayerPopoverButton';
+import { LayerPanel, LayerToolbarButton } from './LayerPanel';
+import { parsePanelCorner, type PanelCorner } from './layerPanelCorner';
 import { AnimationTimeline } from './AnimationTimeline';
 import { formatTime, type TimerHandle } from '../hooks/useTimer';
 import { useKeyboardShortcuts, getModifierPrefix } from '../hooks/useKeyboardShortcuts';
@@ -86,6 +87,8 @@ function persistPinchRotateEnabled(enabled: boolean): void {
 // preferences (like pinch-rotate), not part of the drawing — localStorage.
 const TIMELINE_OPEN_STORAGE_KEY = 'drawing.timelineOpen';
 const ONION_RANGE_STORAGE_KEY = 'drawing.onionRange';
+const LAYER_PANEL_OPEN_STORAGE_KEY = 'drawing.layerPanelOpen';
+const LAYER_PANEL_CORNER_STORAGE_KEY = 'drawing.layerPanelCorner';
 
 function loadPref(key: string, fallback: string): string {
   try {
@@ -271,6 +274,27 @@ export function DrawingPanel({
     setPinchRotateEnabled(next);
   }, [pinchRotateEnabled]);
   const [showGallery, setShowGallery] = useState(false);
+
+  // Docked layer panel (non-modal, so the canvas stays drawable while open).
+  const [layerPanelOpen, setLayerPanelOpen] = useState(
+    () => loadPref(LAYER_PANEL_OPEN_STORAGE_KEY, '0') === '1',
+  );
+  const toggleLayerPanel = useCallback((open: boolean) => {
+    savePref(LAYER_PANEL_OPEN_STORAGE_KEY, open ? '1' : '0');
+    setLayerPanelOpen(open);
+  }, []);
+  const [layerPanelCorner, setLayerPanelCorner] = useState<PanelCorner>(() =>
+    parsePanelCorner(loadPref(LAYER_PANEL_CORNER_STORAGE_KEY, 'tl')),
+  );
+  const [layerPanelHeight, setLayerPanelHeight] = useState(0);
+  // Corner widgets step aside from a panel docked in their corner.
+  const panelAt = (c: PanelCorner) => layerPanelOpen && layerPanelCorner === c;
+  const topRightOffset = panelAt('tr') ? layerPanelHeight : 0;
+  const bottomLeftOffset = panelAt('bl') ? layerPanelHeight : 0;
+  const handleLayerPanelCorner = useCallback((corner: PanelCorner) => {
+    savePref(LAYER_PANEL_CORNER_STORAGE_KEY, corner);
+    setLayerPanelCorner(corner);
+  }, []);
 
   // ── Animation ─────────────────────────────────────────────────────────────
   const [timelineOpen, setTimelineOpen] = useState(
@@ -989,10 +1013,10 @@ export function DrawingPanel({
 
         {/* Layers sit with the drawing tools: the active layer decides where
             the pen draws and what the eraser can touch. */}
-        <LayerPopoverButton
+        <LayerToolbarButton
           strokeManager={strokeManager}
-          onChanged={handleLayersChanged}
-          showFrameOptions={timelineOpen || frameCount > 1}
+          open={layerPanelOpen}
+          onToggle={() => toggleLayerPanel(!layerPanelOpen)}
         />
 
         <ToolbarTooltip title={t('animation')}>
@@ -1216,7 +1240,7 @@ export function DrawingPanel({
           <Box
             sx={{
               position: 'absolute',
-              top: 8,
+              top: 8 + topRightOffset,
               right: 8,
               zIndex: 5,
               display: 'flex',
@@ -1264,7 +1288,18 @@ export function DrawingPanel({
             )}
           </Box>
         )}
-        {grid.mode === 'perspective' && <PerspectiveController />}
+        {grid.mode === 'perspective' && <PerspectiveController bottomOffset={bottomLeftOffset} />}
+        {layerPanelOpen && (
+          <LayerPanel
+            strokeManager={strokeManager}
+            onChanged={handleLayersChanged}
+            showFrameOptions={timelineOpen || frameCount > 1}
+            onClose={() => toggleLayerPanel(false)}
+            corner={layerPanelCorner}
+            onCornerChange={handleLayerPanelCorner}
+            onHeightChange={setLayerPanelHeight}
+          />
+        )}
         {viewTransform && (
           <CanvasNavigator
             viewTransform={viewTransform}
@@ -1275,7 +1310,7 @@ export function DrawingPanel({
             frameId={playing ? strokeManager.getFrames()[playIndex % frameCount] : undefined}
             onResetRotation={handleResetRotation}
             // Clear the trace score badge pinned to the same corner.
-            top={templateStrokes && templateStrokes.length > 0 ? 44 : 8}
+            top={topRightOffset + (templateStrokes && templateStrokes.length > 0 ? 44 : 8)}
           />
         )}
         <Box

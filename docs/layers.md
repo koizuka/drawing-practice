@@ -99,10 +99,20 @@ Layer list + active id live in `StrokeManager` (it is the drawing document).
 Opacity is applied per stroke (overlaps darken slightly) rather than via an
 offscreen layer composite — cheaper, and indistinguishable for line art.
 
-## UI (`LayerPopoverButton`)
+## UI (`LayerToolbarButton` + `LayerPanel`)
 
-Drawing toolbar, next to pen/eraser (the active layer decides where the pen
-draws). Badge = active layer number when >1 layer. Popover: list top-first
+Toggle button on the drawing toolbar, next to pen/eraser (the active layer
+decides where the pen draws). Badge = active layer number when >1 layer.
+The panel is **non-modal and docked flush to the canvas area's top-left
+edge** (an earlier modal `Popover` had to be closed before the canvas took
+input again, and it floated inward over where you draw). It stays open while
+drawing; close via the toggle or its ✕. The header's 2×2 corner picker
+docks it to any of the four corners (no free dragging — the only goal is to
+get it out of where you draw). Widgets pinned to the same corner step aside
+by the panel's measured height (`onHeightChange`, ResizeObserver): the
+navigator and trace-score badge at top-right, `PerspectiveController` at
+bottom-left. Open state and corner are per-user prefs
+(`localStorage['drawing.layerPanelOpen']` / `['drawing.layerPanelCorner']`). Contents: list top-first
 (row = select; eye; lock; tint dot; name; stroke count), "Add layer",
 "Draft + Ink" preset (single-layer only: base → blue 50% "Draft", new "Ink"
 on top; the ink layer becomes active only if something was already drawn),
@@ -191,7 +201,7 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   gallery load drops it without committing. `CanvasNavigator` gets the
   displayed frame id so its overview follows playback.
 - Keyboard: `,` / `.` = previous / next frame.
-- The layer popover shows the "全コマ共通" (shared) switch while the
+- The layer panel shows the "全コマ共通" (shared) switch while the
   timeline is open or the drawing has >1 frame.
 
 ### Persistence
