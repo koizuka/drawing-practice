@@ -1177,7 +1177,8 @@ export class StrokeManager {
 
   /** True when `stroke` is a per-frame stroke living on frame `id`. */
   private isOnFrame(stroke: Stroke, id: string): boolean {
-    return this.isOnAnyFrame(stroke, new Set([id]));
+    const layer = this.layers.find((l) => l.id === layerIdOf(stroke)) ?? this.layers[0];
+    return !layer.shared && resolveFrameId(stroke, this.frames) === id;
   }
 
   /**

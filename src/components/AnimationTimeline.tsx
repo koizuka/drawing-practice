@@ -250,7 +250,14 @@ export function AnimationTimeline({
     dragRef.current = { anchor: i, add, base: set, x: e.clientX, y: e.clientY };
     setLastAnchor(i);
     paintRange(i, i, add, set);
-    stripRef.current?.setPointerCapture?.(e.pointerId);
+    // Capture on the strip (its handlers track the drag); best-effort like
+    // PoseSketchPad — the range is found via elementFromPoint, so a refused
+    // capture only loses moves that leave the strip.
+    try {
+      stripRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic events / browsers that refuse capture */
+    }
   };
   const paintAtPointer = () => {
     const drag = dragRef.current;
