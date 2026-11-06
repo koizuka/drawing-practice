@@ -176,7 +176,7 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   (they're already on screen). Off during playback.
 - Thumbnail / export / overlay compare use the current frame (record:
   `currentFrameId`); `CanvasNavigator` uses the DISPLAYED frame (the playback
-  position while playing). GIF / sheet export is phase 3.
+  position while playing). GIF / sheet export: see "Animation export".
 
 ### Playback & UI (`AnimationTimeline`)
 
@@ -212,7 +212,38 @@ in `src/drawing/docState.ts`, which also handles the layer fields). No Dexie
 bump. All restore paths pass them through `pickStoredDocFields` →
 `StrokeManager.loadState(…, doc)`.
 
+## Animation export (phase 3)
+
+`src/storage/exportAnimation.ts`, entry points: the timeline's download
+button (`exportLiveAnimation` — the drawing as it is on screen, no gallery
+save needed; named by "now") and the gallery export menu for records with
+>1 frame (`exportDrawingAnimation`; still SVG/PNG/JPEG keep exporting the
+saved current frame).
+
+- Every frame goes through `renderItemsForStoredDrawing(…, {frames, frameId})`
+  — same visible-layer / tint / opacity / shared-layer rules as the stills —
+  over ONE padded world box covering all frames, so motion is preserved
+  instead of each frame being re-centered.
+- **GIF**: long edge ≤ 720px (≤ 2× upscale), line width kept ≥ 1.25px.
+  Delays come from `frameDelaysCs` (rounding distributed so 8 fps =
+  13,12,13,12 cs, total exact). Loops forever. Frames are rendered one at a
+  time with a `setTimeout(0)` yield between them (120 frames of a busy
+  1500×1000 drawing ≈ 1.4 s, ~1.3 MB in Chrome).
+- **Quantization** (`buildQuantizer`): every pixel is white, a stroke color,
+  or a white→color blend (antialiasing / layer opacity), so the palette is a
+  white→tint ramp per used color (≤ 64 levels each, index 0 = white) and a
+  pixel is projected onto the nearest ramp — no median-cut, no dithering.
+- **Encoder** (`src/utils/gifEncoder.ts`, in-house on purpose — no npm
+  dependency for ~150 lines): GIF89a, one global table, LZW with 12-bit
+  reset, disposal "keep" + per-frame crop to the rectangle that changed
+  (identical frames become a 1×1 image so their delay survives). Tests
+  round-trip it through an independent spec decoder; Chrome's
+  `ImageDecoder` was used for browser verification.
+- **Contact sheet (コマ割りシート)**: PNG, frames in reading order with
+  1-based numbers above each cell, light gray cell borders; column count
+  picked so the sheet is closest to √2 landscape; cells ≤ 480px long edge,
+  whole sheet ≤ 8 Mpx (same ceiling as the still raster export).
+
 ## Next
 
-- Phase 3: GIF / contact-sheet export.
 - Phase 4: rotoscope — step a YouTube reference in sync with frames.

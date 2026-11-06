@@ -1,6 +1,6 @@
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
-import { renderItemsForStoredDrawing } from '../drawing/layers';
+import { renderItemsForStoredDrawing, type StrokeRenderItem } from '../drawing/layers';
 import { storedFrameView } from '../drawing/docState';
 import { canvasToBlob } from '../utils/imageResize';
 import type { DrawingRecord } from './db';
@@ -106,11 +106,16 @@ export function sanitizeTitle(title: string): string {
 }
 
 export function buildExportFilename(drawing: DrawingRecord, format: ExportFormat): string {
-  const ext = format === 'jpeg' ? 'jpg' : format;
+  return `${exportFilenameStem(drawing)}.${format === 'jpeg' ? 'jpg' : format}`;
+}
+
+/** `drawing-practice-<timestamp>[-<title>]` — shared by every export kind. */
+export function exportFilenameStem(
+  drawing: Pick<DrawingRecord, 'createdAt' | 'reference'>,
+): string {
   const ts = formatTimestamp(new Date(drawing.createdAt));
   const title = sanitizeTitle(drawing.reference?.title ?? '');
-  const titlePart = title ? `-${title}` : '';
-  return `drawing-practice-${ts}${titlePart}.${ext}`;
+  return `drawing-practice-${ts}${title ? `-${title}` : ''}`;
 }
 
 function formatNum(n: number): string {
@@ -196,10 +201,24 @@ export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement
 
   ctx.scale(scale, scale);
   ctx.translate(-box.x, -box.y);
-  ctx.lineWidth = STROKE_WIDTH;
+  drawRenderItems(ctx, items, STROKE_WIDTH);
+
+  return canvas;
+}
+
+/**
+ * Stroke `items` (world coordinates, render order) onto `ctx` with their
+ * layer tint / opacity. The caller sets up the world→pixel transform.
+ * Leaves `globalAlpha` at 1.
+ */
+export function drawRenderItems(
+  ctx: CanvasRenderingContext2D,
+  items: readonly StrokeRenderItem[],
+  lineWidth: number,
+): void {
+  ctx.lineWidth = lineWidth;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-
   for (const { stroke, color, opacity } of items) {
     const pts = stroke.points;
     if (pts.length === 0) continue;
@@ -214,8 +233,7 @@ export function renderDrawingToCanvas(drawing: DrawingRecord): HTMLCanvasElement
     }
     ctx.stroke();
   }
-
-  return canvas;
+  ctx.globalAlpha = 1;
 }
 
 async function exportDrawingAsPng(drawing: DrawingRecord): Promise<Blob> {
@@ -232,7 +250,7 @@ const EXPORTERS: Record<ExportFormat, (d: DrawingRecord) => Blob | Promise<Blob>
   jpeg: exportDrawingAsJpeg,
 };
 
-function triggerDownload(blob: Blob, filename: string): void {
+export function triggerDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
