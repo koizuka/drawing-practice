@@ -9,6 +9,8 @@ import {
   ToggleButtonGroup,
   Menu,
   MenuItem,
+  CircularProgress,
+  Divider,
 } from '@mui/material';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { X, Trash2, ChevronDown, ChevronRight, Download, Pencil } from 'lucide-react';
@@ -21,6 +23,11 @@ import {
   type StorageUsage,
 } from '../storage';
 import { exportDrawing, renderDrawingToCanvas, type ExportFormat } from '../storage/exportDrawing';
+import {
+  exportDrawingAnimation,
+  isAnimatedDrawing,
+  type AnimationExportKind,
+} from '../storage/exportAnimation';
 import { getUrlHistoryEntry } from '../storage/urlHistoryStore';
 import { formatTime } from '../hooks/useTimer';
 import { t } from '../i18n';
@@ -780,26 +787,34 @@ function DrawingPreviewDialog({ drawing, onClose, onLoadDrawing }: DrawingPrevie
 
 function ExportMenuButton({ drawing }: { drawing: DrawingRecord }) {
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const handleExport = async (format: ExportFormat) => {
+  const [busy, setBusy] = useState(false);
+  const animated = isAnimatedDrawing(drawing);
+  const run = async (job: () => Promise<void>) => {
     setAnchorEl(null);
+    setBusy(true);
     try {
-      await exportDrawing(drawing, format);
+      await job();
     } catch (err) {
       console.error('Failed to export drawing', err);
       alert(t('exportFailed'));
+    } finally {
+      setBusy(false);
     }
   };
+  const handleExport = (format: ExportFormat) => run(() => exportDrawing(drawing, format));
+  const handleAnimationExport = (kind: AnimationExportKind) =>
+    run(() => exportDrawingAnimation(drawing, kind));
 
   return (
     <>
-      <ToolbarTooltip title={t('exportDrawing')}>
+      <ToolbarTooltip title={busy ? t('exporting') : t('exportDrawing')}>
         <span>
           <IconButton
             size="small"
             onClick={(e) => setAnchorEl(e.currentTarget)}
-            disabled={drawing.strokes.length === 0}
+            disabled={busy || drawing.strokes.length === 0}
           >
-            <Download size={20} />
+            {busy ? <CircularProgress size={18} /> : <Download size={20} />}
           </IconButton>
         </span>
       </ToolbarTooltip>
@@ -807,6 +822,16 @@ function ExportMenuButton({ drawing }: { drawing: DrawingRecord }) {
         <MenuItem onClick={() => handleExport('svg')}>SVG</MenuItem>
         <MenuItem onClick={() => handleExport('png')}>PNG</MenuItem>
         <MenuItem onClick={() => handleExport('jpeg')}>JPEG</MenuItem>
+        {/* Animated drawings: the stills above show the saved current frame. */}
+        {animated && <Divider />}
+        {animated && (
+          <MenuItem onClick={() => handleAnimationExport('gif')}>{t('exportGif')}</MenuItem>
+        )}
+        {animated && (
+          <MenuItem onClick={() => handleAnimationExport('sheet')}>
+            {t('exportContactSheet')}
+          </MenuItem>
+        )}
       </Menu>
     </>
   );

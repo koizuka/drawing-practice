@@ -1,7 +1,9 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Box,
+  CircularProgress,
   IconButton,
+  Menu,
   MenuItem,
   Select,
   Slider,
@@ -16,6 +18,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Download,
   Pause,
   Play,
   Plus,
@@ -26,6 +29,7 @@ import { ToolbarTooltip } from './ToolbarTooltip';
 import { t } from '../i18n';
 import type { StrokeManager } from '../drawing/StrokeManager';
 import { FPS_OPTIONS, MAX_FRAMES } from '../drawing/frames';
+import { exportLiveAnimation, type AnimationExportKind } from '../storage/exportAnimation';
 import { orderStrokesForRender } from '../drawing/layers';
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
@@ -169,6 +173,29 @@ export function AnimationTimeline({
   }
   const pendingDelete = confirmDeleteId === currentId;
   const stripRef = useRef<HTMLDivElement>(null);
+  const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
+  const [exporting, setExporting] = useState(false);
+  // Exports the drawing as it is on screen — no gallery save needed first.
+  const handleExport = async (kind: AnimationExportKind) => {
+    setExportAnchor(null);
+    setExporting(true);
+    try {
+      await exportLiveAnimation(
+        {
+          strokes: strokeManager.getStrokes(),
+          layers: strokeManager.getLayers(),
+          frames: strokeManager.getFrames(),
+          fps: strokeManager.getFps(),
+        },
+        kind,
+      );
+    } catch (err) {
+      console.error('Failed to export animation', err);
+      alert(t('exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Per-frame thumbnail data + one shared world box so motion reads correctly
   // across cells. Recomputed only when the drawing changes.
@@ -461,6 +488,28 @@ export function AnimationTimeline({
             )}
           </>
         )}
+        <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.25 }} />
+        <ToolbarTooltip title={exporting ? t('exporting') : t('animationExport')}>
+          <span>
+            <IconButton
+              size="small"
+              aria-label={t('animationExport')}
+              aria-haspopup="menu"
+              onClick={(e) => setExportAnchor(e.currentTarget)}
+              disabled={exporting || strokeManager.getStrokes().length === 0}
+            >
+              {exporting ? <CircularProgress size={16} /> : <Download size={18} />}
+            </IconButton>
+          </span>
+        </ToolbarTooltip>
+        <Menu
+          anchorEl={exportAnchor}
+          open={Boolean(exportAnchor)}
+          onClose={() => setExportAnchor(null)}
+        >
+          <MenuItem onClick={() => handleExport('gif')}>{t('exportGif')}</MenuItem>
+          <MenuItem onClick={() => handleExport('sheet')}>{t('exportContactSheet')}</MenuItem>
+        </Menu>
       </Box>
     </Box>
   );

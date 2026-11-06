@@ -57,7 +57,7 @@ Load flow: `Gallery.onLoadDrawing` → `DrawingPanel.handleGalleryLoadDrawing` (
 
 ## Export
 
-Per-card menu via `exportDrawing` — supports SVG / PNG / JPEG with auto-generated filename. The renderer is exported as `renderDrawingToCanvas` and reused by the preview dialog.
+Per-card menu via `exportDrawing` — supports SVG / PNG / JPEG with auto-generated filename. The renderer is exported as `renderDrawingToCanvas` and reused by the preview dialog. Animated records (`frames.length > 1`, `isAnimatedDrawing`) additionally get "GIF animation" / "Contact sheet (PNG)" via `exportDrawingAnimation` (`src/storage/exportAnimation.ts`, design in `docs/layers.md` "Animation export"); the stills keep showing the saved current frame. The button shows a spinner while an export runs.
 
 ## Selection / bulk delete
 
