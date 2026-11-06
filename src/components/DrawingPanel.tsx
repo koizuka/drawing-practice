@@ -594,7 +594,9 @@ export function DrawingPanel({
       lastSyncedRef.current = null;
       return;
     }
-    const sync = { videoId: '', offset: syncOffset, step: syncStep };
+    // Only the mapping is needed here; the effect keys on these primitives
+    // (getVideoSync returns a fresh copy each render).
+    const sync = { offset: syncOffset, step: syncStep };
     if (!playing) {
       // Editing: park the video on the current frame's moment.
       lastSyncedRef.current = null;

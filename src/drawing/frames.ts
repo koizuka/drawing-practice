@@ -52,7 +52,7 @@ export interface VideoSync {
 const MAX_VIDEO_SYNC_STEP = 10;
 
 /** Video time (s) for the frame at `index`. */
-export function frameVideoTime(sync: VideoSync, index: number): number {
+export function frameVideoTime(sync: Pick<VideoSync, 'offset' | 'step'>, index: number): number {
   return Math.max(0, sync.offset + index * sync.step);
 }
 
