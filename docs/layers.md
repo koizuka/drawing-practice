@@ -240,7 +240,11 @@ saved current frame).
 - **Encoder** (`src/utils/gifEncoder.ts`, in-house on purpose — no npm
   dependency for ~150 lines): GIF89a, one global table, LZW with 12-bit
   reset, disposal "keep" + per-frame crop to the rectangle that changed
-  (identical frames become a 1×1 image so their delay survives). Tests
+  (identical frames become a 1×1 image so their delay survives). Gotcha:
+  reading the LAST data code makes the decoder add the table entry the
+  encoder never adds, and if that fills the width it reads EOI one bit wider
+  — the encoder must widen before EOI too (only strict decoders notice;
+  Chrome tolerates it). Tests
   round-trip it through an independent spec decoder; Chrome's
   `ImageDecoder` was used for browser verification.
 - **Contact sheet (コマ割りシート)**: PNG, frames in reading order with

@@ -100,6 +100,10 @@ describe('record helpers', () => {
     expect(
       animationSourceFromRecord({ ...base, frames: ['frame-0', 'frame-3'], fps: 12 }),
     ).toMatchObject({ frames: ['frame-0', 'frame-3'], fps: 12 });
+    // Corrupt fps / duplicate frames are sanitized like an editor load.
+    expect(
+      animationSourceFromRecord({ ...base, frames: ['frame-0', 'frame-0', 'frame-2'], fps: 0 }),
+    ).toMatchObject({ frames: ['frame-0', 'frame-2'], fps: 8 });
   });
 
   it('names files by kind', () => {

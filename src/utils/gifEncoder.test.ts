@@ -119,8 +119,22 @@ describe('lzwEncode', () => {
     ['single', [1], 2],
     ['run', Array.from({ length: 5000 }, () => 3), 2],
     ['pattern', Array.from({ length: 3000 }, (_, i) => i % 4), 2],
+    ['ramp20', Array.from({ length: 20 }, (_, i) => i % 4), 2],
   ])('round-trips %s', (_name, data, min) => {
     expect(lzwDecode(lzwEncode(data, min), min, data.length)).toEqual(data);
+  });
+
+  // Every length up to a few table-width boundaries: the code-width bump
+  // right before EOI only shows up at specific lengths (e.g. 20 px, 2 bits).
+  it('round-trips every short ramp / run length', () => {
+    for (const min of [2, 3, 8]) {
+      for (let len = 1; len <= 300; len++) {
+        const ramp = Array.from({ length: len }, (_, i) => i % (1 << min));
+        expect(lzwDecode(lzwEncode(ramp, min), min, len)).toEqual(ramp);
+        const run = Array.from({ length: len }, () => 1);
+        expect(lzwDecode(lzwEncode(run, min), min, len)).toEqual(run);
+      }
+    }
   });
 
   it('round-trips pseudo-random 8-bit data across several table resets', () => {
@@ -202,5 +216,7 @@ describe('frameDelaysCs', () => {
     const d = frameDelaysCs(24, 24);
     expect(d.reduce((a, b) => a + b, 0)).toBe(100);
     expect(Math.min(...d)).toBeGreaterThanOrEqual(4);
+    expect(frameDelaysCs(2, 0)).toEqual([10, 10]);
+    expect(frameDelaysCs(2, Number.NaN)).toEqual([10, 10]);
   });
 });

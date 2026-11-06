@@ -105,6 +105,8 @@ export function lzwEncode(indices: ArrayLike<number>, minCodeSize: number): Uint
   };
 
   emit(clear);
+  // Codes emitted since the last clear (the decoder adds no entry for the first).
+  let sinceClear = 0;
   if (indices.length === 0) {
     emit(eoi);
   } else {
@@ -118,6 +120,7 @@ export function lzwEncode(indices: ArrayLike<number>, minCodeSize: number): Uint
         continue;
       }
       emit(prefix);
+      sinceClear++;
       if (nextCode < MAX_CODE) {
         dict.set(key, nextCode++);
         // The decoder lags one entry behind, so it widens when ITS next
@@ -128,10 +131,15 @@ export function lzwEncode(indices: ArrayLike<number>, minCodeSize: number): Uint
         dict = new Map();
         nextCode = eoi + 1;
         codeSize = minCodeSize + 1;
+        sinceClear = 0;
       }
       prefix = k;
     }
     emit(prefix);
+    // Reading that last code makes the decoder add the entry we never do
+    // (its table catches up to `nextCode`); if that fills the current width
+    // it reads EOI one bit wider, so EOI must be written that wide too.
+    if (sinceClear > 0 && nextCode === 1 << codeSize && codeSize < 12) codeSize++;
     emit(eoi);
   }
   if (bitCount > 0) out.byte(bitBuf & 0xff);
@@ -293,6 +301,8 @@ export function encodeGif({ width, height, palette, frames }: GifInput): Uint8Ar
  * uniform 13 that would drift to 7.7 fps).
  */
 export function frameDelaysCs(count: number, fps: number): number[] {
+  // A corrupt fps must not turn into Infinity / NaN delays.
+  if (!Number.isFinite(fps) || fps <= 0) fps = 10;
   const out: number[] = [];
   let acc = 0;
   for (let i = 0; i < count; i++) {

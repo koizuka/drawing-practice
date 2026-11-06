@@ -1,5 +1,5 @@
 import { STROKE_WIDTH } from '../drawing/constants';
-import { DEFAULT_FPS, DEFAULT_FRAME_ID } from '../drawing/frames';
+import { sanitizeFrameState } from '../drawing/frames';
 import { renderItemsForStoredDrawing, type Layer, type StrokeRenderItem } from '../drawing/layers';
 import type { StoredDocFields } from '../drawing/docState';
 import type { Stroke } from '../drawing/types';
@@ -58,12 +58,10 @@ export function isAnimatedDrawing(d: StoredDocFields): boolean {
 }
 
 export function animationSourceFromRecord(d: DrawingRecord): AnimationSource {
-  return {
-    strokes: d.strokes,
-    layers: d.layers,
-    frames: d.frames && d.frames.length > 0 ? d.frames : [DEFAULT_FRAME_ID],
-    fps: d.fps ?? DEFAULT_FPS,
-  };
+  // Same validation as loading the record into the editor (dedupe, cap,
+  // non-empty, fps ∈ FPS_OPTIONS).
+  const { frames, fps } = sanitizeFrameState({ frames: d.frames, fps: d.fps });
+  return { strokes: d.strokes, layers: d.layers, frames, fps };
 }
 
 /** Render items for every frame, in playback order. */
