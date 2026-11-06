@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useSyncExternalStore,
   lazy,
   Suspense,
 } from 'react';
@@ -60,6 +61,8 @@ import { generateThumbnail } from '../storage/generateThumbnail';
 import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
+import type { VideoSyncBridge } from '../utils/videoSyncBridge';
+import { anchorVideoSync, frameVideoTime } from '../drawing/frames';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 
 // Pinch-rotation switch: a per-user preference (not session state), so it
@@ -123,6 +126,8 @@ interface DrawingPanelProps {
    * `loadState` into it before this panel ever renders.
    */
   strokeManager: StrokeManager;
+  /** Rotoscope: drives the YouTube reference from the animation timeline. */
+  videoBridge?: VideoSyncBridge;
   onStrokesChanged?: (opts?: { flush?: boolean }) => void;
   /** Hook for the parent to flush autosave after a successful gallery save. */
   onGallerySaved?: () => void;
@@ -210,6 +215,7 @@ export function DrawingPanel({
   referenceSize,
   referenceInfo,
   strokeManager,
+  videoBridge,
   onStrokesChanged,
   onGallerySaved,
   onOverlayClear,
@@ -559,6 +565,96 @@ export function DrawingPanel({
     },
     [triggerRedraw, onTraceSyncAttempts],
   );
+
+  // ---- Rotoscope (docs/layers.md "Rotoscope") ----
+  // Frame i ↔ video time offset + i·step. Only live while the drawing's sync
+  // names the YouTube video that is the current reference.
+  const youtubeVideoId = referenceInfo?.source === 'youtube' ? referenceInfo.youtubeVideoId : null;
+  const videoSync = strokeManager.getVideoSync();
+  const syncActive = !!videoSync && youtubeVideoId !== null && videoSync.videoId === youtubeVideoId;
+  const syncOffset = syncActive ? videoSync.offset : null;
+  const syncStep = syncActive ? videoSync.step : null;
+  const currentFrameIndex = strokeManager.getCurrentFrameIndex();
+  const shownIndex = playing ? playIndex % frameCount : currentFrameIndex;
+  // Playback lets the video run when one frame step equals one playback tick
+  // (smooth, real speed); otherwise every tick seeks to the frame's moment.
+  const syncRealtime = syncStep !== null && Math.abs(syncStep * fps - 1) < 0.01;
+  // What the playback branch last aligned to; any change of mode or player
+  // readiness forces a fresh seek (a seek sent before the player was ready,
+  // or a switch into / out of realtime, must not wait for the next wrap).
+  const lastSyncedRef = useRef<{ index: number; realtime: boolean; ready: number } | null>(null);
+  // Re-park when the player becomes ready (seeks sent while it was still
+  // loading — e.g. right after a reload — are dropped).
+  const playerReadyVersion = useSyncExternalStore(
+    useCallback((cb: () => void) => videoBridge?.subscribeReady(cb) ?? (() => {}), [videoBridge]),
+    () => videoBridge?.getReadyVersion() ?? 0,
+  );
+  useEffect(() => {
+    if (syncOffset === null || syncStep === null || !videoBridge) {
+      lastSyncedRef.current = null;
+      return;
+    }
+    // Only the mapping is needed here; the effect keys on these primitives
+    // (getVideoSync returns a fresh copy each render).
+    const sync = { offset: syncOffset, step: syncStep };
+    if (!playing) {
+      // Editing: park the video on the current frame's moment.
+      lastSyncedRef.current = null;
+      videoBridge.seekTo(frameVideoTime(sync, currentFrameIndex), { play: false });
+      return;
+    }
+    const prev = lastSyncedRef.current;
+    const fresh =
+      prev === null || prev.realtime !== syncRealtime || prev.ready !== playerReadyVersion;
+    lastSyncedRef.current = {
+      index: shownIndex,
+      realtime: syncRealtime,
+      ready: playerReadyVersion,
+    };
+    if (syncRealtime) {
+      // Start, every loop wrap, and any mode / readiness change re-align; in
+      // between the video runs.
+      if (fresh || shownIndex < prev.index) {
+        videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: true });
+      }
+    } else if (fresh || prev.index !== shownIndex) {
+      videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: false });
+    }
+  }, [
+    syncOffset,
+    syncStep,
+    syncRealtime,
+    playing,
+    shownIndex,
+    currentFrameIndex,
+    videoBridge,
+    playerReadyVersion,
+  ]);
+
+  const handleToggleVideoSync = useCallback(() => {
+    if (!youtubeVideoId) return;
+    if (playStateRef.current.playing) stopPlayback();
+    if (syncActive) {
+      strokeManager.setVideoSync(null);
+      // Nothing drives the video after this — don't leave it running.
+      videoBridge?.pause();
+    } else {
+      // Anchor: the current frame = where the video is right now. No report
+      // from the player yet ⇒ refuse rather than silently anchor at 0 (the
+      // toggle is disabled in that state anyway).
+      const now = videoBridge?.getCurrentTime() ?? null;
+      if (now === null) return;
+      strokeManager.setVideoSync(
+        anchorVideoSync(
+          youtubeVideoId,
+          now,
+          strokeManager.getCurrentFrameIndex(),
+          strokeManager.getFps(),
+        ),
+      );
+    }
+    handleLayersChanged({ flush: true });
+  }, [youtubeVideoId, syncActive, strokeManager, videoBridge, stopPlayback, handleLayersChanged]);
 
   // Pen-down on a hidden / locked active layer: show a short explanation
   // instead of silently ignoring the pen.
@@ -1392,6 +1488,18 @@ export function DrawingPanel({
           onChanged={() => handleLayersChanged({ flush: true })}
           onionRange={onionRange}
           onOnionRangeChange={handleOnionRangeChange}
+          videoSync={
+            youtubeVideoId
+              ? {
+                  active: syncActive,
+                  // Anchoring needs a reported position (re-evaluated when the
+                  // player turns ready — playerReadyVersion re-renders).
+                  canEnable: syncActive || (videoBridge?.getCurrentTime() ?? null) !== null,
+                  time: syncActive && videoSync ? frameVideoTime(videoSync, shownIndex) : null,
+                  onToggle: handleToggleVideoSync,
+                }
+              : undefined
+          }
         />
       )}
 

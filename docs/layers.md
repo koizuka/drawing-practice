@@ -252,6 +252,62 @@ saved current frame).
   picked so the sheet is closest to √2 landscape; cells ≤ 480px long edge,
   whole sheet ≤ 8 Mpx (same ceiling as the still raster export).
 
+## Rotoscope (phase 4)
+
+Trace a YouTube reference frame by frame. YouTube's picture can't be read
+(cross-origin iframe, see `reference-sources.md`), so instead of an underlay
+the timeline DRIVES the video on the reference panel: selecting a frame parks
+the video on that frame's moment, and the drawing panel's grid / overlay
+compare stay aligned as usual.
+
+- **Model** (`FrameState.videoSync`, `src/drawing/frames.ts`):
+  `{ videoId, offset, step }` — frame at playback index `i` = video time
+  `offset + i·step` (clamped ≥ 0). Index-based on purpose: "next frame = next
+  step of the video" is what tracing wants and stays predictable when
+  frames are appended (inserting / reordering re-times the later frames —
+  inherent, accepted). `step` is frozen at anchor time (1/fps then) so a
+  later fps change alters only playback speed, never which video moment a
+  drawn frame was traced from. Saved with the frame fields
+  (`docStateForStorage`; a single frame + sync is "non-default"),
+  sanitized on load; a non-undoable setting that bumps gallery-dirty.
+- **Active** only while `videoSync.videoId` equals the current YouTube
+  reference — another reference just leaves the sync dormant.
+- **UI**: a `Clapperboard` toggle in the timeline (shown only for YouTube
+  references). Turning it on anchors the CURRENT frame to the video's current
+  position (`anchorVideoSync`); while on, the readout shows the shown frame's
+  video time (`m:ss.cc`). Re-anchoring = toggle off, move the video, on.
+- **Bridge** (`src/utils/videoSyncBridge.ts`): SplitLayout owns one;
+  `YouTubeViewer` attaches a `VideoPlayerControl` while mounted
+  (`seekTo` / `play` / `pause` / `getCurrentTime` from `infoDelivery`),
+  DrawingPanel drives it. Calls are no-ops while nothing is attached.
+- **Driving** (DrawingPanel effect): not playing ⇒ park on the current
+  frame (paused). Playing with `step·fps ≈ 1` ⇒ seek + play at start and on
+  every loop wrap, the video runs in between (smooth, real speed);
+  otherwise ⇒ a paused seek per tick. Stop commits the shown frame ⇒ parks
+  there. The bridge's "ready" signal (iframe `load` or first `infoDelivery`,
+  once per video) re-runs the park — commands sent while the iframe loads
+  are dropped — and also re-aligns a playback that started before it. An
+  unstarted embed reports no time until it plays, so `load` seeds the
+  position as 0 (no start param is ever passed): the toggle can anchor
+  before the first play, and stays disabled only until the iframe loads.
+- Turning sync off pauses the video; so does detaching (SplitLayout passes
+  no bridge while the reference panel is collapsed — an invisible video
+  must not keep playing; re-attaching an already-ready player replays the
+  ready signal so the video re-parks). A change into / out of realtime mid-playback
+  (fps changed) re-seeks immediately.
+- **Paused seek gotcha** (`YouTubeViewer`): `seekTo` keeps a PAUSED player
+  paused but STARTS one that is unstarted / cued / ended. Pausing right away
+  there leaves it black (no frame decoded yet), so the viewer tracks the
+  player state: paused ⇒ seek only; playing ⇒ seek + pause; anything else ⇒
+  seek, then pause on the first "playing" report and seek again
+  on the now-paused player so it lands exactly (it ran a few ms past). The
+  hold survives slow buffering; it is cleared by any explicit play / pause /
+  seek or the player settling paused / ended, with a 15 s safety net. A
+  programmatic start can still be refused by autoplay policy without a user
+  gesture (e.g. the reload-time park) — the poster then just stays up until
+  the first frame tap.
+
 ## Next
 
-- Phase 4: rotoscope — step a YouTube reference in sync with frames.
+- Ideas: per-frame video times (survive inserts), drawing over the video
+  itself (impossible with the iframe; would need a user-supplied video file).

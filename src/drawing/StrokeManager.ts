@@ -22,6 +22,8 @@ import {
   maxFrameSeq,
   resolveFrameId,
   sanitizeFrameState,
+  sanitizeVideoSync,
+  type VideoSync,
   withFrameId,
   type FrameState,
   type FrameView,
@@ -181,6 +183,7 @@ export class StrokeManager {
   private frames: string[] = createDefaultFrameState().frames;
   private currentFrameId: string = createDefaultFrameState().currentFrameId;
   private fps: number = createDefaultFrameState().fps;
+  private videoSync: VideoSync | undefined = undefined;
   /** Monotonic, for the same reason as `layerSeq`. */
   private frameSeq = 0;
 
@@ -761,6 +764,7 @@ export class StrokeManager {
     this.frames = fs.frames;
     this.currentFrameId = fs.currentFrameId;
     this.fps = fs.fps;
+    this.videoSync = fs.videoSync;
     this.frameSeq = Math.max(this.frameSeq, maxFrameSeq(fs.frames));
     this.layers = ls.layers;
     this.activeLayerId = ls.activeLayerId;
@@ -1021,7 +1025,40 @@ export class StrokeManager {
 
   /** Snapshot for persistence. */
   getFrameState(): FrameState {
-    return { frames: this.frames.slice(), currentFrameId: this.currentFrameId, fps: this.fps };
+    return {
+      frames: this.frames.slice(),
+      currentFrameId: this.currentFrameId,
+      fps: this.fps,
+      ...(this.videoSync ? { videoSync: { ...this.videoSync } } : {}),
+    };
+  }
+
+  getVideoSync(): VideoSync | undefined {
+    // A copy: edits must go through setVideoSync (validation + dirty bump).
+    return this.videoSync ? { ...this.videoSync } : undefined;
+  }
+
+  /**
+   * Set / clear the rotoscope sync. A setting like fps: not undoable, but it
+   * bumps gallery-dirty (it is saved with the drawing).
+   */
+  setVideoSync(sync: VideoSync | null): boolean {
+    const next = sync ? sanitizeVideoSync(sync) : undefined;
+    if (sync && !next) return false;
+    const cur = this.videoSync;
+    if (
+      cur === next ||
+      (cur &&
+        next &&
+        cur.videoId === next.videoId &&
+        cur.offset === next.offset &&
+        cur.step === next.step)
+    ) {
+      return false;
+    }
+    this.videoSync = next;
+    this.bumpMutation();
+    return true;
   }
 
   setFps(fps: number): boolean {
