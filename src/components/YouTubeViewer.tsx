@@ -560,6 +560,9 @@ export function YouTubeViewer({
       getCurrentTime: () => currentTimeRef.current,
     };
     videoBridge.attach(control);
+    // Became ready while detached (e.g. loaded with the panel collapsed):
+    // replay it so the drawing side re-parks on the current frame now.
+    if (playerReadyRef.current) videoBridge.notifyReady();
     return () => {
       videoBridge.detach(control);
       // Detached (panel collapsed / video swapped / unmount): don't leave a

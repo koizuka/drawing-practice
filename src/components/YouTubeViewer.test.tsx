@@ -398,6 +398,19 @@ describe('YouTubeViewer rotoscope bridge', () => {
     expect(ready).toHaveBeenCalledTimes(1);
   });
 
+  it('replays readiness when attached after the player loaded detached', () => {
+    const bridge = new VideoSyncBridge();
+    const { container, rerender } = render(<YouTubeViewer {...baseProps} />);
+    act(() => {
+      container.querySelector('iframe')!.dispatchEvent(new Event('load'));
+    });
+    const ready = vi.fn();
+    bridge.subscribeReady(ready);
+    rerender(<YouTubeViewer {...baseProps} videoBridge={bridge} />);
+    expect(ready).toHaveBeenCalledTimes(1);
+    expect(bridge.getCurrentTime()).toBe(0);
+  });
+
   it('an explicit play (toolbar) cancels a pending pause-on-start', () => {
     const handleRef = createRef<YouTubePlayerHandle>();
     const bridge = new VideoSyncBridge();

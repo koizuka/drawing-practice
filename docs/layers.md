@@ -292,7 +292,8 @@ compare stay aligned as usual.
   before the first play, and stays disabled only until the iframe loads.
 - Turning sync off pauses the video; so does detaching (SplitLayout passes
   no bridge while the reference panel is collapsed — an invisible video
-  must not keep playing). A change into / out of realtime mid-playback
+  must not keep playing; re-attaching an already-ready player replays the
+  ready signal so the video re-parks). A change into / out of realtime mid-playback
   (fps changed) re-seeks immediately.
 - **Paused seek gotcha** (`YouTubeViewer`): `seekTo` keeps a PAUSED player
   paused but STARTS one that is unstarted / cued / ended. Pausing right away
