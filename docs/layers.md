@@ -159,9 +159,13 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
 ### Undo
 
 - `frame-add` (empty, or duplicate carrying fresh-timestamp copies of the
-  current frame's per-frame strokes) and `frame-delete` (frame + its
-  per-frame strokes with array indices; shared-layer strokes survive) are
-  undo entries, same shape on both stacks. Tentative-clear commit and
+  current frame's per-frame strokes) and `frame-delete` (ONE OR MORE frames
+  — `frames: {frameId, frameIndex}[]` ascending — + their per-frame strokes
+  with array indices; shared-layer strokes survive) are undo entries, same
+  shape on both stacks. `deleteFrames(ids)` is the bulk path (one undo
+  unit; refuses to delete every frame); `deleteFrame(id)` wraps it. Strokes
+  are matched against the frame list BEFORE any id is dropped, and a
+  deleted current frame falls back to the nearest surviving earlier one. Tentative-clear commit and
   `discardStrokes` filter their stroke lists like `layer-delete`.
 - Selecting a frame is not undoable but bumps gallery-dirty (see above);
   reorder and fps are non-undoable settings that bump gallery-dirty too.
@@ -191,6 +195,15 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   (inserted right after the current frame) / move earlier / later / delete
   (in-place ✓/✗ for non-empty frames; a pending confirm is dropped when the
   current frame changes and is disabled during playback).
+- **Select mode** (`ListChecks` button) for bulk delete: thumbnails stop
+  navigating; a tap toggles one, a drag across the strip paints a range
+  (adds if it started on an unselected frame, removes otherwise; the strip
+  gets `touch-action: none` and nudges itself when the pointer nears an
+  edge), shift-click extends from the last anchor, keyboard activation
+  toggles. Ops become "N selected / select all ↔ clear / delete (✓/✗) /
+  done"; selecting every frame disables delete (one must remain). Deleting
+  is one `frame-delete` undo entry and leaves select mode; starting
+  playback also leaves it.
 - Playback is a DrawingPanel interval over `frames[playIndex]`, passed to the
   canvas as `playbackFrameId` — it does NOT change the manager's current frame
   (no autosave per tick). Stopping commits the shown frame as current. A

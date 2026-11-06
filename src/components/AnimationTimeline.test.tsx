@@ -99,3 +99,74 @@ describe('AnimationTimeline rotoscope toggle', () => {
     expect(screen.getByLabelText('Video time of this frame').textContent).toBe('1:01.50');
   });
 });
+
+describe('AnimationTimeline select mode (bulk delete)', () => {
+  function setup(n = 5) {
+    const m = new StrokeManager();
+    for (let i = 0; i < n; i++) {
+      if (i > 0) m.addFrame({ atEnd: true });
+      m.setCurrentFrame(m.getFrames()[i]);
+      draw(m, i * 10);
+    }
+    m.setCurrentFrame(m.getFrames()[0]);
+    const onSelect = vi.fn();
+    const utils = render(<Harness m={m} onSelect={onSelect} />);
+    const cell = (i: number) => screen.getByRole('button', { name: `Frame ${i + 1}` });
+    return { m, onSelect, cell, ...utils };
+  }
+
+  it('taps toggle selection without navigating, then deletes as one undo', () => {
+    const { m, onSelect, cell } = setup();
+    fireEvent.click(screen.getByRole('button', { name: /Select frames/ }));
+    fireEvent.pointerDown(cell(1), { pointerType: 'touch' });
+    fireEvent.pointerUp(cell(1));
+    fireEvent.pointerDown(cell(3), { pointerType: 'touch' });
+    fireEvent.pointerUp(cell(3));
+    fireEvent.click(cell(3), { detail: 1 }); // the pointer click after a tap: no navigate, no re-toggle
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(cell(1)).toHaveAttribute('aria-pressed', 'true');
+    expect(cell(2)).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('2 selected')).toBeTruthy();
+    // Keyboard activation (detail 0) toggles.
+    fireEvent.click(cell(4));
+    expect(cell(4)).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(cell(4));
+
+    const before = m.getFrames().slice();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected frames' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected frames' })); // ✓
+    expect(m.getFrames()).toEqual([before[0], before[2], before[4]]);
+    // Back to normal mode.
+    expect(screen.getByRole('button', { name: /Select frames/ })).toBeTruthy();
+    m.undo();
+    expect(m.getFrames()).toEqual(before);
+  });
+
+  it('drag paints a range; select-all cannot delete every frame', () => {
+    const { cell } = setup();
+    fireEvent.click(screen.getByRole('button', { name: /Select frames/ }));
+    const strip = screen.getByRole('group', { name: 'Frames' });
+    const original = document.elementFromPoint;
+    document.elementFromPoint = ((x: number) => cell(x)) as typeof document.elementFromPoint;
+    try {
+      fireEvent.pointerDown(cell(1), { pointerType: 'touch', clientX: 1 });
+      fireEvent.pointerMove(strip, { clientX: 3, clientY: 0 });
+      fireEvent.pointerUp(strip);
+    } finally {
+      document.elementFromPoint = original;
+    }
+    expect([0, 1, 2, 3, 4].map((i) => cell(i).getAttribute('aria-pressed'))).toEqual([
+      'false',
+      'true',
+      'true',
+      'true',
+      'false',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Select all' }));
+    expect(screen.getByRole('button', { name: 'At least one frame must remain' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+    expect(screen.getByRole('button', { name: 'Delete selected frames' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Done selecting' }));
+    expect(screen.getByRole('button', { name: /Select frames/ })).toBeTruthy();
+  });
+});
