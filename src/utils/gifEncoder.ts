@@ -201,44 +201,58 @@ function writeSubBlocks(w: ByteWriter, data: Uint8Array): void {
   w.byte(0);
 }
 
-export function encodeGif({ width, height, palette, frames }: GifInput): Uint8Array {
-  if (width < 1 || height < 1 || width > 0xffff || height > 0xffff) {
-    throw new Error('gif-bad-size');
+/**
+ * Streaming encoder: frames are compressed as they are added and only the
+ * previous frame's indices are kept (for the diff crop), so a 120-frame
+ * export never holds every full-size frame at once.
+ */
+export class GifWriter {
+  private readonly w = new ByteWriter();
+  private readonly minCodeSize: number;
+  private prev: Uint8Array | null = null;
+  private frameCount = 0;
+
+  private readonly width: number;
+  private readonly height: number;
+
+  constructor(width: number, height: number, palette: readonly number[]) {
+    this.width = width;
+    this.height = height;
+    if (width < 1 || height < 1 || width > 0xffff || height > 0xffff) {
+      throw new Error('gif-bad-size');
+    }
+    if (palette.length < 1 || palette.length > 256) throw new Error('gif-bad-palette');
+    const bits = tableBits(palette.length);
+    this.minCodeSize = Math.max(2, bits);
+    const w = this.w;
+    w.ascii('GIF89a');
+    // Logical screen descriptor: global table present, 8-bit color resolution.
+    w.u16(width);
+    w.u16(height);
+    w.byte(0x80 | (7 << 4) | (bits - 1));
+    w.byte(0); // background color index
+    w.byte(0); // pixel aspect ratio
+    for (let i = 0; i < 1 << bits; i++) {
+      const c = palette[i] ?? 0;
+      w.byte((c >> 16) & 0xff);
+      w.byte((c >> 8) & 0xff);
+      w.byte(c & 0xff);
+    }
+    // NETSCAPE2.0 application extension: loop count 0 = forever.
+    w.bytes([0x21, 0xff, 0x0b]);
+    w.ascii('NETSCAPE2.0');
+    w.bytes([0x03, 0x01, 0x00, 0x00, 0x00]);
   }
-  if (palette.length < 1 || palette.length > 256) throw new Error('gif-bad-palette');
-  if (frames.length === 0) throw new Error('gif-no-frames');
 
-  const bits = tableBits(palette.length);
-  const minCodeSize = Math.max(2, bits);
-  const w = new ByteWriter();
-
-  w.ascii('GIF89a');
-  // Logical screen descriptor: global table present, 8-bit color resolution.
-  w.u16(width);
-  w.u16(height);
-  w.byte(0x80 | (7 << 4) | (bits - 1));
-  w.byte(0); // background color index
-  w.byte(0); // pixel aspect ratio
-  for (let i = 0; i < 1 << bits; i++) {
-    const c = palette[i] ?? 0;
-    w.byte((c >> 16) & 0xff);
-    w.byte((c >> 8) & 0xff);
-    w.byte(c & 0xff);
-  }
-
-  // NETSCAPE2.0 application extension: loop forever.
-  w.bytes([0x21, 0xff, 0x0b]);
-  w.ascii('NETSCAPE2.0');
-  w.bytes([0x03, 0x01, 0x00, 0x00, 0x00]);
-
-  let prev: Uint8Array | null = null;
-  for (const frame of frames) {
+  /** `frame.indices` may be reused by the caller only after the NEXT call. */
+  addFrame(frame: GifFrame): void {
+    const { width, height, w } = this;
     if (frame.indices.length !== width * height) throw new Error('gif-bad-frame');
     let rect: Rect = { x: 0, y: 0, w: width, h: height };
-    if (prev) {
+    if (this.prev) {
       // An identical frame still needs an image (its delay must be honored);
       // a single unchanged pixel is the cheapest valid one.
-      rect = diffRect(prev, frame.indices, width, height) ?? { x: 0, y: 0, w: 1, h: 1 };
+      rect = diffRect(this.prev, frame.indices, width, height) ?? { x: 0, y: 0, w: 1, h: 1 };
     }
     // Graphic control extension: disposal 1 (keep), no transparency.
     w.bytes([0x21, 0xf9, 0x04, 1 << 2]);
@@ -251,13 +265,26 @@ export function encodeGif({ width, height, palette, frames }: GifInput): Uint8Ar
     w.u16(rect.w);
     w.u16(rect.h);
     w.byte(0);
-    w.byte(minCodeSize);
-    writeSubBlocks(w, lzwEncode(cropIndices(frame.indices, width, rect), minCodeSize));
-    prev = frame.indices;
+    w.byte(this.minCodeSize);
+    writeSubBlocks(w, lzwEncode(cropIndices(frame.indices, width, rect), this.minCodeSize));
+    this.prev = frame.indices;
+    this.frameCount++;
   }
 
-  w.byte(0x3b);
-  return w.result();
+  finish(): Uint8Array {
+    if (this.frameCount === 0) throw new Error('gif-no-frames');
+    this.prev = null;
+    this.w.byte(0x3b);
+    return this.w.result();
+  }
+}
+
+/** One-shot convenience over `GifWriter`. */
+export function encodeGif({ width, height, palette, frames }: GifInput): Uint8Array {
+  if (frames.length === 0) throw new Error('gif-no-frames');
+  const gw = new GifWriter(width, height, palette);
+  for (const f of frames) gw.addFrame(f);
+  return gw.finish();
 }
 
 /**

@@ -227,8 +227,12 @@ saved current frame).
 - **GIF**: long edge ≤ 720px (≤ 2× upscale), line width kept ≥ 1.25px.
   Delays come from `frameDelaysCs` (rounding distributed so 8 fps =
   13,12,13,12 cs, total exact). Loops forever. Frames are rendered one at a
-  time with a `setTimeout(0)` yield between them (120 frames of a busy
-  1500×1000 drawing ≈ 1.4 s, ~1.3 MB in Chrome).
+  time with a `setTimeout(0)` yield before / between them and compressed
+  immediately by the streaming `GifWriter`, which keeps only the previous
+  frame's indices (for the diff crop) — never all 120 full-size buffers
+  (120 frames of a busy 1500×1000 drawing ≈ 1.4 s, ~1.3 MB in Chrome). The
+  contact sheet yields between cells too, so the busy spinner paints and the
+  UI never blocks for more than one frame's work.
 - **Quantization** (`buildQuantizer`): every pixel is white, a stroke color,
   or a white→color blend (antialiasing / layer opacity), so the palette is a
   white→tint ramp per used color (≤ 64 levels each, index 0 = white) and a

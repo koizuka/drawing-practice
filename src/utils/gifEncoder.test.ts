@@ -73,7 +73,8 @@ function parseGif(bytes: Uint8Array) {
   }
   const frames: { x: number; y: number; w: number; h: number; delay: number; pixels: number[] }[] =
     [];
-  let loop = false;
+  let loopCount: number | null = null;
+  const disposals: number[] = [];
   let delay = 0;
   const readBlocks = () => {
     const parts: number[] = [];
@@ -88,9 +89,13 @@ function parseGif(bytes: Uint8Array) {
     if (b === 0x21) {
       const label = u8();
       const body = readBlocks();
-      if (label === 0xf9) delay = body[1] | (body[2] << 8);
+      if (label === 0xf9) {
+        disposals.push((body[0] >> 2) & 7);
+        delay = body[1] | (body[2] << 8);
+      }
       if (label === 0xff && String.fromCharCode(...body.subarray(0, 11)) === 'NETSCAPE2.0') {
-        loop = true;
+        // Sub-block 1 = [0x01, countLo, countHi]; 0 means loop forever.
+        loopCount = body[11] === 1 ? body[12] | (body[13] << 8) : null;
       }
     } else if (b === 0x2c) {
       const x = u16(),
@@ -105,7 +110,7 @@ function parseGif(bytes: Uint8Array) {
       throw new Error(`unexpected block 0x${b.toString(16)}`);
     }
   }
-  return { header, width, height, palette, frames, loop };
+  return { header, width, height, palette, frames, loopCount, disposals };
 }
 
 describe('lzwEncode', () => {
@@ -162,7 +167,8 @@ describe('encodeGif', () => {
     );
     expect(gif.header).toBe('GIF89a');
     expect([gif.width, gif.height]).toEqual([w, h]);
-    expect(gif.loop).toBe(true);
+    expect(gif.loopCount).toBe(0); // forever
+    expect(gif.disposals).toEqual([1, 1, 1]); // keep — the compositing below relies on it
     expect(gif.palette.slice(0, 3)).toEqual([0xffffff, 0x000000, 0x2f6fdf]);
     expect(gif.palette).toHaveLength(4); // padded to a power of two
     expect(gif.frames.map((f) => f.delay)).toEqual([13, 12, 13]);

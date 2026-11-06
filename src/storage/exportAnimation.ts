@@ -3,7 +3,7 @@ import { DEFAULT_FPS, DEFAULT_FRAME_ID } from '../drawing/frames';
 import { renderItemsForStoredDrawing, type Layer, type StrokeRenderItem } from '../drawing/layers';
 import type { StoredDocFields } from '../drawing/docState';
 import type { Stroke } from '../drawing/types';
-import { encodeGif, frameDelaysCs, type GifFrame } from '../utils/gifEncoder';
+import { frameDelaysCs, GifWriter } from '../utils/gifEncoder';
 import { canvasToBlob } from '../utils/imageResize';
 import type { DrawingRecord } from './db';
 import {
@@ -198,7 +198,9 @@ export async function renderAnimationGif(src: AnimationSource): Promise<Blob> {
 
   const q = buildQuantizer(usedColors(perFrame));
   const delays = frameDelaysCs(perFrame.length, src.fps);
-  const frames: GifFrame[] = [];
+  const gif = new GifWriter(width, height, q.palette);
+  // Let the caller's busy state paint before the first frame's work.
+  await yieldToUi();
   for (let f = 0; f < perFrame.length; f++) {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, width, height);
@@ -208,11 +210,13 @@ export async function renderAnimationGif(src: AnimationSource): Promise<Blob> {
     for (let i = 0, p = 0; i < indices.length; i++, p += 4) {
       indices[i] = q.indexOf(data[p], data[p + 1], data[p + 2]);
     }
-    frames.push({ indices, delayCs: delays[f] });
+    // Compressed right away; the writer keeps only this frame (for the
+    // next diff), never all of them.
+    gif.addFrame({ indices, delayCs: delays[f] });
     // Up to 120 frames: let the UI breathe between them.
     await yieldToUi();
   }
-  const bytes = encodeGif({ width, height, palette: q.palette, frames });
+  const bytes = gif.finish();
   return new Blob([bytes as BlobPart], { type: 'image/gif' });
 }
 
@@ -235,8 +239,12 @@ export function contactSheetColumns(n: number, cellW: number, cellH: number): nu
   return best;
 }
 
-/** Every frame in a numbered grid on one white canvas. */
-export function renderContactSheet(src: AnimationSource): HTMLCanvasElement {
+/**
+ * Every frame in a numbered grid on one white canvas. Async only to yield to
+ * the UI between frames (a 120-frame sheet would otherwise freeze it and the
+ * busy spinner would never paint).
+ */
+export async function renderContactSheet(src: AnimationSource): Promise<HTMLCanvasElement> {
   const perFrame = frameRenderItems(src);
   const box = animationBox(perFrame);
   const n = perFrame.length;
@@ -275,6 +283,7 @@ export function renderContactSheet(src: AnimationSource): HTMLCanvasElement {
   ctx.fillRect(0, 0, size.w, size.h);
 
   for (let i = 0; i < n; i++) {
+    await yieldToUi();
     const col = i % cols;
     const row = Math.floor(i / cols);
     const x = SHEET_MARGIN + col * (size.cw + SHEET_GAP);
@@ -303,7 +312,7 @@ export async function renderAnimationExport(
 ): Promise<Blob> {
   return kind === 'gif'
     ? renderAnimationGif(src)
-    : canvasToBlob(renderContactSheet(src), 'image/png');
+    : canvasToBlob(await renderContactSheet(src), 'image/png');
 }
 
 export function animationExportFilename(stem: string, kind: AnimationExportKind): string {
