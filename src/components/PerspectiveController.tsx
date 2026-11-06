@@ -23,7 +23,11 @@ const DOT_RADIUS = 6;
  * box / head guide onto the subject), and a crosshair toggle arms the
  * place-anchor tap mode. Mounted only while grid.mode === 'perspective'.
  */
-export function PerspectiveController() {
+/**
+ * @param bottomOffset Extra px to lift the widget by, e.g. while the layer
+ *   panel is docked to the same bottom-left corner.
+ */
+export function PerspectiveController({ bottomOffset = 0 }: { bottomOffset?: number } = {}) {
   const { grid, setPerspective, placingCenter, setPlacingCenter, removePerspectiveMemory } =
     useGuides();
   const [collapsed, setCollapsed] = useState(false);
@@ -123,7 +127,7 @@ export function PerspectiveController() {
 
   if (collapsed) {
     return (
-      <Box sx={{ position: 'absolute', left: 8, bottom: 8, zIndex: 5 }}>
+      <Box sx={{ position: 'absolute', left: 8, bottom: 8 + bottomOffset, zIndex: 5 }}>
         <ToolbarTooltip title={t('expandPerspectiveController')}>
           <IconButton
             size="small"
@@ -151,7 +155,7 @@ export function PerspectiveController() {
       sx={{
         position: 'absolute',
         left: 8,
-        bottom: 8,
+        bottom: 8 + bottomOffset,
         zIndex: 5,
         p: 1,
         display: 'flex',
