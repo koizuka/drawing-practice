@@ -16,7 +16,10 @@ import {
   ArrowRight,
   Check,
   ChevronLeft,
+  CheckCheck,
   ChevronRight,
+  CircleCheck,
+  ListChecks,
   Clapperboard,
   Copy,
   Download,
@@ -35,6 +38,10 @@ import { orderStrokesForRender } from '../drawing/layers';
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
 
+// Select-mode drag: how close to a strip edge auto-scrolls it, and how fast.
+const EDGE_SCROLL_PX = 28;
+const EDGE_SCROLL_SPEED = 480; // px/s, scaled by the rAF time delta (60 / 120 Hz alike)
+const EDGE_SCROLL_MAX_DT = 50; // ms — a stalled frame must not jump the strip
 const THUMB_W = 64;
 const THUMB_H = 48;
 
@@ -180,6 +187,142 @@ export function AnimationTimeline({
   }
   const pendingDelete = confirmDeleteId === currentId;
   const stripRef = useRef<HTMLDivElement>(null);
+
+  // ---- Select mode (bulk delete) ----
+  // Tap toggles a frame; dragging across the strip paints a range (adding
+  // when it started on an unselected frame, removing otherwise); shift-click
+  // extends from the last anchor. Thumbnails don't navigate in this mode.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const dragRef = useRef<{
+    anchor: number;
+    add: boolean;
+    base: ReadonlySet<string>;
+    /** Last pointer position (the edge auto-scroll loop re-reads it). */
+    x: number;
+    y: number;
+  } | null>(null);
+  const edgeScrollRafRef = useRef(0);
+  const edgeScrollLastTsRef = useRef<number | null>(null);
+  useEffect(() => () => cancelAnimationFrame(edgeScrollRafRef.current), []);
+  // Leaving select mode (playback start, delete, Done) also ends any drag in
+  // flight — including a running edge-scroll loop.
+  useEffect(() => {
+    if (selectMode) return;
+    dragRef.current = null;
+    cancelAnimationFrame(edgeScrollRafRef.current);
+    edgeScrollRafRef.current = 0;
+    edgeScrollLastTsRef.current = null;
+  }, [selectMode]);
+  // Shift-click anchor: state (not a ref) so leaving select mode can reset it
+  // from render-time code.
+  const [lastAnchor, setLastAnchor] = useState<number | null>(null);
+  // Ids of deleted / undone-away frames simply drop out here.
+  const selected = frames.filter((f) => selectedIds.has(f));
+  // State only, so it is callable during render. (dragRef needs no reset: it
+  // is cleared on every pointer up / cancel.)
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setConfirmBulk(false);
+    setLastAnchor(null);
+  };
+  // Playback takes over the strip — leave select mode (render-time pattern).
+  if (playing && selectMode) exitSelectMode();
+  const paintRange = (from: number, to: number, add: boolean, base: ReadonlySet<string>) => {
+    const next = new Set(base);
+    for (let k = Math.min(from, to); k <= Math.max(from, to); k++) {
+      const id = frames[k];
+      if (!id) continue;
+      if (add) next.add(id);
+      else next.delete(id);
+    }
+    setSelectedIds(next);
+    setConfirmBulk(false);
+  };
+  const frameIndexAt = (clientX: number, clientY: number): number | null => {
+    const el = document
+      .elementFromPoint?.(clientX, clientY)
+      ?.closest<HTMLElement>('[data-frame-index]');
+    if (!el || !stripRef.current?.contains(el)) return null;
+    const i = Number(el.dataset.frameIndex);
+    return Number.isInteger(i) ? i : null;
+  };
+  const handleCellPointerDown = (e: React.PointerEvent, i: number) => {
+    if (!selectMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    e.preventDefault();
+    const set = new Set(selected);
+    if (e.shiftKey && lastAnchor !== null) {
+      paintRange(lastAnchor, i, true, set);
+      return;
+    }
+    const add = !set.has(frames[i]);
+    dragRef.current = { anchor: i, add, base: set, x: e.clientX, y: e.clientY };
+    setLastAnchor(i);
+    paintRange(i, i, add, set);
+    // Capture on the strip (its handlers track the drag); best-effort like
+    // PoseSketchPad — the range is found via elementFromPoint, so a refused
+    // capture only loses moves that leave the strip.
+    try {
+      stripRef.current?.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic events / browsers that refuse capture */
+    }
+  };
+  const paintAtPointer = () => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const i = frameIndexAt(drag.x, drag.y);
+    if (i !== null) paintRange(drag.anchor, i, drag.add, drag.base);
+  };
+  // While the pointer rests in an edge zone, keep scrolling every animation
+  // frame (a held finger / Pencil sends no pointermove) and extend the range
+  // to whatever frame slides under it.
+  const edgeScrollTick = (ts?: number) => {
+    edgeScrollRafRef.current = 0;
+    const drag = dragRef.current;
+    const strip = stripRef.current;
+    const stop = () => {
+      edgeScrollLastTsRef.current = null;
+    };
+    if (!drag || !strip) return stop();
+    const r = strip.getBoundingClientRect();
+    let dir = 0;
+    if (drag.x < r.left + EDGE_SCROLL_PX) dir = -1;
+    else if (drag.x > r.right - EDGE_SCROLL_PX) dir = 1;
+    if (dir === 0) return stop();
+    // First tick (from pointermove, no timestamp) only arms the loop; later
+    // ticks move by speed × elapsed time.
+    const last = edgeScrollLastTsRef.current;
+    if (ts !== undefined) {
+      if (last !== null) {
+        const dt = Math.min(EDGE_SCROLL_MAX_DT, ts - last);
+        const before = strip.scrollLeft;
+        strip.scrollLeft += (dir * EDGE_SCROLL_SPEED * dt) / 1000;
+        if (strip.scrollLeft === before && dt > 0) return stop(); // reached the end
+        paintAtPointer();
+      }
+      edgeScrollLastTsRef.current = ts;
+    }
+    edgeScrollRafRef.current = requestAnimationFrame(edgeScrollTick);
+  };
+  const handleStripPointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    paintAtPointer();
+    if (!edgeScrollRafRef.current) edgeScrollTick();
+  };
+  const endDrag = () => {
+    dragRef.current = null;
+    cancelAnimationFrame(edgeScrollRafRef.current);
+    edgeScrollRafRef.current = 0;
+    edgeScrollLastTsRef.current = null;
+  };
+  const allSelected = selected.length === n;
+  const canBulkDelete = selected.length > 0 && selected.length < n;
   const [exportAnchor, setExportAnchor] = useState<HTMLElement | null>(null);
   const [exporting, setExporting] = useState(false);
   // Exports the drawing as it is on screen — no gallery save needed first.
@@ -359,26 +502,56 @@ export function AnimationTimeline({
           ref={stripRef}
           role="group"
           aria-label={t('frames')}
-          sx={{ flex: 1, minWidth: 0, display: 'flex', gap: 0.5, overflowX: 'auto', py: 0.25 }}
+          onPointerMove={handleStripPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            gap: 0.5,
+            overflowX: 'auto',
+            py: 0.25,
+            // Select mode: a drag paints a range instead of scrolling the strip
+            // (edge auto-scroll + the scrub slider still reach far frames).
+            touchAction: selectMode ? 'none' : undefined,
+            userSelect: selectMode ? 'none' : undefined,
+          }}
         >
           {thumbs.perFrame.map((f, i) => {
             const shown = i === displayIndex;
             const editing = f.frameId === currentId;
+            const isSelected = selectMode && selectedIds.has(f.frameId);
             return (
               <Box
                 key={f.frameId}
                 component="button"
                 type="button"
                 data-frame-index={i}
-                aria-pressed={editing}
+                aria-pressed={selectMode ? isSelected : editing}
                 aria-label={`${t('frame')} ${i + 1}`}
-                onClick={() => select(i)}
+                onPointerDown={(e: React.PointerEvent) => handleCellPointerDown(e, i)}
+                onClick={(e: React.MouseEvent) => {
+                  if (!selectMode) {
+                    select(i);
+                  } else if (e.detail === 0) {
+                    // Keyboard activation (no pointer events): toggle.
+                    const set = new Set(selected);
+                    paintRange(i, i, !set.has(f.frameId), set);
+                  }
+                }}
                 sx={{
                   flexShrink: 0,
                   position: 'relative',
                   p: 0,
                   border: '2px solid',
-                  borderColor: shown ? 'primary.main' : '#ccc',
+                  borderColor: selectMode
+                    ? isSelected
+                      ? 'error.main'
+                      : '#ccc'
+                    : shown
+                      ? 'primary.main'
+                      : '#ccc',
                   borderRadius: 1,
                   overflow: 'hidden',
                   cursor: 'pointer',
@@ -386,6 +559,24 @@ export function AnimationTimeline({
                 }}
               >
                 <FrameThumb strokes={f.strokes} colors={f.colors} box={thumbs.box} />
+                {isSelected && (
+                  <Box
+                    component="span"
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      bgcolor: 'rgba(211, 47, 47, 0.12)',
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'flex-end',
+                      color: 'error.main',
+                      p: '2px',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <CircleCheck size={14} />
+                  </Box>
+                )}
                 <Box
                   component="span"
                   sx={{
@@ -411,7 +602,7 @@ export function AnimationTimeline({
                 component="button"
                 type="button"
                 aria-label={t('frameAdd')}
-                disabled={playing || n >= MAX_FRAMES}
+                disabled={playing || selectMode || n >= MAX_FRAMES}
                 onClick={() => {
                   if (strokeManager.addFrame({ atEnd: true })) onChanged();
                 }}
@@ -437,7 +628,51 @@ export function AnimationTimeline({
           </ToolbarTooltip>
         </Box>
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.25 }} />
-        {pendingDelete ? (
+        {selectMode ? (
+          confirmBulk ? (
+            <>
+              <Typography variant="caption">{t('framesDeleteConfirm')}</Typography>
+              {iconBtn(
+                t('framesDelete'),
+                <Check size={18} />,
+                () => {
+                  if (strokeManager.deleteFrames(selected)) onChanged();
+                  exitSelectMode();
+                },
+                !canBulkDelete,
+                'error.main',
+              )}
+              {iconBtn(t('cancel'), <X size={18} />, () => setConfirmBulk(false))}
+            </>
+          ) : (
+            <>
+              <Typography
+                variant="caption"
+                sx={{ fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}
+              >
+                {`${selected.length} ${t('framesSelected')}`}
+              </Typography>
+              {iconBtn(
+                allSelected ? t('frameSelectNone') : t('frameSelectAll'),
+                <CheckCheck size={18} />,
+                () => {
+                  setSelectedIds(allSelected ? new Set() : new Set(frames));
+                  setConfirmBulk(false);
+                },
+                false,
+                allSelected ? 'primary.main' : undefined,
+              )}
+              {iconBtn(
+                allSelected ? t('framesDeleteKeepOne') : t('framesDelete'),
+                <Trash2 size={18} />,
+                () => setConfirmBulk(true),
+                !canBulkDelete,
+                'error.main',
+              )}
+              {iconBtn(t('frameSelectDone'), <X size={18} />, exitSelectMode)}
+            </>
+          )
+        ) : pendingDelete ? (
           <>
             <Typography variant="caption">{t('frameDeleteConfirm')}</Typography>
             {iconBtn(
@@ -478,6 +713,15 @@ export function AnimationTimeline({
                 if (strokeManager.moveFrame(currentId, 1)) onChanged();
               },
               playing || currentIndex >= n - 1,
+            )}
+            {iconBtn(
+              t('frameSelectMode'),
+              <ListChecks size={18} />,
+              () => {
+                setConfirmDeleteId(null);
+                setSelectMode(true);
+              },
+              playing || n <= 1,
             )}
             {iconBtn(
               t('frameDelete'),

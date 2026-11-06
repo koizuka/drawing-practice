@@ -254,3 +254,55 @@ describe('rotoscope video sync', () => {
     expect(m2.getVideoSync()).toBeUndefined();
   });
 });
+
+describe('deleteFrames (bulk)', () => {
+  function setup5() {
+    const m = new StrokeManager();
+    for (let i = 0; i < 5; i++) {
+      if (i > 0) m.addFrame({ atEnd: true });
+      m.setCurrentFrame(m.getFrames()[i]);
+      draw(m, i * 10);
+    }
+    return m;
+  }
+
+  it('deletes several frames + their strokes as one undo unit, restoring order on undo', () => {
+    const m = setup5();
+    const before = m.getFrames().slice();
+    const strokesBefore = m.getStrokes().slice();
+    m.setCurrentFrame(before[2]);
+    expect(m.deleteFrames([before[3], before[1], before[2], 'nope'])).toBe(true);
+    expect(m.getFrames()).toEqual([before[0], before[4]]);
+    expect(m.getStrokes().map((s) => s.points[0].x)).toEqual([0, 40]);
+    // Current frame was deleted ⇒ nearest surviving earlier frame.
+    expect(m.getCurrentFrameId()).toBe(before[0]);
+
+    m.undo();
+    expect(m.getFrames()).toEqual(before);
+    expect(m.getStrokes()).toEqual(strokesBefore);
+    expect(m.getCurrentFrameId()).toBe(before[2]);
+    m.redo();
+    expect(m.getFrames()).toEqual([before[0], before[4]]);
+    expect(m.canUndo()).toBe(true);
+  });
+
+  it('refuses to delete every frame or nothing', () => {
+    const m = setup5();
+    expect(m.deleteFrames(m.getFrames())).toBe(false);
+    expect(m.deleteFrames([])).toBe(false);
+    expect(m.deleteFrames(['x'])).toBe(false);
+    expect(m.getFrames()).toHaveLength(5);
+  });
+
+  it('keeps shared-layer strokes and falls forward when the first frames go', () => {
+    const m = setup5();
+    m.addLayer();
+    m.updateLayer(m.getActiveLayerId(), { shared: true });
+    draw(m, 99); // on the shared layer
+    const f = m.getFrames().slice();
+    m.setCurrentFrame(f[0]);
+    expect(m.deleteFrames([f[0], f[1]])).toBe(true);
+    expect(m.getCurrentFrameId()).toBe(f[2]);
+    expect(m.getStrokes().map((s) => s.points[0].x)).toEqual([20, 30, 40, 99]);
+  });
+});

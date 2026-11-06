@@ -70,6 +70,14 @@ const messages = {
     frameMoveLater: 'Move frame later',
     frameDelete: 'Delete frame',
     frameDeleteConfirm: 'Delete frame?',
+    frameSelectMode: 'Select frames (tap, or drag for a range)',
+    frameSelectDone: 'Done selecting',
+    frameSelectAll: 'Select all',
+    frameSelectNone: 'Clear selection',
+    framesSelected: 'selected',
+    framesDelete: 'Delete selected frames',
+    framesDeleteConfirm: 'Delete selected frames?',
+    framesDeleteKeepOne: 'At least one frame must remain',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',
@@ -364,6 +372,14 @@ const messages = {
     frameMoveLater: 'コマを後ろへ',
     frameDelete: 'コマを削除',
     frameDeleteConfirm: '削除しますか？',
+    frameSelectMode: 'コマを選択（タップ、ドラッグで範囲）',
+    frameSelectDone: '選択を終了',
+    frameSelectAll: 'すべて選択',
+    frameSelectNone: '選択を解除',
+    framesSelected: 'コマ選択中',
+    framesDelete: '選択したコマを削除',
+    framesDeleteConfirm: '選択したコマを削除しますか？',
+    framesDeleteKeepOne: '1コマは残す必要があります',
 
     // ReferencePanel
     sketchfab: 'Sketchfab',

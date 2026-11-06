@@ -75,11 +75,15 @@ interface FrameAddEntry {
   prevCurrentFrameId: string;
 }
 
-/** A frame removed together with its per-frame strokes (shape like layer-delete). */
+/**
+ * One or more frames removed together with their per-frame strokes, as ONE
+ * undo unit (shape like layer-delete). `frames` is ascending by original
+ * index, so undo re-inserts them in that order and every one lands back at
+ * its old position.
+ */
 interface FrameDeleteEntry {
   type: 'frame-delete';
-  frameId: string;
-  frameIndex: number;
+  frames: { frameId: string; frameIndex: number }[];
   items: LassoDeleteItem[];
   prevCurrentFrameId: string;
 }
@@ -479,13 +483,15 @@ export class StrokeManager {
       return { kind: 'frame' };
     }
     if (entry.type === 'frame-delete') {
-      this.frames.splice(Math.min(entry.frameIndex, this.frames.length), 0, entry.frameId);
+      for (const f of entry.frames) {
+        this.frames.splice(Math.min(f.frameIndex, this.frames.length), 0, f.frameId);
+      }
       for (const item of entry.items) {
         this.strokes.splice(Math.min(item.index, this.strokes.length), 0, item.stroke);
       }
       this.currentFrameId = this.frames.includes(entry.prevCurrentFrameId)
         ? entry.prevCurrentFrameId
-        : entry.frameId;
+        : entry.frames[0].frameId;
       this.redoStack.push(entry);
       this.bumpMutation();
       return { kind: 'frame' };
@@ -562,7 +568,7 @@ export class StrokeManager {
       return { kind: 'frame' };
     }
     if (entry.type === 'frame-delete') {
-      this.removeFrameAndStrokes(entry.frameId);
+      this.removeFramesAndStrokes(entry.frames.map((f) => f.frameId));
       this.undoStack.push(entry);
       this.bumpMutation();
       return { kind: 'frame' };
@@ -1121,20 +1127,31 @@ export class StrokeManager {
 
   /** Delete a frame and its per-frame strokes as ONE undo entry (never the last frame). */
   deleteFrame(id: string): boolean {
-    if (this.frames.length <= 1) return false;
-    const frameIndex = this.frames.indexOf(id);
-    if (frameIndex < 0) return false;
+    return this.deleteFrames([id]);
+  }
+
+  /**
+   * Delete several frames (and their per-frame strokes) as ONE undo entry.
+   * Unknown / duplicate ids are ignored; refuses when nothing would be
+   * deleted or when it would leave no frame at all.
+   */
+  deleteFrames(ids: readonly string[]): boolean {
+    const wanted = new Set(ids);
+    const frames = this.frames
+      .map((frameId, frameIndex) => ({ frameId, frameIndex }))
+      .filter((f) => wanted.has(f.frameId));
+    if (frames.length === 0 || frames.length >= this.frames.length) return false;
+    const doomed = new Set(frames.map((f) => f.frameId));
     const entry: FrameDeleteEntry = {
       type: 'frame-delete',
-      frameId: id,
-      frameIndex,
+      frames,
       items: [],
       prevCurrentFrameId: this.currentFrameId,
     };
     this.strokes.forEach((stroke, index) => {
-      if (this.isOnFrame(stroke, id)) entry.items.push({ stroke, index });
+      if (this.isOnAnyFrame(stroke, doomed)) entry.items.push({ stroke, index });
     });
-    this.removeFrameAndStrokes(id);
+    this.removeFramesAndStrokes([...doomed]);
     this.undoStack.push(entry);
     this.redoStack = [];
     this.bumpMutation();
@@ -1164,10 +1181,31 @@ export class StrokeManager {
     return !layer.shared && resolveFrameId(stroke, this.frames) === id;
   }
 
-  private removeFrameAndStrokes(id: string): void {
-    const doomed = new Set(this.strokes.filter((st) => this.isOnFrame(st, id)));
+  /**
+   * True when `stroke` is a per-frame stroke living on one of `ids`, judged
+   * against the CURRENT frame list (so a stroke on a vanished frame that
+   * resolves to the first frame goes with the first frame).
+   */
+  private isOnAnyFrame(stroke: Stroke, ids: ReadonlySet<string>): boolean {
+    const layer = this.layers.find((l) => l.id === layerIdOf(stroke)) ?? this.layers[0];
+    return !layer.shared && ids.has(resolveFrameId(stroke, this.frames));
+  }
+
+  /** Remove frames + their strokes. Strokes are picked BEFORE any id is dropped. */
+  private removeFramesAndStrokes(ids: readonly string[]): void {
+    const set = new Set(ids);
+    const doomed = new Set(this.strokes.filter((st) => this.isOnAnyFrame(st, set)));
     this.strokes = this.strokes.filter((st) => !doomed.has(st));
-    this.removeFrameId(id);
+    // Current frame deleted ⇒ the nearest surviving frame before it (else the first).
+    if (set.has(this.currentFrameId)) {
+      const i = this.frames.indexOf(this.currentFrameId);
+      const before = this.frames
+        .slice(0, i)
+        .reverse()
+        .find((f) => !set.has(f));
+      this.currentFrameId = before ?? this.frames.find((f) => !set.has(f)) ?? this.frames[0];
+    }
+    this.frames = this.frames.filter((f) => !set.has(f));
   }
 
   /** Drop a frame id, moving the selection to the previous frame when needed. */
