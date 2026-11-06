@@ -165,7 +165,8 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
   shape on both stacks. `deleteFrames(ids)` is the bulk path (one undo
   unit; refuses to delete every frame); `deleteFrame(id)` wraps it. Strokes
   are matched against the frame list BEFORE any id is dropped, and a
-  deleted current frame falls back to the nearest surviving earlier one. Tentative-clear commit and
+  deleted current frame falls back to the nearest surviving earlier one
+  (none left before it ⇒ the first surviving later one). Tentative-clear commit and
   `discardStrokes` filter their stroke lists like `layer-delete`.
 - Selecting a frame is not undoable but bumps gallery-dirty (see above);
   reorder and fps are non-undoable settings that bump gallery-dirty too.
@@ -198,12 +199,13 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
 - **Select mode** (`ListChecks` button) for bulk delete: thumbnails stop
   navigating; a tap toggles one, a drag across the strip paints a range
   (adds if it started on an unselected frame, removes otherwise; the strip
-  gets `touch-action: none` and nudges itself when the pointer nears an
-  edge), shift-click extends from the last anchor, keyboard activation
+  gets `touch-action: none` and auto-scrolls every animation frame while
+  the pointer rests near an edge — a held finger sends no pointermove),
+  shift-click extends from the last anchor, keyboard activation
   toggles. Ops become "N selected / select all ↔ clear / delete (✓/✗) /
   done"; selecting every frame disables delete (one must remain). Deleting
-  is one `frame-delete` undo entry and leaves select mode; starting
-  playback also leaves it.
+  is one `frame-delete` undo entry and immediately exits select mode;
+  starting playback exits it too (render-time state reset, not an effect).
 - Playback is a DrawingPanel interval over `frames[playIndex]`, passed to the
   canvas as `playbackFrameId` — it does NOT change the manager's current frame
   (no autosave per tick). Stopping commits the shown frame as current. A

@@ -38,9 +38,9 @@ import { orderStrokesForRender } from '../drawing/layers';
 import { STROKE_WIDTH } from '../drawing/constants';
 import type { Stroke } from '../drawing/types';
 
-// Select-mode drag: how close to a strip edge starts nudging it, and by how much.
+// Select-mode drag: how close to a strip edge auto-scrolls it, and how fast.
 const EDGE_SCROLL_PX = 28;
-const EDGE_SCROLL_STEP = 16;
+const EDGE_SCROLL_STEP = 8; // px per animation frame (~480 px/s)
 const THUMB_W = 64;
 const THUMB_H = 48;
 
@@ -194,7 +194,16 @@ export function AnimationTimeline({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(() => new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
-  const dragRef = useRef<{ anchor: number; add: boolean; base: ReadonlySet<string> } | null>(null);
+  const dragRef = useRef<{
+    anchor: number;
+    add: boolean;
+    base: ReadonlySet<string>;
+    /** Last pointer position (the edge auto-scroll loop re-reads it). */
+    x: number;
+    y: number;
+  } | null>(null);
+  const edgeScrollRafRef = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(edgeScrollRafRef.current), []);
   // Shift-click anchor: state (not a ref) so leaving select mode can reset it
   // from render-time code.
   const [lastAnchor, setLastAnchor] = useState<number | null>(null);
@@ -238,24 +247,48 @@ export function AnimationTimeline({
       return;
     }
     const add = !set.has(frames[i]);
-    dragRef.current = { anchor: i, add, base: set };
+    dragRef.current = { anchor: i, add, base: set, x: e.clientX, y: e.clientY };
     setLastAnchor(i);
     paintRange(i, i, add, set);
     stripRef.current?.setPointerCapture?.(e.pointerId);
   };
-  const handleStripPointerMove = (e: React.PointerEvent) => {
+  const paintAtPointer = () => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const i = frameIndexAt(drag.x, drag.y);
+    if (i !== null) paintRange(drag.anchor, i, drag.add, drag.base);
+  };
+  // While the pointer rests in an edge zone, keep scrolling every animation
+  // frame (a held finger / Pencil sends no pointermove) and extend the range
+  // to whatever frame slides under it.
+  const edgeScrollTick = () => {
+    edgeScrollRafRef.current = 0;
     const drag = dragRef.current;
     const strip = stripRef.current;
     if (!drag || !strip) return;
-    // Near an edge: nudge the strip so a range can extend past what's visible.
     const r = strip.getBoundingClientRect();
-    if (e.clientX < r.left + EDGE_SCROLL_PX) strip.scrollLeft -= EDGE_SCROLL_STEP;
-    else if (e.clientX > r.right - EDGE_SCROLL_PX) strip.scrollLeft += EDGE_SCROLL_STEP;
-    const i = frameIndexAt(e.clientX, e.clientY);
-    if (i !== null) paintRange(drag.anchor, i, drag.add, drag.base);
+    let dir = 0;
+    if (drag.x < r.left + EDGE_SCROLL_PX) dir = -1;
+    else if (drag.x > r.right - EDGE_SCROLL_PX) dir = 1;
+    if (dir === 0) return;
+    const before = strip.scrollLeft;
+    strip.scrollLeft += dir * EDGE_SCROLL_STEP;
+    if (strip.scrollLeft === before) return; // reached the end
+    paintAtPointer();
+    edgeScrollRafRef.current = requestAnimationFrame(edgeScrollTick);
+  };
+  const handleStripPointerMove = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    paintAtPointer();
+    if (!edgeScrollRafRef.current) edgeScrollTick();
   };
   const endDrag = () => {
     dragRef.current = null;
+    cancelAnimationFrame(edgeScrollRafRef.current);
+    edgeScrollRafRef.current = 0;
   };
   const allSelected = selected.length === n;
   const canBulkDelete = selected.length > 0 && selected.length < n;

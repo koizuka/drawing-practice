@@ -14,9 +14,11 @@ function Harness({
   m,
   onSelect,
   videoSync,
+  playing = false,
 }: {
   m: StrokeManager;
   onSelect?: (id: string) => void;
+  playing?: boolean;
   videoSync?: { active: boolean; time: number | null; onToggle: () => void };
 }) {
   const [v, bump] = useReducer((n: number) => n + 1, 0);
@@ -24,7 +26,7 @@ function Harness({
     <AnimationTimeline
       strokeManager={m}
       contentVersion={v}
-      playing={false}
+      playing={playing}
       displayIndex={m.getCurrentFrameIndex()}
       onTogglePlay={() => {}}
       onSelectFrame={(id) => {
@@ -168,5 +170,42 @@ describe('AnimationTimeline select mode (bulk delete)', () => {
     expect(screen.getByRole('button', { name: 'Delete selected frames' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Done selecting' }));
     expect(screen.getByRole('button', { name: /Select frames/ })).toBeTruthy();
+  });
+});
+
+describe('AnimationTimeline select mode extras', () => {
+  function setup() {
+    const m = new StrokeManager();
+    for (let i = 0; i < 5; i++) {
+      if (i > 0) m.addFrame({ atEnd: true });
+      m.setCurrentFrame(m.getFrames()[i]);
+      draw(m, i * 10);
+    }
+    const utils = render(<Harness m={m} />);
+    const cell = (i: number) => screen.getByRole('button', { name: `Frame ${i + 1}` });
+    fireEvent.click(screen.getByRole('button', { name: /Select frames/ }));
+    return { m, cell, ...utils };
+  }
+
+  it('shift-click extends from the last anchor', () => {
+    const { cell } = setup();
+    fireEvent.pointerDown(cell(1), { pointerType: 'mouse', button: 0 });
+    fireEvent.pointerUp(cell(1));
+    fireEvent.pointerDown(cell(3), { pointerType: 'mouse', button: 0, shiftKey: true });
+    fireEvent.pointerUp(cell(3));
+    expect([0, 1, 2, 3, 4].map((i) => cell(i).getAttribute('aria-pressed'))).toEqual([
+      'false',
+      'true',
+      'true',
+      'true',
+      'false',
+    ]);
+  });
+
+  it('starting playback leaves select mode', () => {
+    const { m, rerender } = setup();
+    expect(screen.getByRole('button', { name: 'Done selecting' })).toBeTruthy();
+    rerender(<Harness m={m} playing />);
+    expect(screen.queryByRole('button', { name: 'Done selecting' })).toBeNull();
   });
 });
