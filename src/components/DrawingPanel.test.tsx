@@ -1032,6 +1032,44 @@ describe('DrawingPanel rotoscope sync', () => {
     expect(sm.getVideoSync()).toBeUndefined();
   });
 
+  it('cannot anchor before the player has reported a position', () => {
+    const bridge = new VideoSyncBridge();
+    const seekTo = vi.fn();
+    let now: number | null = null;
+    bridge.attach({ seekTo, play: vi.fn(), pause: vi.fn(), getCurrentTime: () => now });
+    const { harness, getByRole } = setup({ referenceInfo: ytRef, videoBridge: bridge });
+    const toggle = getByRole('button', { name: /Sync frames to the video/ });
+    expect(toggle).toBeDisabled();
+    now = 7;
+    act(() => bridge.notifyReady()); // readiness re-renders the panel
+    expect(getByRole('button', { name: /Sync frames to the video/ })).not.toBeDisabled();
+    fireEvent.click(getByRole('button', { name: /Sync frames to the video/ }));
+    expect(harness.sm!.getVideoSync()?.offset).toBe(7);
+  });
+
+  it('turning sync off pauses the video; playback realigns on readiness / mode changes', () => {
+    const bridge = new VideoSyncBridge();
+    const seekTo = vi.fn();
+    const pause = vi.fn();
+    bridge.attach({ seekTo, play: vi.fn(), pause, getCurrentTime: () => 2 });
+    const { harness, getByRole } = setup({ referenceInfo: ytRef, videoBridge: bridge });
+    const sm = harness.sm!;
+    act(() => {
+      sm.addFrame({ atEnd: true });
+      sm.setCurrentFrame(sm.getFrames()[0]);
+      harness.bumpHistory();
+    });
+    fireEvent.click(getByRole('button', { name: /Sync frames to the video/ }));
+    fireEvent.click(getByRole('button', { name: 'Play' }));
+    expect(seekTo).toHaveBeenLastCalledWith(2, { play: true }); // realtime start
+    seekTo.mockClear();
+    act(() => bridge.notifyReady()); // player became ready mid-playback
+    expect(seekTo).toHaveBeenCalledWith(expect.any(Number), { play: true });
+    fireEvent.click(getByRole('button', { name: 'Stop syncing frames to the video' }));
+    expect(pause).toHaveBeenCalled();
+    expect(sm.getVideoSync()).toBeUndefined();
+  });
+
   it('shows no sync toggle for non-video references', () => {
     const { queryByRole } = setup({ referenceInfo: null });
     expect(queryByRole('button', { name: /Sync frames to the video/ })).toBeNull();

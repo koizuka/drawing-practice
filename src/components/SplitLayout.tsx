@@ -1494,7 +1494,13 @@ function SplitLayoutInner() {
               overlayStrokes={overlayStrokes}
               overlayCurrentStrokeRef={currentStrokeRef}
               onRegisterOverlayRedraw={handleRegisterOverlayRedraw}
-              videoBridge={videoBridge}
+              // Hidden (collapsed) reference ⇒ no rotoscope driving: a seek or
+              // play on an invisible video would just make sound.
+              videoBridge={
+                referenceCollapsed && !isBrowseFullscreen && !collapseLocked
+                  ? undefined
+                  : videoBridge
+              }
               onReferenceImageSize={handleReferenceImageSize}
               overlayActive={overlayActive}
               onToggleOverlay={handleToggleOverlay}

@@ -1034,7 +1034,8 @@ export class StrokeManager {
   }
 
   getVideoSync(): VideoSync | undefined {
-    return this.videoSync;
+    // A copy: edits must go through setVideoSync (validation + dirty bump).
+    return this.videoSync ? { ...this.videoSync } : undefined;
   }
 
   /**

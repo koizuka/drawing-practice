@@ -284,14 +284,24 @@ compare stay aligned as usual.
   frame (paused). Playing with `step·fps ≈ 1` ⇒ seek + play at start and on
   every loop wrap, the video runs in between (smooth, real speed);
   otherwise ⇒ a paused seek per tick. Stop commits the shown frame ⇒ parks
-  there. The bridge's "ready" signal (first `infoDelivery` per video)
-  re-runs the park, since commands sent while the iframe loads are dropped.
+  there. The bridge's "ready" signal (iframe `load` or first `infoDelivery`,
+  once per video) re-runs the park — commands sent while the iframe loads
+  are dropped — and also re-aligns a playback that started before it. An
+  unstarted embed reports no time until it plays, so `load` seeds the
+  position as 0 (no start param is ever passed): the toggle can anchor
+  before the first play, and stays disabled only until the iframe loads.
+- Turning sync off pauses the video; so does detaching (SplitLayout passes
+  no bridge while the reference panel is collapsed — an invisible video
+  must not keep playing). A change into / out of realtime mid-playback
+  (fps changed) re-seeks immediately.
 - **Paused seek gotcha** (`YouTubeViewer`): `seekTo` keeps a PAUSED player
   paused but STARTS one that is unstarted / cued / ended. Pausing right away
   there leaves it black (no frame decoded yet), so the viewer tracks the
   player state: paused ⇒ seek only; playing ⇒ seek + pause; anything else ⇒
-  seek, then pause on the first "playing" report (within 4 s) and seek again
-  on the now-paused player so it lands exactly (it ran a few ms past). A
+  seek, then pause on the first "playing" report and seek again
+  on the now-paused player so it lands exactly (it ran a few ms past). The
+  hold survives slow buffering; it is cleared by any explicit play / pause /
+  seek or the player settling paused / ended, with a 15 s safety net. A
   programmatic start can still be refused by autoplay policy without a user
   gesture (e.g. the reload-time park) — the poster then just stays up until
   the first frame tap.

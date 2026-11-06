@@ -319,16 +319,16 @@ describe('YouTubeViewer rotoscope bridge', () => {
     const bridge = new VideoSyncBridge();
     const r = render(<YouTubeViewer {...baseProps} videoBridge={bridge} />);
     const iframe = r.container.querySelector('iframe') as HTMLIFrameElement;
-    const postMessage = vi.fn();
-    const contentWindow = { postMessage };
-    Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: contentWindow });
-    const funcs = () => postMessage.mock.calls.map((c) => JSON.parse(c[0]));
+    // The real jsdom window, so it is a valid MessageEvent.source.
+    const contentWindow = iframe.contentWindow!;
+    const postMessage = vi.spyOn(contentWindow, 'postMessage').mockImplementation(() => {});
+    const funcs = () => postMessage.mock.calls.map((c) => JSON.parse(c[0] as string));
     const fromPlayer = (data: unknown) =>
       act(() => {
         window.dispatchEvent(
           new MessageEvent('message', {
             origin: 'https://www.youtube.com',
-            source: contentWindow as unknown as Window,
+            source: contentWindow,
             data: JSON.stringify(data),
           }),
         );
@@ -385,6 +385,52 @@ describe('YouTubeViewer rotoscope bridge', () => {
     expect(funcs().map((f) => f.func)).toEqual(['seekTo']); // no hold armed
     bridge.seekTo(2, { play: false });
     expect(funcs().map((f) => f.func)).toEqual(['seekTo', 'seekTo', 'pauseVideo']);
+  });
+
+  it('a loaded but unstarted player counts as ready at 0 s', () => {
+    const { bridge, container } = setup();
+    const ready = vi.fn();
+    bridge.subscribeReady(ready);
+    act(() => {
+      container.querySelector('iframe')!.dispatchEvent(new Event('load'));
+    });
+    expect(bridge.getCurrentTime()).toBe(0);
+    expect(ready).toHaveBeenCalledTimes(1);
+  });
+
+  it('an explicit play (toolbar) cancels a pending pause-on-start', () => {
+    const handleRef = createRef<YouTubePlayerHandle>();
+    const bridge = new VideoSyncBridge();
+    const { container } = render(
+      <YouTubeViewer {...baseProps} ref={handleRef} videoBridge={bridge} />,
+    );
+    const cw = (container.querySelector('iframe') as HTMLIFrameElement).contentWindow!;
+    const postMessage = vi.spyOn(cw, 'postMessage').mockImplementation(() => {});
+    bridge.seekTo(2, { play: false }); // unstarted ⇒ hold armed
+    act(() => handleRef.current?.play());
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          origin: 'https://www.youtube.com',
+          source: cw,
+          data: JSON.stringify({ event: 'onStateChange', info: 1 }),
+        }),
+      );
+    });
+    const funcs = postMessage.mock.calls.map((c) => JSON.parse(c[0] as string).func);
+    expect(funcs).toEqual(['seekTo', 'playVideo']);
+  });
+
+  it('pauses the player when detached (e.g. reference panel collapsed)', () => {
+    const bridge = new VideoSyncBridge();
+    const { container, rerender } = render(<YouTubeViewer {...baseProps} videoBridge={bridge} />);
+    const cw = (container.querySelector('iframe') as HTMLIFrameElement).contentWindow!;
+    const postMessage = vi.spyOn(cw, 'postMessage').mockImplementation(() => {});
+    rerender(<YouTubeViewer {...baseProps} />);
+    expect(bridge.isAttached()).toBe(false);
+    expect(JSON.parse(postMessage.mock.calls.at(-1)![0] as string)).toMatchObject({
+      func: 'pauseVideo',
+    });
   });
 
   it('playing seek posts seekTo + play and never re-pauses', () => {

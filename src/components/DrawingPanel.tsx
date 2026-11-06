@@ -579,7 +579,10 @@ export function DrawingPanel({
   // Playback lets the video run when one frame step equals one playback tick
   // (smooth, real speed); otherwise every tick seeks to the frame's moment.
   const syncRealtime = syncStep !== null && Math.abs(syncStep * fps - 1) < 0.01;
-  const lastSyncedIndexRef = useRef<number | null>(null);
+  // What the playback branch last aligned to; any change of mode or player
+  // readiness forces a fresh seek (a seek sent before the player was ready,
+  // or a switch into / out of realtime, must not wait for the next wrap).
+  const lastSyncedRef = useRef<{ index: number; realtime: boolean; ready: number } | null>(null);
   // Re-park when the player becomes ready (seeks sent while it was still
   // loading — e.g. right after a reload — are dropped).
   const playerReadyVersion = useSyncExternalStore(
@@ -588,24 +591,31 @@ export function DrawingPanel({
   );
   useEffect(() => {
     if (syncOffset === null || syncStep === null || !videoBridge) {
-      lastSyncedIndexRef.current = null;
+      lastSyncedRef.current = null;
       return;
     }
     const sync = { videoId: '', offset: syncOffset, step: syncStep };
     if (!playing) {
       // Editing: park the video on the current frame's moment.
-      lastSyncedIndexRef.current = null;
+      lastSyncedRef.current = null;
       videoBridge.seekTo(frameVideoTime(sync, currentFrameIndex), { play: false });
       return;
     }
-    const last = lastSyncedIndexRef.current;
-    lastSyncedIndexRef.current = shownIndex;
+    const prev = lastSyncedRef.current;
+    const fresh =
+      prev === null || prev.realtime !== syncRealtime || prev.ready !== playerReadyVersion;
+    lastSyncedRef.current = {
+      index: shownIndex,
+      realtime: syncRealtime,
+      ready: playerReadyVersion,
+    };
     if (syncRealtime) {
-      // Start, and every loop wrap, re-aligns; in between the video runs.
-      if (last === null || shownIndex < last) {
+      // Start, every loop wrap, and any mode / readiness change re-align; in
+      // between the video runs.
+      if (fresh || shownIndex < prev.index) {
         videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: true });
       }
-    } else if (last !== shownIndex) {
+    } else if (fresh || prev.index !== shownIndex) {
       videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: false });
     }
   }, [
@@ -624,9 +634,14 @@ export function DrawingPanel({
     if (playStateRef.current.playing) stopPlayback();
     if (syncActive) {
       strokeManager.setVideoSync(null);
+      // Nothing drives the video after this — don't leave it running.
+      videoBridge?.pause();
     } else {
-      // Anchor: the current frame = where the video is right now.
-      const now = videoBridge?.getCurrentTime() ?? 0;
+      // Anchor: the current frame = where the video is right now. No report
+      // from the player yet ⇒ refuse rather than silently anchor at 0 (the
+      // toggle is disabled in that state anyway).
+      const now = videoBridge?.getCurrentTime() ?? null;
+      if (now === null) return;
       strokeManager.setVideoSync(
         anchorVideoSync(
           youtubeVideoId,
@@ -1475,6 +1490,9 @@ export function DrawingPanel({
             youtubeVideoId
               ? {
                   active: syncActive,
+                  // Anchoring needs a reported position (re-evaluated when the
+                  // player turns ready — playerReadyVersion re-renders).
+                  canEnable: syncActive || (videoBridge?.getCurrentTime() ?? null) !== null,
                   time: syncActive && videoSync ? frameVideoTime(videoSync, shownIndex) : null,
                   onToggle: handleToggleVideoSync,
                 }

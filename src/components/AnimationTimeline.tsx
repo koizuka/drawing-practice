@@ -145,7 +145,7 @@ interface AnimationTimelineProps {
    * Rotoscope toggle — present only while the reference is a YouTube video.
    * `time` = video moment of the shown frame while synced.
    */
-  videoSync?: { active: boolean; time: number | null; onToggle: () => void };
+  videoSync?: { active: boolean; canEnable?: boolean; time: number | null; onToggle: () => void };
 }
 
 /**
@@ -502,7 +502,7 @@ export function AnimationTimeline({
               videoSync.active ? t('videoSyncOff') : t('videoSyncOn'),
               <Clapperboard size={18} />,
               videoSync.onToggle,
-              false,
+              videoSync.canEnable === false,
               videoSync.active ? 'primary.main' : undefined,
             )}
             {videoSync.active && videoSync.time !== null && (
