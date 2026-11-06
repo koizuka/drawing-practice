@@ -199,8 +199,10 @@ interface Layer  { …; shared?: boolean }   // true ⇒ ignores frames (backgro
 - **Select mode** (`ListChecks` button) for bulk delete: thumbnails stop
   navigating; a tap toggles one, a drag across the strip paints a range
   (adds if it started on an unselected frame, removes otherwise; the strip
-  gets `touch-action: none` and auto-scrolls every animation frame while
-  the pointer rests near an edge — a held finger sends no pointermove),
+  gets `touch-action: none` and auto-scrolls on an rAF loop at a fixed
+  px/s (scaled by the frame time delta, so 60 / 120 Hz alike) while the
+  pointer rests near an edge — a held finger sends no pointermove; leaving
+  select mode cancels the drag and the loop),
   shift-click extends from the last anchor, keyboard activation
   toggles. Ops become "N selected / select all ↔ clear / delete (✓/✗) /
   done"; selecting every frame disables delete (one must remain). Deleting

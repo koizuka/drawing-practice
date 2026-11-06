@@ -40,7 +40,8 @@ import type { Stroke } from '../drawing/types';
 
 // Select-mode drag: how close to a strip edge auto-scrolls it, and how fast.
 const EDGE_SCROLL_PX = 28;
-const EDGE_SCROLL_STEP = 8; // px per animation frame (~480 px/s)
+const EDGE_SCROLL_SPEED = 480; // px/s, scaled by the rAF time delta (60 / 120 Hz alike)
+const EDGE_SCROLL_MAX_DT = 50; // ms — a stalled frame must not jump the strip
 const THUMB_W = 64;
 const THUMB_H = 48;
 
@@ -203,7 +204,17 @@ export function AnimationTimeline({
     y: number;
   } | null>(null);
   const edgeScrollRafRef = useRef(0);
+  const edgeScrollLastTsRef = useRef<number | null>(null);
   useEffect(() => () => cancelAnimationFrame(edgeScrollRafRef.current), []);
+  // Leaving select mode (playback start, delete, Done) also ends any drag in
+  // flight — including a running edge-scroll loop.
+  useEffect(() => {
+    if (selectMode) return;
+    dragRef.current = null;
+    cancelAnimationFrame(edgeScrollRafRef.current);
+    edgeScrollRafRef.current = 0;
+    edgeScrollLastTsRef.current = null;
+  }, [selectMode]);
   // Shift-click anchor: state (not a ref) so leaving select mode can reset it
   // from render-time code.
   const [lastAnchor, setLastAnchor] = useState<number | null>(null);
@@ -268,20 +279,32 @@ export function AnimationTimeline({
   // While the pointer rests in an edge zone, keep scrolling every animation
   // frame (a held finger / Pencil sends no pointermove) and extend the range
   // to whatever frame slides under it.
-  const edgeScrollTick = () => {
+  const edgeScrollTick = (ts?: number) => {
     edgeScrollRafRef.current = 0;
     const drag = dragRef.current;
     const strip = stripRef.current;
-    if (!drag || !strip) return;
+    const stop = () => {
+      edgeScrollLastTsRef.current = null;
+    };
+    if (!drag || !strip) return stop();
     const r = strip.getBoundingClientRect();
     let dir = 0;
     if (drag.x < r.left + EDGE_SCROLL_PX) dir = -1;
     else if (drag.x > r.right - EDGE_SCROLL_PX) dir = 1;
-    if (dir === 0) return;
-    const before = strip.scrollLeft;
-    strip.scrollLeft += dir * EDGE_SCROLL_STEP;
-    if (strip.scrollLeft === before) return; // reached the end
-    paintAtPointer();
+    if (dir === 0) return stop();
+    // First tick (from pointermove, no timestamp) only arms the loop; later
+    // ticks move by speed × elapsed time.
+    const last = edgeScrollLastTsRef.current;
+    if (ts !== undefined) {
+      if (last !== null) {
+        const dt = Math.min(EDGE_SCROLL_MAX_DT, ts - last);
+        const before = strip.scrollLeft;
+        strip.scrollLeft += (dir * EDGE_SCROLL_SPEED * dt) / 1000;
+        if (strip.scrollLeft === before && dt > 0) return stop(); // reached the end
+        paintAtPointer();
+      }
+      edgeScrollLastTsRef.current = ts;
+    }
     edgeScrollRafRef.current = requestAnimationFrame(edgeScrollTick);
   };
   const handleStripPointerMove = (e: React.PointerEvent) => {
@@ -296,6 +319,7 @@ export function AnimationTimeline({
     dragRef.current = null;
     cancelAnimationFrame(edgeScrollRafRef.current);
     edgeScrollRafRef.current = 0;
+    edgeScrollLastTsRef.current = null;
   };
   const allSelected = selected.length === n;
   const canBulkDelete = selected.length > 0 && selected.length < n;
