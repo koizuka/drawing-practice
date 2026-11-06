@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -157,12 +157,14 @@ function CornerPicker({
       aria-label={t('layerPanelCorner')}
       sx={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(2, 14px)',
-        gap: '2px',
+        // ~26×22px per cell: comfortably tappable with a finger or pencil.
+        gridTemplateColumns: 'repeat(2, 26px)',
+        gap: '3px',
         p: '3px',
         mr: 0.5,
-        border: '1px solid #ccc',
-        borderRadius: 0.5,
+        border: 1,
+        borderColor: 'divider',
+        borderRadius: 1,
       }}
     >
       {PANEL_CORNERS.map((c) => {
@@ -174,11 +176,11 @@ function CornerPicker({
               aria-pressed={selected}
               onClick={() => onChange(c)}
               sx={{
-                width: 14,
-                height: 10,
-                borderRadius: '2px',
-                bgcolor: selected ? 'primary.main' : '#e0e0e0',
-                '&:hover': { bgcolor: selected ? 'primary.dark' : '#bdbdbd' },
+                width: 26,
+                height: 22,
+                borderRadius: 0.5,
+                bgcolor: selected ? 'primary.main' : 'action.hover',
+                '&:hover': { bgcolor: selected ? 'primary.dark' : 'action.selected' },
               }}
             />
           </ToolbarTooltip>
@@ -233,18 +235,18 @@ export function LayerPanel({
   useEffect(() => {
     onHeightChangeRef.current = onHeightChange;
   });
-  useEffect(() => {
+  // Layout effect: measure before paint so same-corner widgets never flash at
+  // the old offset when the panel opens. No "0 on unmount" report — the parent
+  // only applies the offset while the panel is open, and a stale 0 would make
+  // the widgets jump on the next open until re-measured.
+  useLayoutEffect(() => {
     const el = paperRef.current;
-    if (!el) return;
+    if (!el) return undefined;
     const report = () => onHeightChangeRef.current?.(el.getBoundingClientRect().height);
     report();
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(report);
-    ro.observe(el);
-    return () => {
-      ro.disconnect();
-      onHeightChangeRef.current?.(0);
-    };
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(report);
+    ro?.observe(el);
+    return () => ro?.disconnect();
   }, []);
   // In-place destructive confirm (ui-design-principles §4): which action is
   // pending for the active layer. Reset whenever the active layer changes.
@@ -258,7 +260,23 @@ export function LayerPanel({
   const active = layers[activeIndex] ?? layers[0];
   const blocked = !strokeManager.canDrawOnActiveLayer();
   const multi = layers.length > 1;
-  const pendingConfirm = confirm && confirm.layerId === activeId ? confirm.kind : null;
+  // A pending confirm belongs to the moment it was asked: drop it whenever the
+  // active layer changes by ANY route (row tap, undo / redo restoring a layer,
+  // …) so returning to that layer later doesn't resurrect it. Render-time
+  // prev-value pattern, same as AnimationTimeline.
+  const [prevActiveId, setPrevActiveId] = useState(activeId);
+  if (prevActiveId !== activeId) {
+    setPrevActiveId(activeId);
+    if (confirm !== null) setConfirm(null);
+  }
+  // A pending clear is also void once the layer becomes hidden / locked —
+  // clearLayer would refuse, so don't offer a ✓ that silently does nothing
+  // (and don't let it come back when the layer is unlocked again).
+  if (confirm?.kind === 'clear' && blocked) setConfirm(null);
+  const pendingConfirm =
+    confirm && confirm.layerId === activeId && !(confirm.kind === 'clear' && blocked)
+      ? confirm.kind
+      : null;
 
   const change = (flush = true) => onChanged(flush ? { flush: true } : undefined);
 
@@ -560,10 +578,12 @@ export function LayerPanel({
                   aria-label={pendingConfirm === 'delete' ? t('layerDelete') : t('layerClear')}
                   sx={{ color: 'error.main' }}
                   onClick={() => {
-                    if (pendingConfirm === 'delete') strokeManager.deleteLayer(active.id);
-                    else strokeManager.clearLayer(active.id);
+                    const done =
+                      pendingConfirm === 'delete'
+                        ? strokeManager.deleteLayer(active.id)
+                        : strokeManager.clearLayer(active.id) !== null;
                     setConfirm(null);
-                    change();
+                    if (done) change();
                   }}
                 >
                   <Check size={18} />

@@ -43,6 +43,38 @@ describe('LayerToolbarButton', () => {
 });
 
 describe('LayerPanel', () => {
+  it('drops a pending clear when the layer gets locked, and a confirm on layer change', () => {
+    const m = new StrokeManager();
+    m.startStroke({ x: 0, y: 0 });
+    m.appendStroke({ x: 5, y: 5 });
+    m.endStroke();
+    m.addLayer();
+    m.startStroke({ x: 0, y: 0 });
+    m.appendStroke({ x: 5, y: 5 });
+    m.endStroke();
+    const { rerender } = render(
+      <LayerPanel strokeManager={m} onChanged={() => {}} onClose={() => {}} />,
+    );
+    const rerenderPanel = () =>
+      rerender(<LayerPanel strokeManager={m} onChanged={() => {}} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Erase all lines on this layer' }));
+    expect(screen.getByText('Erase lines?')).toBeInTheDocument();
+    m.updateLayer(m.getActiveLayerId(), { locked: true });
+    rerenderPanel();
+    expect(screen.queryByText('Erase lines?')).toBeNull();
+
+    m.updateLayer(m.getActiveLayerId(), { locked: false });
+    rerenderPanel();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete layer' }));
+    expect(screen.getByText('Delete layer?')).toBeInTheDocument();
+    const top = m.getActiveLayerId();
+    m.setActiveLayer('base'); // e.g. via undo / redo, not the row
+    rerenderPanel();
+    m.setActiveLayer(top);
+    rerenderPanel();
+    expect(screen.queryByText('Delete layer?')).toBeNull();
+  });
+
   it('docks to the chosen corner via the corner picker', () => {
     const m = new StrokeManager();
     const onCornerChange = vi.fn();
