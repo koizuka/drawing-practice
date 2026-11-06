@@ -5,6 +5,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useSyncExternalStore,
   lazy,
   Suspense,
 } from 'react';
@@ -60,6 +61,8 @@ import { generateThumbnail } from '../storage/generateThumbnail';
 import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
+import type { VideoSyncBridge } from '../utils/videoSyncBridge';
+import { anchorVideoSync, frameVideoTime } from '../drawing/frames';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 
 // Pinch-rotation switch: a per-user preference (not session state), so it
@@ -123,6 +126,8 @@ interface DrawingPanelProps {
    * `loadState` into it before this panel ever renders.
    */
   strokeManager: StrokeManager;
+  /** Rotoscope: drives the YouTube reference from the animation timeline. */
+  videoBridge?: VideoSyncBridge;
   onStrokesChanged?: (opts?: { flush?: boolean }) => void;
   /** Hook for the parent to flush autosave after a successful gallery save. */
   onGallerySaved?: () => void;
@@ -210,6 +215,7 @@ export function DrawingPanel({
   referenceSize,
   referenceInfo,
   strokeManager,
+  videoBridge,
   onStrokesChanged,
   onGallerySaved,
   onOverlayClear,
@@ -559,6 +565,79 @@ export function DrawingPanel({
     },
     [triggerRedraw, onTraceSyncAttempts],
   );
+
+  // ---- Rotoscope (docs/layers.md "Rotoscope") ----
+  // Frame i ↔ video time offset + i·step. Only live while the drawing's sync
+  // names the YouTube video that is the current reference.
+  const youtubeVideoId = referenceInfo?.source === 'youtube' ? referenceInfo.youtubeVideoId : null;
+  const videoSync = strokeManager.getVideoSync();
+  const syncActive = !!videoSync && youtubeVideoId !== null && videoSync.videoId === youtubeVideoId;
+  const syncOffset = syncActive ? videoSync.offset : null;
+  const syncStep = syncActive ? videoSync.step : null;
+  const currentFrameIndex = strokeManager.getCurrentFrameIndex();
+  const shownIndex = playing ? playIndex % frameCount : currentFrameIndex;
+  // Playback lets the video run when one frame step equals one playback tick
+  // (smooth, real speed); otherwise every tick seeks to the frame's moment.
+  const syncRealtime = syncStep !== null && Math.abs(syncStep * fps - 1) < 0.01;
+  const lastSyncedIndexRef = useRef<number | null>(null);
+  // Re-park when the player becomes ready (seeks sent while it was still
+  // loading — e.g. right after a reload — are dropped).
+  const playerReadyVersion = useSyncExternalStore(
+    useCallback((cb: () => void) => videoBridge?.subscribeReady(cb) ?? (() => {}), [videoBridge]),
+    () => videoBridge?.getReadyVersion() ?? 0,
+  );
+  useEffect(() => {
+    if (syncOffset === null || syncStep === null || !videoBridge) {
+      lastSyncedIndexRef.current = null;
+      return;
+    }
+    const sync = { videoId: '', offset: syncOffset, step: syncStep };
+    if (!playing) {
+      // Editing: park the video on the current frame's moment.
+      lastSyncedIndexRef.current = null;
+      videoBridge.seekTo(frameVideoTime(sync, currentFrameIndex), { play: false });
+      return;
+    }
+    const last = lastSyncedIndexRef.current;
+    lastSyncedIndexRef.current = shownIndex;
+    if (syncRealtime) {
+      // Start, and every loop wrap, re-aligns; in between the video runs.
+      if (last === null || shownIndex < last) {
+        videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: true });
+      }
+    } else if (last !== shownIndex) {
+      videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: false });
+    }
+  }, [
+    syncOffset,
+    syncStep,
+    syncRealtime,
+    playing,
+    shownIndex,
+    currentFrameIndex,
+    videoBridge,
+    playerReadyVersion,
+  ]);
+
+  const handleToggleVideoSync = useCallback(() => {
+    if (!youtubeVideoId) return;
+    if (playStateRef.current.playing) stopPlayback();
+    if (syncActive) {
+      strokeManager.setVideoSync(null);
+    } else {
+      // Anchor: the current frame = where the video is right now.
+      const now = videoBridge?.getCurrentTime() ?? 0;
+      strokeManager.setVideoSync(
+        anchorVideoSync(
+          youtubeVideoId,
+          now,
+          strokeManager.getCurrentFrameIndex(),
+          strokeManager.getFps(),
+        ),
+      );
+    }
+    handleLayersChanged({ flush: true });
+  }, [youtubeVideoId, syncActive, strokeManager, videoBridge, stopPlayback, handleLayersChanged]);
 
   // Pen-down on a hidden / locked active layer: show a short explanation
   // instead of silently ignoring the pen.
@@ -1392,6 +1471,15 @@ export function DrawingPanel({
           onChanged={() => handleLayersChanged({ flush: true })}
           onionRange={onionRange}
           onOnionRangeChange={handleOnionRangeChange}
+          videoSync={
+            youtubeVideoId
+              ? {
+                  active: syncActive,
+                  time: syncActive && videoSync ? frameVideoTime(videoSync, shownIndex) : null,
+                  onToggle: handleToggleVideoSync,
+                }
+              : undefined
+          }
         />
       )}
 

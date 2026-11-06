@@ -17,6 +17,7 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  Clapperboard,
   Copy,
   Download,
   Pause,
@@ -28,7 +29,7 @@ import {
 import { ToolbarTooltip } from './ToolbarTooltip';
 import { t } from '../i18n';
 import type { StrokeManager } from '../drawing/StrokeManager';
-import { FPS_OPTIONS, MAX_FRAMES } from '../drawing/frames';
+import { FPS_OPTIONS, MAX_FRAMES, formatVideoTime } from '../drawing/frames';
 import { exportLiveAnimation, type AnimationExportKind } from '../storage/exportAnimation';
 import { orderStrokesForRender } from '../drawing/layers';
 import { STROKE_WIDTH } from '../drawing/constants';
@@ -140,6 +141,11 @@ interface AnimationTimelineProps {
   onChanged: () => void;
   onionRange: number;
   onOnionRangeChange: (range: number) => void;
+  /**
+   * Rotoscope toggle — present only while the reference is a YouTube video.
+   * `time` = video moment of the shown frame while synced.
+   */
+  videoSync?: { active: boolean; time: number | null; onToggle: () => void };
 }
 
 /**
@@ -157,6 +163,7 @@ export function AnimationTimeline({
   onChanged,
   onionRange,
   onOnionRangeChange,
+  videoSync,
 }: AnimationTimelineProps) {
   const frames = strokeManager.getFrames();
   const currentId = strokeManager.getCurrentFrameId();
@@ -489,6 +496,27 @@ export function AnimationTimeline({
           </>
         )}
         <Box sx={{ width: '1px', height: 24, bgcolor: '#ddd', mx: 0.25 }} />
+        {videoSync && (
+          <>
+            {iconBtn(
+              videoSync.active ? t('videoSyncOff') : t('videoSyncOn'),
+              <Clapperboard size={18} />,
+              videoSync.onToggle,
+              false,
+              videoSync.active ? 'primary.main' : undefined,
+            )}
+            {videoSync.active && videoSync.time !== null && (
+              <Typography
+                variant="caption"
+                color="primary"
+                sx={{ fontVariantNumeric: 'tabular-nums', mr: 0.5 }}
+                aria-label={t('videoSyncTime')}
+              >
+                {formatVideoTime(videoSync.time)}
+              </Typography>
+            )}
+          </>
+        )}
         <ToolbarTooltip title={exporting ? t('exporting') : t('animationExport')}>
           <span>
             <IconButton

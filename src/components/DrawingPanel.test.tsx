@@ -7,6 +7,7 @@ import { useGuides } from '../guides/useGuides';
 import type { GuideContextValue } from '../guides/guideContextValue';
 import { useTimer, type TimerHandle } from '../hooks/useTimer';
 import { StrokeManager } from '../drawing/StrokeManager';
+import { VideoSyncBridge } from '../utils/videoSyncBridge';
 import type { ReferenceSnapshot } from '../drawing/types';
 
 vi.mock('../storage', () => ({
@@ -101,6 +102,8 @@ function setup(
     underlayImageUrl?: string | null;
     underlayEnabled?: boolean;
     onToggleUnderlay?: () => void;
+    referenceInfo?: import('../types').ReferenceInfo | null;
+    videoBridge?: import('../utils/videoSyncBridge').VideoSyncBridge;
   } = {},
 ) {
   const sm = new StrokeManager();
@@ -171,6 +174,8 @@ function setup(
             underlayImageUrl={opts.underlayImageUrl ?? null}
             underlayEnabled={opts.underlayEnabled}
             onToggleUnderlay={opts.onToggleUnderlay}
+            referenceInfo={opts.referenceInfo}
+            videoBridge={opts.videoBridge}
           />
         )}
       </Inner>
@@ -973,5 +978,62 @@ describe('DrawingPanel reference underlay + mask stand-in', () => {
     expect(canvasPropsRef.current?.masksHidden).toBe(false);
     // Persisted state untouched by the peek.
     expect(guidesRef.current!.masksHidden).toBe(true);
+  });
+});
+
+describe('DrawingPanel rotoscope sync', () => {
+  const ytRef = {
+    source: 'youtube',
+    title: 'v',
+    author: '',
+    youtubeVideoId: 'vid1',
+  } as unknown as import('../types').ReferenceInfo;
+
+  function fakeBridge(now: number) {
+    const bridge = new VideoSyncBridge();
+    const seekTo = vi.fn();
+    bridge.attach({ seekTo, play: vi.fn(), pause: vi.fn(), getCurrentTime: () => now });
+    return { bridge, seekTo };
+  }
+
+  beforeEach(() => {
+    localStorage.setItem('drawing.timelineOpen', '1');
+  });
+  afterEach(() => {
+    localStorage.removeItem('drawing.timelineOpen');
+  });
+
+  it('anchors the current frame to the video position and seeks on frame changes', () => {
+    const { bridge, seekTo } = fakeBridge(5);
+    const { container, harness, getByRole } = setup({ referenceInfo: ytRef, videoBridge: bridge });
+    const sm = harness.sm!;
+    act(() => {
+      sm.addFrame({ atEnd: true });
+      sm.addFrame({ atEnd: true });
+      sm.setCurrentFrame(sm.getFrames()[1]);
+      harness.bumpHistory();
+    });
+    fireEvent.click(getByRole('button', { name: /Sync frames to the video/ }));
+    // Frame 1 = 5 s, 1/8 s per frame (default 8 fps).
+    expect(sm.getVideoSync()).toEqual({ videoId: 'vid1', offset: 5 - 0.125, step: 0.125 });
+    expect(seekTo).toHaveBeenLastCalledWith(5, { play: false });
+
+    const cell = container.querySelector('[data-frame-index="2"]') as HTMLElement;
+    fireEvent.click(cell);
+    expect(seekTo).toHaveBeenLastCalledWith(5.125, { play: false });
+
+    // A player that becomes ready re-receives the park seek.
+    seekTo.mockClear();
+    act(() => bridge.notifyReady());
+    expect(seekTo).toHaveBeenLastCalledWith(5.125, { play: false });
+
+    // Toggling again clears the sync.
+    fireEvent.click(getByRole('button', { name: 'Stop syncing frames to the video' }));
+    expect(sm.getVideoSync()).toBeUndefined();
+  });
+
+  it('shows no sync toggle for non-video references', () => {
+    const { queryByRole } = setup({ referenceInfo: null });
+    expect(queryByRole('button', { name: /Sync frames to the video/ })).toBeNull();
   });
 });

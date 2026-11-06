@@ -66,6 +66,8 @@ Two overlay modes:
 
 Play/pause via YouTube IFrame Player API (`enablejsapi=1` + postMessage; see `YT_EVENT_*` / `YT_CMD_*`). `YouTubeViewer` accepts a `ref` prop (React 19+ ref-as-prop pattern) exposing `YouTubePlayerHandle` (`{ play(), pause() }`). Emits `onPlayerStateChange(isPlaying)` with per-transition de-dup (`lastPlayingRef`) so the toolbar icon flips without thrash.
 
+**Rotoscope control**: with a `videoBridge` prop the viewer attaches a `VideoPlayerControl` (`seekTo(t, {play})` / `play` / `pause` / `getCurrentTime` from `infoDelivery.currentTime`, plus a once-per-video `notifyReady`) that the animation timeline drives — see `docs/layers.md` "Rotoscope", incl. the paused-seek gotcha (seekTo STARTS an unstarted/cued player; pausing immediately leaves it black, so pause on the first "playing" report and re-seek).
+
 **No video-frame capture** — YouTube iframe content is CORS-protected. Fix/still-frame is intentionally unsupported. **Why:** cross-origin iframe isolation makes wheel/touch events inside the iframe unreachable from the parent; the overlay-and-tap model is the deliberate workaround.
 
 ## PexelsSearcher

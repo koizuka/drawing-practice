@@ -1,5 +1,14 @@
 import { StrokeManager } from './StrokeManager';
-import { DEFAULT_FRAME_ID, SHARED_FRAME_ID, frameIdOf } from './frames';
+import {
+  DEFAULT_FRAME_ID,
+  SHARED_FRAME_ID,
+  anchorVideoSync,
+  formatVideoTime,
+  frameIdOf,
+  frameVideoTime,
+  sanitizeVideoSync,
+} from './frames';
+import { docStateForStorage, pickStoredDocFields } from './docState';
 import { orderStrokesForRender, onionSkinItems } from './layers';
 
 function draw(m: StrokeManager, x: number) {
@@ -194,5 +203,54 @@ describe('StrokeManager frames', () => {
     m.setCurrentFrame(m.getFrames()[1]);
     const items = onionSkinItems(m.getStrokes(), m.getLayers(), m.getFrameView(), 1);
     expect(items.map((i) => i.stroke.points[0].x).sort()).toEqual([10, 30]);
+  });
+});
+
+describe('rotoscope video sync', () => {
+  it('maps frame indices to video time and sanitizes', () => {
+    const sync = anchorVideoSync('vid', 10, 2, 8); // frame 2 at 10s, 1/8 s per frame
+    expect(sync.step).toBe(0.125);
+    expect(frameVideoTime(sync, 2)).toBeCloseTo(10);
+    expect(frameVideoTime(sync, 3)).toBeCloseTo(10.125);
+    expect(frameVideoTime(anchorVideoSync('vid', 0.1, 4, 8), 0)).toBe(0); // clamps
+    expect(sanitizeVideoSync({ videoId: 'v', offset: 1, step: 0.1 })).toEqual({
+      videoId: 'v',
+      offset: 1,
+      step: 0.1,
+    });
+    for (const bad of [
+      null,
+      {},
+      { videoId: '', offset: 0, step: 1 },
+      { videoId: 'v', offset: Number.NaN, step: 1 },
+      { videoId: 'v', offset: 0, step: 0 },
+      { videoId: 'v', offset: 0, step: 99 },
+    ]) {
+      expect(sanitizeVideoSync(bad)).toBeUndefined();
+    }
+    expect(formatVideoTime(0)).toBe('0:00.00');
+    expect(formatVideoTime(75.125)).toBe('1:15.13');
+  });
+
+  it('is a saved, non-undoable setting that round-trips through storage', () => {
+    const m = new StrokeManager();
+    expect(m.setVideoSync({ videoId: 'v', offset: 2, step: 0.125 })).toBe(true);
+    expect(m.isDirtySinceGallerySave()).toBe(true);
+    expect(m.setVideoSync({ videoId: 'v', offset: 2, step: 0.125 })).toBe(false); // no-op
+    expect(m.setVideoSync({ videoId: '', offset: 2, step: 0.125 })).toBe(false); // invalid
+    expect(m.canUndo()).toBe(false);
+
+    const stored = docStateForStorage(m.getDocState());
+    expect(stored.videoSync).toEqual({ videoId: 'v', offset: 2, step: 0.125 });
+    expect(stored.frames).toEqual([DEFAULT_FRAME_ID]); // single frame but synced ⇒ not default
+    const m2 = new StrokeManager();
+    m2.loadState([], [], pickStoredDocFields(stored));
+    expect(m2.getVideoSync()).toEqual({ videoId: 'v', offset: 2, step: 0.125 });
+
+    expect(m2.setVideoSync(null)).toBe(true);
+    expect(docStateForStorage(m2.getDocState())).toEqual({});
+    // Garbage in storage is dropped.
+    m2.loadState([], [], { frames: ['frame-0', 'frame-1'], videoSync: { videoId: 3 } as never });
+    expect(m2.getVideoSync()).toBeUndefined();
   });
 });

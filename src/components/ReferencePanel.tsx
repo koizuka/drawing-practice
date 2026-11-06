@@ -50,6 +50,7 @@ import type { TraceTemplate } from '../templates/types';
 import type { TraceFeedback } from '../trace/types';
 import type { ViewTransform } from '../drawing/ViewTransform';
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer';
+import type { VideoSyncBridge } from '../utils/videoSyncBridge';
 import { PexelsApiKeyDialog } from './PexelsApiKeyDialog';
 import { AnthropicApiKeyDialog } from './AnthropicApiKeyDialog';
 import { LazyErrorBoundary } from './LazyErrorBoundary';
@@ -331,6 +332,8 @@ interface ReferencePanelProps {
   overlayStrokes?: readonly Stroke[] | null;
   overlayCurrentStrokeRef?: React.RefObject<Stroke | null>;
   onRegisterOverlayRedraw?: (redraw: () => void) => void;
+  /** Rotoscope bridge: the YouTube player attaches its control here. */
+  videoBridge?: VideoSyncBridge;
   onReferenceImageSize?: (width: number, height: number) => void;
   overlayActive?: boolean;
   onToggleOverlay?: () => void;
@@ -380,6 +383,7 @@ export function ReferencePanel({
   overlayStrokes,
   overlayCurrentStrokeRef,
   onRegisterOverlayRedraw,
+  videoBridge,
   onReferenceImageSize,
   overlayActive,
   onToggleOverlay,
@@ -2039,6 +2043,7 @@ export function ReferencePanel({
             videoInteractMode={youtubeVideoInteractMode}
             onRequestVideoInteract={() => setYoutubeVideoInteractMode(true)}
             onPlayerStateChange={setYoutubePlaying}
+            videoBridge={videoBridge}
           />
         )}
 

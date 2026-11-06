@@ -1,3 +1,4 @@
+import { VideoSyncBridge } from '../utils/videoSyncBridge';
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Alert, Snackbar } from '@mui/material';
 import { useOrientation } from '../hooks/useOrientation';
@@ -89,6 +90,8 @@ function SplitLayoutInner() {
   // useState's lazy initializer ensures only one instance is constructed for the lifetime
   // of the component (useRef(new ViewTransform()) re-evaluates `new` every render).
   const [viewTransform] = useState(() => new ViewTransform());
+  // Rotoscope: YouTubeViewer attaches, DrawingPanel's timeline drives it.
+  const [videoBridge] = useState(() => new VideoSyncBridge());
 
   // Lifted state from ReferencePanel
   const [source, setSource] = useState<ReferenceSource>('none');
@@ -1491,6 +1494,7 @@ function SplitLayoutInner() {
               overlayStrokes={overlayStrokes}
               overlayCurrentStrokeRef={currentStrokeRef}
               onRegisterOverlayRedraw={handleRegisterOverlayRedraw}
+              videoBridge={videoBridge}
               onReferenceImageSize={handleReferenceImageSize}
               overlayActive={overlayActive}
               onToggleOverlay={handleToggleOverlay}
@@ -1526,6 +1530,7 @@ function SplitLayoutInner() {
               referenceSize={drawingFitSize}
               referenceInfo={referenceInfo}
               strokeManager={strokeManager}
+              videoBridge={videoBridge}
               onStrokesChanged={handleStrokesChanged}
               onGallerySaved={incrementFlushVersion}
               onCurrentStrokeChange={handleCurrentStrokeChange}

@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState, useImperativeHandle, type Ref } from 'react';
 import { Box } from '@mui/material';
 import { buildYouTubeEmbedUrl, YOUTUBE_ORIGIN } from '../utils/youtube';
+import type { VideoPlayerControl, VideoSyncBridge } from '../utils/videoSyncBridge';
 import { drawGrid, drawGuideLines, drawMaskPreview, drawMasks } from '../guides/drawGuides';
 import type { GridSettings, GuideLine, MaskRect } from '../guides/types';
 import type { Stroke, Point } from '../drawing/types';
@@ -42,7 +43,16 @@ const YT_EVENT_INFO_DELIVERY = 'infoDelivery';
 const YT_EVENT_STATE_CHANGE = 'onStateChange';
 const YT_CMD_PLAY = 'playVideo';
 const YT_CMD_PAUSE = 'pauseVideo';
+const YT_CMD_SEEK = 'seekTo';
 const YT_PLAYER_STATE_PLAYING = 1;
+const YT_PLAYER_STATE_PAUSED = 2;
+/**
+ * seekTo keeps a PAUSED player paused, but from any other state (unstarted /
+ * cued / ended) it starts playback. Pausing right away there leaves the
+ * player black (no frame decoded yet), so a paused seek instead lets it start
+ * and pauses on the first "playing" report within this window.
+ */
+const HOLD_PAUSED_MS = 4000;
 
 export interface YouTubePlayerHandle {
   play(): void;
@@ -90,6 +100,8 @@ interface YouTubeViewerProps {
   onRequestVideoInteract?: () => void;
   /** Emits true when the player starts playing, false when it pauses/ends. */
   onPlayerStateChange?: (isPlaying: boolean) => void;
+  /** Rotoscope: the player attaches its seek / time control here while mounted. */
+  videoBridge?: VideoSyncBridge;
   ref?: Ref<YouTubePlayerHandle>;
 }
 
@@ -116,6 +128,7 @@ export function YouTubeViewer({
   videoInteractMode = false,
   onRequestVideoInteract,
   onPlayerStateChange,
+  videoBridge,
   ref,
 }: YouTubeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -394,11 +407,36 @@ export function YouTubeViewer({
   // would be suppressed and the toolbar icon would lag.
   const lastPlayingRef = useRef<boolean | null>(null);
 
+  // Last `currentTime` the player reported (infoDelivery), for rotoscope
+  // anchoring. Reset per video like lastPlayingRef.
+  const currentTimeRef = useRef<number | null>(null);
+  const holdPausedUntilRef = useRef(0);
+  const playerStateRef = useRef<number | null>(null);
+  const holdTargetRef = useRef<number | null>(null);
+  const playerReadyRef = useRef(false);
+  const onPlayerStateChangeRef = useRef(onPlayerStateChange);
+  const videoBridgeRef = useRef(videoBridge);
+  useEffect(() => {
+    onPlayerStateChangeRef.current = onPlayerStateChange;
+    videoBridgeRef.current = videoBridge;
+  });
+
+  const postCommand = useCallback((func: string, args: unknown[] = []) => {
+    iframeRef.current?.contentWindow?.postMessage(
+      JSON.stringify({ event: YT_EVENT_COMMAND, func, args }),
+      YOUTUBE_ORIGIN,
+    );
+  }, []);
+
   // IFrame API handshake: register as a listener once the player loads.
   useEffect(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
     lastPlayingRef.current = null;
+    currentTimeRef.current = null;
+    holdPausedUntilRef.current = 0;
+    playerReadyRef.current = false;
+    playerStateRef.current = null;
     const handleLoad = () => {
       iframe.contentWindow?.postMessage(
         JSON.stringify({ event: YT_EVENT_LISTENING, id: videoId, channel: 'widget' }),
@@ -409,11 +447,21 @@ export function YouTubeViewer({
     return () => iframe.removeEventListener('load', handleLoad);
   }, [videoId]);
   useEffect(() => {
-    if (!onPlayerStateChange) return;
-    const emit = (next: boolean) => {
+    const onState = (state: number) => {
+      playerStateRef.current = state;
+      if (state === YT_PLAYER_STATE_PLAYING && performance.now() < holdPausedUntilRef.current) {
+        holdPausedUntilRef.current = 0;
+        postCommand(YT_CMD_PAUSE);
+        // It ran a few ms past the target before this report; a seek on the
+        // now-paused player lands exactly and stays paused.
+        if (holdTargetRef.current !== null) {
+          postCommand(YT_CMD_SEEK, [holdTargetRef.current, true]);
+        }
+      }
+      const next = state === YT_PLAYER_STATE_PLAYING;
       if (lastPlayingRef.current === next) return;
       lastPlayingRef.current = next;
-      onPlayerStateChange(next);
+      onPlayerStateChangeRef.current?.(next);
     };
     const handleMessage = (e: MessageEvent) => {
       if (e.origin !== YOUTUBE_ORIGIN) return;
@@ -428,34 +476,70 @@ export function YouTubeViewer({
       if (!payload || typeof payload !== 'object') return;
       const data = payload as Record<string, unknown>;
       if (data.event === YT_EVENT_INFO_DELIVERY && data.info && typeof data.info === 'object') {
-        const state = (data.info as Record<string, unknown>).playerState;
-        if (typeof state === 'number') emit(state === YT_PLAYER_STATE_PLAYING);
+        const info = data.info as Record<string, unknown>;
+        if (typeof info.currentTime === 'number' && Number.isFinite(info.currentTime)) {
+          currentTimeRef.current = info.currentTime;
+          // Our own seekTo also writes currentTimeRef, so readiness is a
+          // separate per-video flag.
+          if (!playerReadyRef.current) {
+            playerReadyRef.current = true;
+            videoBridgeRef.current?.notifyReady();
+          }
+        }
+        if (typeof info.playerState === 'number') onState(info.playerState);
       } else if (data.event === YT_EVENT_STATE_CHANGE && typeof data.info === 'number') {
-        emit(data.info === YT_PLAYER_STATE_PLAYING);
+        onState(data.info);
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [onPlayerStateChange]);
+  }, [postCommand]);
 
   useImperativeHandle(
     ref,
     () => ({
       play() {
-        iframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PLAY, args: [] }),
-          YOUTUBE_ORIGIN,
-        );
+        postCommand(YT_CMD_PLAY);
       },
       pause() {
-        iframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({ event: YT_EVENT_COMMAND, func: YT_CMD_PAUSE, args: [] }),
-          YOUTUBE_ORIGIN,
-        );
+        postCommand(YT_CMD_PAUSE);
       },
     }),
-    [],
+    [postCommand],
   );
+
+  // Rotoscope control (see videoSyncBridge.ts), attached while mounted.
+  useEffect(() => {
+    if (!videoBridge) return;
+    const control: VideoPlayerControl = {
+      seekTo(seconds, { play }) {
+        const t = Math.max(0, seconds);
+        currentTimeRef.current = t;
+        postCommand(YT_CMD_SEEK, [t, true]);
+        if (play) {
+          holdPausedUntilRef.current = 0;
+          postCommand(YT_CMD_PLAY);
+        } else if (playerStateRef.current === YT_PLAYER_STATE_PLAYING) {
+          holdPausedUntilRef.current = 0;
+          postCommand(YT_CMD_PAUSE);
+        } else if (playerStateRef.current !== YT_PLAYER_STATE_PAUSED) {
+          // Not started / cued / ended / buffering: seekTo starts it.
+          holdPausedUntilRef.current = performance.now() + HOLD_PAUSED_MS;
+          holdTargetRef.current = t;
+        }
+      },
+      play() {
+        holdPausedUntilRef.current = 0;
+        postCommand(YT_CMD_PLAY);
+      },
+      pause() {
+        postCommand(YT_CMD_PAUSE);
+      },
+      getCurrentTime: () => currentTimeRef.current,
+    };
+    videoBridge.attach(control);
+    return () => videoBridge.detach(control);
+  }, [videoBridge, postCommand]);
 
   const beginGuideInteraction = useCallback(
     (clientX: number, clientY: number) => {

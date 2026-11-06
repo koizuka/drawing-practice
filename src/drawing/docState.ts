@@ -1,5 +1,5 @@
 import { isDefaultLayerState, type Layer, type LayerState } from './layers';
-import { isDefaultFrameState, type FrameState, type FrameView } from './frames';
+import { isDefaultFrameState, type FrameState, type FrameView, type VideoSync } from './frames';
 
 /** Layers + frames: the document-level state saved next to the strokes. */
 export type DocSnapshot = LayerState & FrameState;
@@ -11,6 +11,7 @@ export interface StoredDocFields {
   frames?: string[];
   currentFrameId?: string;
   fps?: number;
+  videoSync?: VideoSync;
 }
 
 /**
@@ -25,11 +26,17 @@ export function docStateForStorage(doc: DocSnapshot | undefined): StoredDocField
     out.layers = doc.layers.map((l) => ({ ...l }));
     out.activeLayerId = doc.activeLayerId;
   }
-  const fs: FrameState = { frames: doc.frames, currentFrameId: doc.currentFrameId, fps: doc.fps };
+  const fs: FrameState = {
+    frames: doc.frames,
+    currentFrameId: doc.currentFrameId,
+    fps: doc.fps,
+    videoSync: doc.videoSync,
+  };
   if (!isDefaultFrameState(fs)) {
     out.frames = doc.frames.slice();
     out.currentFrameId = doc.currentFrameId;
     out.fps = doc.fps;
+    if (doc.videoSync) out.videoSync = { ...doc.videoSync };
   }
   return out;
 }
@@ -58,6 +65,7 @@ export function pickStoredDocFields(f: StoredDocFields): StoredDocFields | undef
     picked.frames = f.frames;
     picked.currentFrameId = f.currentFrameId;
     picked.fps = f.fps;
+    if (f.videoSync) picked.videoSync = f.videoSync;
   }
   return hasStoredDocFields(picked) ? picked : undefined;
 }

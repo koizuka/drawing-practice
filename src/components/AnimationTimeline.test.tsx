@@ -10,7 +10,15 @@ function draw(m: StrokeManager, x: number) {
   m.endStroke();
 }
 
-function Harness({ m, onSelect }: { m: StrokeManager; onSelect?: (id: string) => void }) {
+function Harness({
+  m,
+  onSelect,
+  videoSync,
+}: {
+  m: StrokeManager;
+  onSelect?: (id: string) => void;
+  videoSync?: { active: boolean; time: number | null; onToggle: () => void };
+}) {
   const [v, bump] = useReducer((n: number) => n + 1, 0);
   return (
     <AnimationTimeline
@@ -27,6 +35,7 @@ function Harness({ m, onSelect }: { m: StrokeManager; onSelect?: (id: string) =>
       onChanged={bump}
       onionRange={1}
       onOnionRangeChange={() => {}}
+      videoSync={videoSync}
     />
   );
 }
@@ -66,5 +75,27 @@ describe('AnimationTimeline', () => {
     fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Playback speed' }));
     fireEvent.click(screen.getByRole('option', { name: '12 fps' }));
     expect(m.getFps()).toBe(12);
+  });
+});
+
+describe('AnimationTimeline rotoscope toggle', () => {
+  it('is hidden without a video reference', () => {
+    render(<Harness m={new StrokeManager()} />);
+    expect(screen.queryByRole('button', { name: /video/i })).toBeNull();
+  });
+
+  it('toggles and shows the frame time while synced', () => {
+    const onToggle = vi.fn();
+    const { rerender } = render(
+      <Harness m={new StrokeManager()} videoSync={{ active: false, time: null, onToggle }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Sync frames to the video/ }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('Video time of this frame')).toBeNull();
+    rerender(
+      <Harness m={new StrokeManager()} videoSync={{ active: true, time: 61.5, onToggle }} />,
+    );
+    expect(screen.getByRole('button', { name: 'Stop syncing frames to the video' })).toBeTruthy();
+    expect(screen.getByLabelText('Video time of this frame').textContent).toBe('1:01.50');
   });
 });

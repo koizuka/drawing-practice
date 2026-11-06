@@ -29,6 +29,60 @@ export interface FrameState {
   frames: string[];
   currentFrameId: string;
   fps: number;
+  /** Rotoscope: frames step a YouTube reference (absent = not synced). */
+  videoSync?: VideoSync;
+}
+
+/**
+ * Rotoscope sync (docs/layers.md "Rotoscope"): frame at playback index `i`
+ * shows the video at `offset + i * step` seconds. Index-based on purpose —
+ * "the next frame is the next step of the video" is what tracing wants, and
+ * it stays predictable when frames are appended. `step` is fixed when the
+ * sync is set (1 / fps at that moment) so a later fps change only alters
+ * playback speed, never which video moment a drawn frame was traced from.
+ */
+export interface VideoSync {
+  videoId: string;
+  /** Video time (s) of frame index 0. May be negative (earlier frames clamp to 0). */
+  offset: number;
+  /** Seconds of video per frame. */
+  step: number;
+}
+
+const MAX_VIDEO_SYNC_STEP = 10;
+
+/** Video time (s) for the frame at `index`. */
+export function frameVideoTime(sync: VideoSync, index: number): number {
+  return Math.max(0, sync.offset + index * sync.step);
+}
+
+/** Sync that puts frame `index` at video time `time`, stepping 1/fps. */
+export function anchorVideoSync(
+  videoId: string,
+  time: number,
+  index: number,
+  fps: number,
+): VideoSync {
+  const step = 1 / fps;
+  return { videoId, offset: time - index * step, step };
+}
+
+/** `m:ss.cc` for the rotoscope readout. */
+export function formatVideoTime(seconds: number): string {
+  const cs = Math.round(seconds * 100);
+  const m = Math.floor(cs / 6000);
+  const s = Math.floor((cs % 6000) / 100);
+  const frac = cs % 100;
+  return `${m}:${s < 10 ? '0' : ''}${s}.${frac < 10 ? '0' : ''}${frac}`;
+}
+
+export function sanitizeVideoSync(v: unknown): VideoSync | undefined {
+  if (!v || typeof v !== 'object') return undefined;
+  const { videoId, offset, step } = v as Record<string, unknown>;
+  if (typeof videoId !== 'string' || videoId === '') return undefined;
+  if (typeof offset !== 'number' || !Number.isFinite(offset)) return undefined;
+  if (typeof step !== 'number' || !(step > 0) || step > MAX_VIDEO_SYNC_STEP) return undefined;
+  return { videoId, offset, step };
 }
 
 /** What a renderer needs to filter strokes down to one frame. */
@@ -46,7 +100,8 @@ export function isDefaultFrameState(s: FrameState): boolean {
     s.frames.length === 1 &&
     s.frames[0] === DEFAULT_FRAME_ID &&
     s.currentFrameId === DEFAULT_FRAME_ID &&
-    s.fps === DEFAULT_FPS
+    s.fps === DEFAULT_FPS &&
+    !s.videoSync
   );
 }
 
@@ -105,7 +160,8 @@ export function sanitizeFrameState(
     typeof raw.currentFrameId === 'string' && frames.includes(raw.currentFrameId)
       ? raw.currentFrameId
       : frames[0];
-  return { frames, currentFrameId, fps: sanitizeFps(raw.fps) };
+  const videoSync = sanitizeVideoSync(raw.videoSync);
+  return { frames, currentFrameId, fps: sanitizeFps(raw.fps), ...(videoSync ? { videoSync } : {}) };
 }
 
 /** Neighbor frame ids for onion skin: `[-1, -2, …]` before and `[+1, +2, …]` after. */

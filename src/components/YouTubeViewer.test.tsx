@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
 import { YouTubeViewer, type YouTubePlayerHandle } from './YouTubeViewer';
 import { ViewTransform } from '../drawing/ViewTransform';
+import { VideoSyncBridge } from '../utils/videoSyncBridge';
 import type { GridSettings } from '../guides/types';
 
 const grid: GridSettings = { mode: 'none' };
@@ -310,5 +311,90 @@ describe('YouTubeViewer IFrame API handle', () => {
       event: 'command',
       func: 'pauseVideo',
     });
+  });
+});
+
+describe('YouTubeViewer rotoscope bridge', () => {
+  function setup() {
+    const bridge = new VideoSyncBridge();
+    const r = render(<YouTubeViewer {...baseProps} videoBridge={bridge} />);
+    const iframe = r.container.querySelector('iframe') as HTMLIFrameElement;
+    const postMessage = vi.fn();
+    const contentWindow = { postMessage };
+    Object.defineProperty(iframe, 'contentWindow', { configurable: true, value: contentWindow });
+    const funcs = () => postMessage.mock.calls.map((c) => JSON.parse(c[0]));
+    const fromPlayer = (data: unknown) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            origin: 'https://www.youtube.com',
+            source: contentWindow as unknown as Window,
+            data: JSON.stringify(data),
+          }),
+        );
+      });
+    return { bridge, funcs, fromPlayer, ...r };
+  }
+
+  it('attaches while mounted and detaches on unmount', () => {
+    const { bridge, unmount } = setup();
+    expect(bridge.isAttached()).toBe(true);
+    unmount();
+    expect(bridge.isAttached()).toBe(false);
+  });
+
+  it('tracks currentTime from infoDelivery and reports readiness once', () => {
+    const { bridge, fromPlayer } = setup();
+    const ready = vi.fn();
+    bridge.subscribeReady(ready);
+    expect(bridge.getCurrentTime()).toBeNull();
+    bridge.seekTo(1, { play: false }); // our own seek must not count as "ready"
+    expect(ready).not.toHaveBeenCalled();
+    fromPlayer({ event: 'infoDelivery', info: { currentTime: 12.5 } });
+    expect(bridge.getCurrentTime()).toBe(12.5);
+    fromPlayer({ event: 'infoDelivery', info: { currentTime: 13 } });
+    expect(ready).toHaveBeenCalledTimes(1);
+    expect(bridge.getReadyVersion()).toBe(1);
+  });
+
+  it('paused seek on a not-yet-started player lets it start, then pauses once', () => {
+    const { bridge, funcs, fromPlayer } = setup();
+    bridge.seekTo(3.25, { play: false });
+    // No immediate pause: pausing before the first decoded frame leaves it black.
+    expect(funcs()).toEqual([expect.objectContaining({ func: 'seekTo', args: [3.25, true] })]);
+    expect(bridge.getCurrentTime()).toBe(3.25);
+    fromPlayer({ event: 'onStateChange', info: 3 }); // buffering: keep waiting
+    expect(funcs()).toHaveLength(1);
+    fromPlayer({ event: 'onStateChange', info: 1 }); // started → pause, re-seek exactly
+    expect(funcs().slice(-2)).toEqual([
+      expect.objectContaining({ func: 'pauseVideo' }),
+      expect.objectContaining({ func: 'seekTo', args: [3.25, true] }),
+    ]);
+    const n = funcs().length;
+    fromPlayer({ event: 'onStateChange', info: 2 });
+    fromPlayer({ event: 'onStateChange', info: 1 }); // user presses play later
+    expect(funcs()).toHaveLength(n);
+  });
+
+  it('paused seek keeps a paused player paused and pauses a playing one', () => {
+    const { bridge, funcs, fromPlayer } = setup();
+    fromPlayer({ event: 'onStateChange', info: 2 });
+    bridge.seekTo(1, { play: false });
+    expect(funcs().map((f) => f.func)).toEqual(['seekTo']);
+    fromPlayer({ event: 'onStateChange', info: 1 });
+    expect(funcs().map((f) => f.func)).toEqual(['seekTo']); // no hold armed
+    bridge.seekTo(2, { play: false });
+    expect(funcs().map((f) => f.func)).toEqual(['seekTo', 'seekTo', 'pauseVideo']);
+  });
+
+  it('playing seek posts seekTo + play and never re-pauses', () => {
+    const { bridge, funcs, fromPlayer } = setup();
+    bridge.seekTo(-1, { play: true });
+    expect(funcs()).toEqual([
+      expect.objectContaining({ func: 'seekTo', args: [0, true] }),
+      expect.objectContaining({ func: 'playVideo' }),
+    ]);
+    fromPlayer({ event: 'onStateChange', info: 1 });
+    expect(funcs()).toHaveLength(2);
   });
 });
