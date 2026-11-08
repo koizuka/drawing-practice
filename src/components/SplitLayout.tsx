@@ -15,8 +15,10 @@ import { ReferencePanel, type ReferenceSetters } from './ReferencePanel';
 import { DrawingPanel } from './DrawingPanel';
 import { GestureHUD } from './GestureHUD';
 import {
+  browseReference,
   computeFitLeader,
   isSameReferenceContent,
+  loadedReference,
   resolveFixedImageUrl,
   resolveDrawingFitSize,
   shouldFullscreenReferenceBrowse,
@@ -78,6 +80,14 @@ function SplitLayoutInner() {
   // event that identical content will never fire.
   const referenceSizeRef = useRef(referenceSize);
   const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
+  /** Replace all five reference-state fields at once (setter identities are stable). */
+  const setReferenceState = useCallback((snap: ReferenceSnapshot) => {
+    setSource(snap.source);
+    setReferenceMode(snap.referenceMode);
+    setFixedImageUrl(snap.fixedImageUrl);
+    setLocalImageUrl(snap.localImageUrl);
+    setReferenceInfo(snap.referenceInfo);
+  }, []);
   const [toast, setToast] = useState<string | null>(null);
   // StrokeManager owned by SplitLayout (not DrawingPanel) so it exists from
   // mount and can receive `loadState` during draft restore even before the
@@ -343,11 +353,7 @@ function SplitLayoutInner() {
   const applyReferenceSnapshotRef = useRef<(snap: ReferenceSnapshot) => void>(() => {});
   useEffect(() => {
     applyReferenceSnapshotRef.current = (snap: ReferenceSnapshot) => {
-      setSource(snap.source);
-      setReferenceMode(snap.referenceMode);
-      setFixedImageUrl(snap.fixedImageUrl);
-      setLocalImageUrl(snap.localImageUrl);
-      setReferenceInfo(snap.referenceInfo);
+      setReferenceState(snap);
       pauseAndIncrementVersion();
       incrementFlushVersion();
     };
@@ -455,6 +461,7 @@ function SplitLayoutInner() {
         setFixedImageUrl,
         setLocalImageUrl,
         setReferenceInfo,
+        setAll: setReferenceState,
       });
       pauseAndIncrementVersion();
       incrementFlushVersion();
@@ -468,6 +475,7 @@ function SplitLayoutInner() {
       incrementFlushVersion,
       setHistorySyncVersion,
       setDrawingLoadInFlight,
+      setReferenceState,
     ],
   );
 
@@ -485,14 +493,10 @@ function SplitLayoutInner() {
     pendingMigrationRef.current = null;
     pendingGalleryCameraRef.current = null;
     setDrawingLoadInFlight(false);
-    setSource('none');
-    setReferenceMode('browse');
-    setFixedImageUrl(null);
-    setLocalImageUrl(null);
-    setReferenceInfo(null);
+    setReferenceState(browseReference('none'));
     pauseAndIncrementVersion();
     incrementFlushVersion();
-  }, [pauseAndIncrementVersion, incrementFlushVersion, setDrawingLoadInFlight]);
+  }, [pauseAndIncrementVersion, incrementFlushVersion, setDrawingLoadInFlight, setReferenceState]);
 
   const handleReferenceImageSize = useCallback(
     (width: number, height: number) => {
@@ -718,13 +722,7 @@ function SplitLayoutInner() {
     (photo: PexelsPhoto) => {
       const info = buildPexelsReferenceInfo(photo);
       changeReference(
-        (s) => {
-          s.setSource('pexels');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(info.pexelsImageUrl);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
-        },
+        (s) => s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.pexelsImageUrl })),
         { recordUndo: false },
       );
     },
@@ -844,13 +842,9 @@ function SplitLayoutInner() {
             onApplied?.(false);
             return;
           }
-          changeReference((s) => {
-            s.setSource('image');
-            s.setReferenceMode('fixed');
-            s.setFixedImageUrl(null);
-            s.setLocalImageUrl(dataUrl);
-            s.setReferenceInfo(info);
-          });
+          changeReference((s) =>
+            s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl }) /*SRC 'image'*/),
+          );
           onApplied?.(true);
           // Upsert with the Blob we already loaded so the call is self-
           // contained: no redundant DB read, and an evicted row between reads
@@ -866,57 +860,31 @@ function SplitLayoutInner() {
 
       changeReference((s) => {
         if (info.source === 'sketchfab' && info.sketchfabUid) {
-          s.setSource('sketchfab');
-          s.setLocalImageUrl(null);
-          if (info.imageUrl) {
-            // The Sketchfab iframe stays mounted in fixed mode (display:none),
-            // so loadSketchfabModelFnRef below still readies "Change angle".
-            s.setReferenceMode('fixed');
-            s.setFixedImageUrl(info.imageUrl);
-            s.setReferenceInfo(info);
-          } else {
-            s.setReferenceMode('browse');
-            s.setFixedImageUrl(null);
-            s.setReferenceInfo(null);
-          }
+          // The Sketchfab iframe stays mounted in fixed mode (display:none),
+          // so loadSketchfabModelFnRef below still readies "Change angle".
+          s.setAll(
+            info.imageUrl
+              ? loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl })
+              : browseReference('sketchfab'),
+          );
           // Pass title/author to the viewer so Fix Angle from "Change angle"
           // produces a non-empty ReferenceInfo even on legacy records.
           const sfMeta: SketchfabModelMeta | undefined =
             info.title || info.author ? { name: info.title, author: info.author } : undefined;
           loadSketchfabModelFnRef.current?.(info.sketchfabUid, sfMeta);
         } else if (info.source === 'url' && info.imageUrl) {
-          s.setSource('url');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(info.imageUrl);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
+          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl }));
         } else if (info.source === 'youtube' && info.youtubeVideoId) {
-          s.setSource('youtube');
-          s.setReferenceMode('browse');
-          s.setFixedImageUrl(null);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
+          s.setAll(loadedReference(info, 'browse'));
         } else if (info.source === 'pexels' && info.pexelsImageUrl) {
-          s.setSource('pexels');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(info.pexelsImageUrl);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
+          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.pexelsImageUrl }));
         } else if (info.source === 'trace-template' && info.templateId) {
-          s.setSource('trace-template');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(null);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
+          s.setAll(loadedReference(info, 'fixed'));
         } else if (info.source === 'pose' && info.imageUrl) {
           // Restore the Fix-Angle screenshot directly into fixed mode. The
           // pose/hint on the record also revive the mannequin state, so
           // "Change angle" drops back into browse with the pose applied.
-          s.setSource('pose');
-          s.setReferenceMode('fixed');
-          s.setFixedImageUrl(info.imageUrl);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
+          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl }));
         }
       });
       onApplied?.(true);
@@ -1562,7 +1530,6 @@ function SplitLayoutInner() {
               templateStrokes={traceScoring.templateStrokes}
               traceFeedback={traceScoring.latestFeedback}
               onStrokeFinalized={handleTraceStrokeFinalized}
-              traceScores={traceScoring.scores}
               traceTotalCovered={traceScoring.totalCovered}
               traceTotalStrokes={traceScoring.totalStrokes}
               traceOverallBestPct={traceScoring.overallBestPct}

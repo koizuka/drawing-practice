@@ -10,7 +10,8 @@ import {
   Autocomplete,
 } from '@mui/material';
 import { MaskRevealButton } from './MaskRevealButton';
-import { resolveFixedImageUrl } from './splitLayoutHelpers';
+import { browseReference, loadedReference, resolveFixedImageUrl } from './splitLayoutHelpers';
+import type { ReferenceSnapshot } from '../drawing/types';
 import { ToolbarTooltip } from './ToolbarTooltip';
 import {
   X,
@@ -175,6 +176,12 @@ export interface ReferenceSetters {
   setFixedImageUrl: (url: string | null) => void;
   setLocalImageUrl: (url: string | null) => void;
   setReferenceInfo: (info: ReferenceInfo | null) => void;
+  /**
+   * Replace the whole reference state at once — preferred for source
+   * switches so no field can be left stale. Build the argument with
+   * `browseReference` / `loadedReference` (splitLayoutHelpers).
+   */
+  setAll: (state: ReferenceSnapshot) => void;
 }
 
 /**
@@ -633,13 +640,9 @@ export function ReferencePanel({
           fileName: file.name,
           url,
         };
-        onReferenceChange((s) => {
-          s.setLocalImageUrl(dataUrl);
-          s.setFixedImageUrl(null);
-          s.setReferenceInfo(info);
-          s.setSource('image');
-          s.setReferenceMode('fixed');
-        });
+        onReferenceChange((s) =>
+          s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl })),
+        );
       };
       reader.readAsDataURL(file);
 
@@ -697,13 +700,14 @@ export function ReferencePanel({
       const sketchfabMatch = parseSketchfabModelUrl(url);
       if (sketchfabMatch) {
         const uid = sketchfabMatch.uid;
-        onReferenceChange((s) => {
-          s.setSource('sketchfab');
-          s.setReferenceMode('browse');
-          s.setFixedImageUrl(null);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo({ title: '', author: '', source: 'sketchfab', sketchfabUid: uid });
-        });
+        onReferenceChange((s) =>
+          s.setAll(
+            loadedReference(
+              { title: '', author: '', source: 'sketchfab', sketchfabUid: uid },
+              'browse',
+            ),
+          ),
+        );
         setUrlInput('');
         setUrlLoading(false);
         // Resolve the URL-history entry once: it carries both the search context
@@ -745,13 +749,7 @@ export function ReferencePanel({
           source: 'youtube',
           youtubeVideoId: ytId,
         };
-        onReferenceChange((s) => {
-          s.setSource('youtube');
-          s.setReferenceMode('browse');
-          s.setFixedImageUrl(null);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
-        });
+        onReferenceChange((s) => s.setAll(loadedReference(info, 'browse')));
         setUrlInput('');
         setUrlLoading(false);
         fetchYouTubeTitle(ytId)
@@ -769,13 +767,9 @@ export function ReferencePanel({
         getPhoto(pexelsMatch.id)
           .then((photo) => {
             const info = buildPexelsReferenceInfo(photo);
-            onReferenceChange((s) => {
-              s.setSource('pexels');
-              s.setReferenceMode('fixed');
-              s.setFixedImageUrl(photo.src.large2x);
-              s.setLocalImageUrl(null);
-              s.setReferenceInfo(info);
-            });
+            onReferenceChange((s) =>
+              s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: photo.src.large2x })),
+            );
             setUrlInput('');
             // Don't pass pexelsSearchContext — addUrlHistory's preservation
             // semantics keep the original context attached to this entry.
@@ -813,13 +807,7 @@ export function ReferencePanel({
         setUrlLoading(false);
         const title = url.split('/').pop()?.split('?')[0] ?? url;
         const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url };
-        onReferenceChange((s) => {
-          s.setFixedImageUrl(url);
-          s.setLocalImageUrl(null);
-          s.setReferenceInfo(info);
-          s.setSource('url');
-          s.setReferenceMode('fixed');
-        });
+        onReferenceChange((s) => s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: url })));
         setUrlInput('');
         void addAndReloadHistory(url, 'url');
       };
@@ -883,6 +871,7 @@ export function ReferencePanel({
     [onReferenceChange, addAndReloadHistory],
   );
 
+  // Shared by Sketchfab and pose fixed mode: back to the live 3D view.
   const handleChangeAngle = useCallback(() => {
     onReferenceChange((s) => {
       s.setReferenceMode('browse');
@@ -892,13 +881,7 @@ export function ReferencePanel({
 
   const handleClose = useCallback(() => {
     resetPageZoom();
-    onReferenceChange((s) => {
-      s.setSource('none');
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(null);
-    });
+    onReferenceChange((s) => s.setAll(browseReference('none')));
     setGuideMode('none');
     setHighlightedGuideId(null);
   }, [onReferenceChange]);
@@ -909,23 +892,11 @@ export function ReferencePanel({
     // the SketchfabViewer would remount with stale initialCategory and the
     // user can't get back to "all works" browsing.
     setSketchfabRestore(null);
-    onReferenceChange((s) => {
-      s.setSource('sketchfab');
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(null);
-    });
+    onReferenceChange((s) => s.setAll(browseReference('sketchfab')));
   }, [onReferenceChange]);
 
   const enterPexelsBrowse = useCallback(() => {
-    onReferenceChange((s) => {
-      s.setSource('pexels');
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(null);
-    });
+    onReferenceChange((s) => s.setAll(browseReference('pexels')));
   }, [onReferenceChange]);
 
   const handleOpenPexels = useCallback(() => {
@@ -948,13 +919,9 @@ export function ReferencePanel({
 
   const handleSelectPexelsPhoto = useCallback(
     (info: Extract<ReferenceInfo, { source: 'pexels' }>, thumbnailUrl: string) => {
-      onReferenceChange((s) => {
-        s.setSource('pexels');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(info.pexelsImageUrl);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo(info);
-      });
+      onReferenceChange((s) =>
+        s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.pexelsImageUrl })),
+      );
       if (info.pexelsPageUrl) {
         // runSearch saves to localStorage right before yielding the result list,
         // so getPexelsLastSearch() here reflects the search that produced this
@@ -1096,28 +1063,23 @@ export function ReferencePanel({
   const isTraceBrowse = source === 'trace-template' && referenceMode === 'browse';
 
   const handleOpenTraceTemplate = useCallback(() => {
-    onReferenceChange((s) => {
-      s.setSource('trace-template');
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(null);
-    });
+    onReferenceChange((s) => s.setAll(browseReference('trace-template')));
   }, [onReferenceChange]);
 
   const handleSelectTraceTemplate = useCallback(
     (tmpl: TraceTemplate) => {
       onReferenceChange((s) => {
-        s.setSource('trace-template');
-        s.setReferenceMode('fixed');
-        s.setFixedImageUrl(null);
-        s.setLocalImageUrl(null);
-        s.setReferenceInfo({
-          title: t(tmpl.titleKey),
-          author: 'Drawing Practice',
-          source: 'trace-template',
-          templateId: tmpl.id,
-        });
+        s.setAll(
+          loadedReference(
+            {
+              title: t(tmpl.titleKey),
+              author: 'Drawing Practice',
+              source: 'trace-template',
+              templateId: tmpl.id,
+            },
+            'fixed',
+          ),
+        );
       });
     },
     [onReferenceChange],
@@ -1133,20 +1095,7 @@ export function ReferencePanel({
   const handleOpenPose = useCallback(() => {
     // Unlike Pexels, entering without an API key is fine — the user can
     // sketch first; generation prompts for the key when actually needed.
-    onReferenceChange((s) => {
-      s.setSource('pose');
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-      s.setLocalImageUrl(null);
-      s.setReferenceInfo(null);
-    });
-  }, [onReferenceChange]);
-
-  const handlePoseChangeAngle = useCallback(() => {
-    onReferenceChange((s) => {
-      s.setReferenceMode('browse');
-      s.setFixedImageUrl(null);
-    });
+    onReferenceChange((s) => s.setAll(browseReference('pose')));
   }, [onReferenceChange]);
 
   const handleRequestAnthropicKey = useCallback(() => {
@@ -1250,7 +1199,7 @@ export function ReferencePanel({
 
         {/* Fixed mode: Change Angle (pose) */}
         {isFixed && source === 'pose' && (
-          <Button size="small" variant="outlined" onClick={handlePoseChangeAngle}>
+          <Button size="small" variant="outlined" onClick={handleChangeAngle}>
             {t('changeAngle')}
           </Button>
         )}
@@ -1715,13 +1664,9 @@ export function ReferencePanel({
                               fileName,
                               url: historyKey,
                             };
-                            onReferenceChange((s) => {
-                              s.setLocalImageUrl(dataUrl);
-                              s.setFixedImageUrl(null);
-                              s.setReferenceInfo(info);
-                              s.setSource('image');
-                              s.setReferenceMode('fixed');
-                            });
+                            onReferenceChange((s) =>
+                              s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl })),
+                            );
                             setUrlInput('');
                             // Bump lastUsedAt with the Blob in hand so the upsert
                             // is self-contained (no redundant db read, and an
@@ -1760,13 +1705,9 @@ export function ReferencePanel({
                               sketchfabUid,
                               imageUrl: dataUrl,
                             };
-                            onReferenceChange((s) => {
-                              s.setSource('sketchfab');
-                              s.setReferenceMode('fixed');
-                              s.setFixedImageUrl(dataUrl);
-                              s.setLocalImageUrl(null);
-                              s.setReferenceInfo(info);
-                            });
+                            onReferenceChange((s) =>
+                              s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: dataUrl })),
+                            );
                             setUrlInput('');
                             if (ctx) {
                               applySketchfabRestore({

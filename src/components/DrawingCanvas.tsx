@@ -308,13 +308,6 @@ export function DrawingCanvas({
   // forcing a synchronous layout at 60fps.
   const pinchRectRef = useRef<DOMRect | null>(null);
 
-  const notifyStrokeCount = useCallback(
-    (info: { flush?: boolean } = {}) => {
-      onStrokeCountChange(info);
-    },
-    [onStrokeCountChange],
-  );
-
   const redrawAll = useCallback(() => {
     const canvas = canvasRef.current;
     const renderer = rendererRef.current;
@@ -910,9 +903,9 @@ export function DrawingCanvas({
     const targets = Array.from(selected).sort((a, b) => a - b);
     strokeManager.lassoDelete(targets);
     // Discrete erase — persist immediately like the undo/redo/clear buttons.
-    notifyStrokeCount({ flush: true });
+    onStrokeCountChange({ flush: true });
     redrawAll();
-  }, [stopMarching, requestRedraw, strokeManager, notifyStrokeCount, redrawAll]);
+  }, [stopMarching, requestRedraw, strokeManager, onStrokeCountChange, redrawAll]);
 
   // Stop the marching animation if the component unmounts mid-lasso.
   useEffect(() => () => stopMarching(), [stopMarching]);
@@ -1118,6 +1111,84 @@ export function DrawingCanvas({
   // chip out — badly when writing (e.g. 正). preventDefault claims each touch
   // immediately and stops that. (It did not fix the separate sustained-input
   // freeze either; see docs/apple-pencil-input-freeze.md.)
+  // ---- Shared press / pen paths (touch + mouse) ------------------------
+  // The touch and mouse handlers differ only in input filtering (stylus,
+  // pinch, synthetic-mouse and freeze guards). Everything after the filter
+  // lives here so the load-bearing orderings exist exactly once.
+
+  /**
+   * Single-pointer press-down. Returns false when the press was consumed
+   * without starting a stroke / erase (perspective-anchor placement, or a
+   * hidden / locked active layer) so the caller doesn't track it as a drag.
+   */
+  const beginPress = useCallback(
+    (clientX: number, clientY: number): boolean => {
+      const point = getCanvasPoint(clientX, clientY);
+
+      // Perspective-anchor placement intercepts the tap in any mode. No
+      // startStroke → the timer stays untouched (it only starts on strokes).
+      if (placingPerspectiveCenter) {
+        onPlacePerspectiveCenter?.(point.x, point.y);
+        return false;
+      }
+
+      // Hidden / locked active layer: refuse pen AND erase (the eraser only
+      // ever touches the active layer, so it would silently do nothing) and
+      // explain why. No stroke → no timer start.
+      if (!strokeManager.canDrawOnActiveLayer()) {
+        onStrokeBlocked?.();
+        return false;
+      }
+
+      if (mode === 'erase') {
+        // Arm pending state only — tap vs lasso is decided on move/up.
+        beginErasePending(clientX, clientY, point);
+      } else {
+        // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
+        // can clear its lingering feedback in the same React batch as the
+        // first redraw — the user sees the red bands disappear the instant
+        // their pen touches down.
+        onStrokeStart?.();
+        strokeManager.startStroke(point);
+      }
+      return true;
+    },
+    [
+      mode,
+      getCanvasPoint,
+      strokeManager,
+      beginErasePending,
+      onStrokeStart,
+      onStrokeBlocked,
+      placingPerspectiveCenter,
+      onPlacePerspectiveCenter,
+    ],
+  );
+
+  /** Extend the in-progress pen stroke; skips the redraw when quantization dedups the point. */
+  const appendPenPoint = useCallback(
+    (clientX: number, clientY: number) => {
+      if (!strokeManager.appendStroke(getCanvasPoint(clientX, clientY))) return;
+      onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
+      requestRedraw();
+    },
+    [getCanvasPoint, strokeManager, onCurrentStrokeChange, requestRedraw],
+  );
+
+  /** Commit the in-progress pen stroke (no-op when none is live). */
+  const commitPenStroke = useCallback(() => {
+    const stroke = strokeManager.endStroke();
+    if (!stroke) return;
+    onCurrentStrokeChange?.(null);
+    // onStrokeFinalized runs FIRST so trace-template scoring can
+    // synchronously discard (rejected) or replace (re-trace) the just-
+    // committed stroke. Without this ordering, autosave would capture the
+    // pre-scoring stroke set.
+    onStrokeFinalized?.(stroke);
+    onStrokeCountChange({});
+    redrawAll();
+  }, [strokeManager, onCurrentStrokeChange, onStrokeFinalized, onStrokeCountChange, redrawAll]);
+
   const handleTouchStart = useCallback(
     (e: TouchEvent) => {
       e.preventDefault();
@@ -1208,47 +1279,15 @@ export function DrawingCanvas({
         return;
       }
 
-      const point = getCanvasPoint(touch.clientX, touch.clientY);
-
-      // Perspective-anchor placement intercepts the tap in any mode. No
-      // startStroke → the timer stays untouched (it only starts on strokes).
-      if (placingPerspectiveCenter) {
-        onPlacePerspectiveCenter?.(point.x, point.y);
-        return;
-      }
-
-      // Hidden / locked active layer: refuse pen AND erase (the eraser only
-      // ever touches the active layer, so it would silently do nothing) and
-      // explain why. No stroke → no timer start.
-      if (!strokeManager.canDrawOnActiveLayer()) {
-        onStrokeBlocked?.();
-        return;
-      }
-
-      if (mode === 'erase') {
-        // Arm pending state only — tap vs lasso is decided on move/up.
-        beginErasePending(touch.clientX, touch.clientY, point);
-      } else {
-        // Fire onStrokeStart BEFORE startStroke so the trace-scoring context
-        // can clear its lingering feedback in the same React batch as the
-        // first redraw — the user sees the red bands disappear the instant
-        // their pen touches down.
-        onStrokeStart?.();
-        strokeManager.startStroke(point);
-      }
+      beginPress(touch.clientX, touch.clientY);
     },
     [
       mode,
-      getCanvasPoint,
       strokeManager,
       onCurrentStrokeChange,
       requestRedraw,
       cancelLasso,
-      beginErasePending,
-      onStrokeStart,
-      onStrokeBlocked,
-      placingPerspectiveCenter,
-      onPlacePerspectiveCenter,
+      beginPress,
       syncActiveTouchesFromEvent,
       clearStalePinchAfterTouchSync,
       noteTouch,
@@ -1354,20 +1393,14 @@ export function DrawingCanvas({
         return;
       }
 
-      const point = getCanvasPoint(touch.clientX, touch.clientY);
-      if (!strokeManager.appendStroke(point)) {
-        return;
-      }
-      onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
-      requestRedraw();
+      appendPenPoint(touch.clientX, touch.clientY);
     },
     [
       mode,
       getCanvasPoint,
       requestRedraw,
-      strokeManager,
+      appendPenPoint,
       isFlipped,
-      onCurrentStrokeChange,
       getBaseScale,
       advanceErasePending,
       noteTouch,
@@ -1403,17 +1436,7 @@ export function DrawingCanvas({
       }
 
       if (mode === 'pen') {
-        const stroke = strokeManager.endStroke();
-        if (stroke) {
-          onCurrentStrokeChange?.(null);
-          // onStrokeFinalized runs FIRST so trace-template scoring can
-          // synchronously discard (rejected) or replace (re-trace) the just-
-          // committed stroke. Without this ordering, autosave would capture the
-          // pre-scoring stroke set.
-          onStrokeFinalized?.(stroke);
-          notifyStrokeCount();
-          redrawAll();
-        }
+        commitPenStroke();
       } else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
         if (e.type === 'touchcancel') {
           // A system-cancelled touch (palm rejection, incoming call, OS edge
@@ -1432,18 +1455,7 @@ export function DrawingCanvas({
         }
       }
     },
-    [
-      mode,
-      notifyStrokeCount,
-      redrawAll,
-      strokeManager,
-      onCurrentStrokeChange,
-      endErasePending,
-      cancelLasso,
-      onStrokeFinalized,
-      noteTouch,
-      animateRotationTo,
-    ],
+    [mode, commitPenStroke, endErasePending, cancelLasso, noteTouch, animateRotationTo],
   );
 
   // Latest-handler refs so the native listeners below can stay attached for
@@ -1518,43 +1530,9 @@ export function DrawingCanvas({
       // already started the stroke). Real desktop mouse has no preceding touch.
       if (performance.now() - lastTouchAtRef.current < SYNTHETIC_MOUSE_GUARD_MS) return;
       if (inputFrozenRef.current) return;
-      isMouseDownRef.current = true;
-
-      const point = getCanvasPoint(e.clientX, e.clientY);
-
-      // See handleTouchStart — perspective-anchor placement wins over both modes.
-      if (placingPerspectiveCenter) {
-        isMouseDownRef.current = false;
-        onPlacePerspectiveCenter?.(point.x, point.y);
-        return;
-      }
-
-      // See handleTouchStart — a hidden / locked active layer blocks both modes.
-      if (!strokeManager.canDrawOnActiveLayer()) {
-        isMouseDownRef.current = false;
-        onStrokeBlocked?.();
-        return;
-      }
-
-      if (mode === 'erase') {
-        beginErasePending(e.clientX, e.clientY, point);
-      } else {
-        // See handleTouchStart — fire onStrokeStart before startStroke so the
-        // trace-scoring feedback clears on pointer-down.
-        onStrokeStart?.();
-        strokeManager.startStroke(point);
-      }
+      isMouseDownRef.current = beginPress(e.clientX, e.clientY);
     },
-    [
-      mode,
-      getCanvasPoint,
-      strokeManager,
-      beginErasePending,
-      onStrokeStart,
-      onStrokeBlocked,
-      placingPerspectiveCenter,
-      onPlacePerspectiveCenter,
-    ],
+    [beginPress],
   );
 
   const handleMouseMove = useCallback(
@@ -1566,22 +1544,9 @@ export function DrawingCanvas({
         return;
       }
       if (mode !== 'pen') return;
-
-      const point = getCanvasPoint(e.clientX, e.clientY);
-      if (!strokeManager.appendStroke(point)) {
-        return;
-      }
-      onCurrentStrokeChange?.(strokeManager.getCurrentStroke());
-      requestRedraw();
+      appendPenPoint(e.clientX, e.clientY);
     },
-    [
-      mode,
-      getCanvasPoint,
-      requestRedraw,
-      strokeManager,
-      onCurrentStrokeChange,
-      advanceErasePending,
-    ],
+    [mode, getCanvasPoint, appendPenPoint, advanceErasePending],
   );
 
   const handleMouseUp = useCallback(() => {
@@ -1589,28 +1554,11 @@ export function DrawingCanvas({
     isMouseDownRef.current = false;
 
     if (mode === 'pen') {
-      const stroke = strokeManager.endStroke();
-      if (stroke) {
-        onCurrentStrokeChange?.(null);
-        // See the touchend branch — onStrokeFinalized must observe the
-        // stroke before notifyStrokeCount runs so autosave doesn't fire
-        // on a stroke that scoring is about to discard.
-        onStrokeFinalized?.(stroke);
-        notifyStrokeCount();
-        redrawAll();
-      }
+      commitPenStroke();
     } else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
       endErasePending();
     }
-  }, [
-    mode,
-    notifyStrokeCount,
-    redrawAll,
-    strokeManager,
-    onCurrentStrokeChange,
-    endErasePending,
-    onStrokeFinalized,
-  ]);
+  }, [mode, commitPenStroke, endErasePending]);
 
   // Leaving the canvas mid-press abandons a still-pending erase tap rather
   // than resolving it as a select/delete at the exit coordinate (which could

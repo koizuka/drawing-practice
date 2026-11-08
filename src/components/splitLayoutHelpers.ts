@@ -140,3 +140,35 @@ export function isSameReferenceContent(prev: ReferenceSnapshot, ref: ReferenceIn
       return false;
   }
 }
+
+/**
+ * The browse / picker screen of `source` with nothing loaded yet (`'none'` =
+ * the source picker itself). Pass to `ReferenceSetters.setAll`.
+ */
+export function browseReference(source: ReferenceSource): ReferenceSnapshot {
+  return {
+    source,
+    referenceMode: 'browse',
+    fixedImageUrl: null,
+    localImageUrl: null,
+    referenceInfo: null,
+  };
+}
+
+/**
+ * A loaded reference described by `info` — `source` is always `info.source`,
+ * and the image URLs not given are cleared. Pass to `ReferenceSetters.setAll`.
+ */
+export function loadedReference(
+  info: ReferenceInfo,
+  referenceMode: ReferenceMode,
+  images: { fixedImageUrl?: string | null; localImageUrl?: string | null } = {},
+): ReferenceSnapshot {
+  return {
+    source: info.source,
+    referenceMode,
+    fixedImageUrl: images.fixedImageUrl ?? null,
+    localImageUrl: images.localImageUrl ?? null,
+    referenceInfo: info,
+  };
+}
