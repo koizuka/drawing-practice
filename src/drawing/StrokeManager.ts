@@ -136,6 +136,60 @@ export type UndoResult =
  */
 export type ReferenceRestorer = (snapshot: ReferenceSnapshot) => void;
 
+/**
+ * Drop every undo-stack reference to the strokes whose timestamps are in
+ * `removed`, so no surviving entry points at a stroke that no longer exists.
+ * Shared by `commitTentativeClear` and `discardStrokes` — a new entry type
+ * MUST be handled here (the exhaustive switch makes the compiler insist).
+ *
+ * - `add` / `delete`: dropped when their stroke was removed.
+ * - `lasso-delete`: items filtered; dropped once empty.
+ * - `layer-delete` / `frame-delete` / `frame-add`: stroke lists filtered, but
+ *   the entry is kept even when empty — undo still restores the layer / frame.
+ * - `clear`: dropped when `dropClear` (tentative-clear commit owns it), kept
+ *   otherwise (its strokes may become untracked ghosts — documented MVP limit).
+ * - `reference`: unaffected.
+ */
+function filterUndoEntriesByStrokes(
+  stack: readonly UndoEntry[],
+  removed: ReadonlySet<number>,
+  { dropClear }: { dropClear: boolean },
+): UndoEntry[] {
+  const keepItem = (it: LassoDeleteItem) => !removed.has(it.stroke.timestamp);
+  const survived: UndoEntry[] = [];
+  for (const e of stack) {
+    switch (e.type) {
+      case 'add':
+        if (!removed.has(e.timestamp)) survived.push(e);
+        break;
+      case 'delete':
+        if (!removed.has(e.stroke.timestamp)) survived.push(e);
+        break;
+      case 'lasso-delete': {
+        const items = e.items.filter(keepItem);
+        if (items.length > 0) survived.push({ type: 'lasso-delete', items });
+        break;
+      }
+      case 'layer-delete':
+      case 'frame-delete':
+        survived.push({ ...e, items: e.items.filter(keepItem) });
+        break;
+      case 'frame-add':
+        survived.push({ ...e, strokes: e.strokes.filter((st) => !removed.has(st.timestamp)) });
+        break;
+      case 'clear':
+        if (!dropClear) survived.push(e);
+        break;
+      case 'reference':
+        survived.push(e);
+        break;
+      default:
+        e satisfies never;
+    }
+  }
+  return survived;
+}
+
 export class StrokeManager {
   private strokes: Stroke[] = [];
   private undoStack: UndoEntry[] = [];
@@ -358,42 +412,9 @@ export class StrokeManager {
     const clearedTimestamps = new Set(
       this.tentativeClearState.savedStrokes.map((s) => s.timestamp),
     );
-    const survived: UndoEntry[] = [];
-    for (const e of this.undoStack) {
-      if (e.type === 'clear') continue; // our own entry — drop it
-      if (e.type === 'add') {
-        if (!clearedTimestamps.has(e.timestamp)) survived.push(e);
-        continue;
-      }
-      if (e.type === 'delete') {
-        if (!clearedTimestamps.has(e.stroke.timestamp)) survived.push(e);
-        continue;
-      }
-      if (e.type === 'lasso-delete') {
-        const remainingItems = e.items.filter((it) => !clearedTimestamps.has(it.stroke.timestamp));
-        if (remainingItems.length === 0) continue;
-        survived.push({ type: 'lasso-delete', items: remainingItems });
-        continue;
-      }
-      if (e.type === 'layer-delete' || e.type === 'frame-delete') {
-        // Keep the entry even when no strokes remain: undo still restores the layer / frame.
-        survived.push({
-          ...e,
-          items: e.items.filter((it) => !clearedTimestamps.has(it.stroke.timestamp)),
-        });
-        continue;
-      }
-      if (e.type === 'frame-add') {
-        survived.push({
-          ...e,
-          strokes: e.strokes.filter((st) => !clearedTimestamps.has(st.timestamp)),
-        });
-        continue;
-      }
-      // reference entries unaffected
-      survived.push(e);
-    }
-    this.undoStack = survived;
+    this.undoStack = filterUndoEntriesByStrokes(this.undoStack, clearedTimestamps, {
+      dropClear: true,
+    });
     this.tentativeClearState = null;
   }
 
@@ -432,13 +453,7 @@ export class StrokeManager {
       return { kind: 'stroke', stroke: entry.stroke };
     }
     if (entry.type === 'lasso-delete') {
-      // Re-insert in ascending index order so each splice() lands at the slot
-      // the stroke originally occupied. items is stored ascending (see lassoDelete).
-      const restored: Stroke[] = [];
-      for (const item of entry.items) {
-        this.strokes.splice(item.index, 0, item.stroke);
-        restored.push(item.stroke);
-      }
+      const restored = this.reinsertItems(entry.items);
       this.redoStack.push({ type: 'lasso-delete', items: entry.items });
       this.bumpMutation();
       return { kind: 'strokes', strokes: restored };
@@ -460,10 +475,7 @@ export class StrokeManager {
     if (entry.type === 'layer-delete') {
       const layerIndex = Math.min(entry.layerIndex, this.layers.length);
       this.layers.splice(layerIndex, 0, entry.layer);
-      for (const item of entry.items) {
-        // Clamp: a committed tentative clear may have shrunk the array since.
-        this.strokes.splice(Math.min(item.index, this.strokes.length), 0, item.stroke);
-      }
+      this.reinsertItems(entry.items);
       if (this.layers.some((l) => l.id === entry.prevActiveLayerId)) {
         this.activeLayerId = entry.prevActiveLayerId;
       }
@@ -486,9 +498,7 @@ export class StrokeManager {
       for (const f of entry.frames) {
         this.frames.splice(Math.min(f.frameIndex, this.frames.length), 0, f.frameId);
       }
-      for (const item of entry.items) {
-        this.strokes.splice(Math.min(item.index, this.strokes.length), 0, item.stroke);
-      }
+      this.reinsertItems(entry.items);
       this.currentFrameId = this.frames.includes(entry.prevCurrentFrameId)
         ? entry.prevCurrentFrameId
         : entry.frames[0].frameId;
@@ -496,7 +506,8 @@ export class StrokeManager {
       this.bumpMutation();
       return { kind: 'frame' };
     }
-    // entry.type === 'reference'
+    // Every other entry type returned above; a new type must get its own branch.
+    entry satisfies { type: 'reference' };
     this.undoReferenceCount--;
     const current = captureCurrentRef?.();
     if (current) {
@@ -573,7 +584,8 @@ export class StrokeManager {
       this.bumpMutation();
       return { kind: 'frame' };
     }
-    // entry.type === 'reference'
+    // Every other entry type returned above; a new type must get its own branch.
+    entry satisfies { type: 'reference' };
     const current = captureCurrentRef?.();
     if (current) {
       this.undoStack.push({ type: 'reference', prev: current });
@@ -581,6 +593,20 @@ export class StrokeManager {
     }
     this.referenceRestorer?.(entry.next);
     return { kind: 'reference' };
+  }
+
+  /**
+   * Splice removed strokes back into their original slots. `items` must be
+   * ascending by index (lasso-delete / layer-delete / frame-delete all store
+   * them that way) so each splice lands where the stroke originally was. An
+   * index past the end appends — `splice` clamps, which matters when a
+   * committed tentative clear has shrunk the array since the removal.
+   */
+  private reinsertItems(items: readonly LassoDeleteItem[]): Stroke[] {
+    for (const item of items) {
+      this.strokes.splice(item.index, 0, item.stroke);
+    }
+    return items.map((it) => it.stroke);
   }
 
   canUndo(): boolean {
@@ -633,39 +659,7 @@ export class StrokeManager {
     // deletes that shift positional alignment), plus any delete /
     // lasso-delete entries that reference discarded strokes (otherwise
     // their saved indices would point at stale slots).
-    const survived: UndoEntry[] = [];
-    for (const e of this.undoStack) {
-      if (e.type === 'add') {
-        if (!timestamps.has(e.timestamp)) survived.push(e);
-        continue;
-      }
-      if (e.type === 'delete') {
-        if (!timestamps.has(e.stroke.timestamp)) survived.push(e);
-        continue;
-      }
-      if (e.type === 'lasso-delete') {
-        const remainingItems = e.items.filter((it) => !timestamps.has(it.stroke.timestamp));
-        if (remainingItems.length === 0) continue;
-        survived.push({ type: 'lasso-delete', items: remainingItems });
-        continue;
-      }
-      if (e.type === 'layer-delete' || e.type === 'frame-delete') {
-        survived.push({
-          ...e,
-          items: e.items.filter((it) => !timestamps.has(it.stroke.timestamp)),
-        });
-        continue;
-      }
-      if (e.type === 'frame-add') {
-        survived.push({ ...e, strokes: e.strokes.filter((st) => !timestamps.has(st.timestamp)) });
-        continue;
-      }
-      // reference / clear entries unaffected. (clear entries may carry stroke
-      // references whose scoring has been wiped — Undo restores them as
-      // untracked ghosts. Documented MVP limitation.)
-      survived.push(e);
-    }
-    this.undoStack = survived;
+    this.undoStack = filterUndoEntriesByStrokes(this.undoStack, timestamps, { dropClear: false });
     // Recompute the reference-entry counter from scratch — the loop above
     // may have dropped non-reference entries while leaving reference ones in
     // place, but `undoReferenceCount` should still equal the number of

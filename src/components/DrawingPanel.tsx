@@ -41,7 +41,7 @@ import {
   Layers,
   Film,
 } from 'lucide-react';
-import type { TraceFeedback, TraceStroke, TemplateScore } from '../trace/types';
+import type { TraceFeedback, TraceStroke } from '../trace/types';
 import type { Orientation } from '../hooks/useOrientation';
 import { DrawingCanvas, type DrawingMode, type RotationCommand } from './DrawingCanvas';
 import { CanvasNavigator } from './CanvasNavigator';
@@ -162,7 +162,6 @@ interface DrawingPanelProps {
   onToggleUnderlay?: () => void;
   /** Optional shared ViewTransform for zoom sync with ReferencePanel. */
   viewTransform?: ViewTransform;
-  /** Which panel owns the fit calculation. */
   /** Current viewport orientation, used to pick the collapse-toggle icon. */
   orientation?: Orientation;
   /** Whether the reference panel is currently hidden (free-drawing layout). */
@@ -185,8 +184,6 @@ interface DrawingPanelProps {
   traceFeedback?: TraceFeedback | null;
   /** Called when a stroke is committed (forwarded to DrawingCanvas). */
   onStrokeFinalized?: (stroke: Stroke) => void;
-  /** Per-template-stroke scores (one per attempted target). */
-  traceScores?: readonly TemplateScore[];
   /** Number of distinct template strokes the user has attempted. */
   traceTotalCovered?: number;
   /** Total number of template strokes in the active template. */
