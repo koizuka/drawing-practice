@@ -5,7 +5,6 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
-  useSyncExternalStore,
   lazy,
   Suspense,
 } from 'react';
@@ -62,7 +61,9 @@ import { LazyErrorBoundary } from './LazyErrorBoundary';
 import { t } from '../i18n';
 import type { ReferenceInfo } from '../types';
 import type { VideoSyncBridge } from '../utils/videoSyncBridge';
-import { anchorVideoSync, frameVideoTime } from '../drawing/frames';
+import { loadPref, savePref } from '../utils/prefs';
+import { useAnimationPlayback } from '../hooks/useAnimationPlayback';
+import { useRotoscopeSync } from '../hooks/useRotoscopeSync';
 import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 
 // Pinch-rotation switch: a per-user preference (not session state), so it
@@ -86,28 +87,8 @@ function persistPinchRotateEnabled(enabled: boolean): void {
   }
 }
 
-// Animation timeline visibility + onion-skin range are per-user view
-// preferences (like pinch-rotate), not part of the drawing — localStorage.
-const TIMELINE_OPEN_STORAGE_KEY = 'drawing.timelineOpen';
-const ONION_RANGE_STORAGE_KEY = 'drawing.onionRange';
 const LAYER_PANEL_OPEN_STORAGE_KEY = 'drawing.layerPanelOpen';
 const LAYER_PANEL_CORNER_STORAGE_KEY = 'drawing.layerPanelCorner';
-
-function loadPref(key: string, fallback: string): string {
-  try {
-    return localStorage.getItem(key) ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function savePref(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-  } catch {
-    /* ignore */
-  }
-}
 
 // Gallery is a modal opened on demand via the "Gallery" toolbar button —
 // keep it out of the initial bundle.
@@ -299,23 +280,6 @@ export function DrawingPanel({
     setLayerPanelCorner(corner);
   }, []);
 
-  // ── Animation ─────────────────────────────────────────────────────────────
-  const [timelineOpen, setTimelineOpen] = useState(
-    () => loadPref(TIMELINE_OPEN_STORAGE_KEY, '0') === '1',
-  );
-  const [onionRange, setOnionRange] = useState(() => {
-    const v = Number(loadPref(ONION_RANGE_STORAGE_KEY, '1'));
-    return v === 0 || v === 1 || v === 2 ? v : 1;
-  });
-  // Playback renders `frames[playIndex]` via DrawingCanvas.playbackFrameId
-  // without touching the StrokeManager's current frame; stopping commits the
-  // shown frame as the new current one (so you draw where you stopped).
-  const [playing, setPlaying] = useState(false);
-  const [playIndex, setPlayIndex] = useState(0);
-  const playStateRef = useRef({ playing: false, playIndex: 0 });
-  useEffect(() => {
-    playStateRef.current = { playing, playIndex };
-  });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   // Gallery "continue this drawing" awaiting overwrite confirmation. Set only
@@ -402,80 +366,29 @@ export function DrawingPanel({
   );
 
   const frameCount = strokeManager.getFrames().length;
-  const fps = strokeManager.getFps();
-  useEffect(() => {
-    if (!playing || frameCount <= 1) return;
-    const id = setInterval(() => setPlayIndex((i) => (i + 1) % frameCount), 1000 / fps);
-    return () => clearInterval(id);
-  }, [playing, fps, frameCount]);
 
-  /**
-   * Stop playback synchronously (safe to call from a pointer-down capture
-   * before the canvas starts a stroke): the shown frame becomes current.
-   */
-  const stopPlayback = useCallback(() => {
-    const { playing: isPlaying, playIndex: idx } = playStateRef.current;
-    if (!isPlaying) return;
-    playStateRef.current = { playing: false, playIndex: idx };
-    const frames = strokeManager.getFrames();
-    strokeManager.setCurrentFrame(frames[idx % frames.length]);
-    setPlaying(false);
-    setRedrawVersion((v) => v + 1);
-    onStrokesChanged?.({ flush: true });
-  }, [strokeManager, onStrokesChanged]);
-
-  const handleTogglePlay = useCallback(() => {
-    if (playStateRef.current.playing) {
-      stopPlayback();
-      return;
-    }
-    if (strokeManager.getFrames().length <= 1) return;
-    setHighlightedStrokeIndex(null);
-    const start = strokeManager.getCurrentFrameIndex();
-    playStateRef.current = { playing: true, playIndex: start };
-    setPlayIndex(start);
-    setPlaying(true);
-  }, [strokeManager, stopPlayback]);
-
-  const handleSelectFrame = useCallback(
-    (frameId: string, opts?: { transient?: boolean }) => {
-      if (playStateRef.current.playing) {
-        playStateRef.current = { playing: false, playIndex: 0 };
-        setPlaying(false);
-      }
-      strokeManager.setCurrentFrame(frameId);
-      setHighlightedStrokeIndex(null);
-      setRedrawVersion((v) => v + 1);
-      // Mid-scrub selections ride the debounce; discrete picks flush.
-      onStrokesChanged?.(opts?.transient ? undefined : { flush: true });
-    },
-    [strokeManager, onStrokesChanged],
-  );
-
-  const stepFrame = useCallback(
-    (dir: 1 | -1) => {
-      const frames = strokeManager.getFrames();
-      const base = playStateRef.current.playing
-        ? playStateRef.current.playIndex
-        : strokeManager.getCurrentFrameIndex();
-      const next = frames[base + dir];
-      if (next) handleSelectFrame(next);
-    },
-    [strokeManager, handleSelectFrame],
-  );
-
-  const handleToggleTimeline = useCallback(() => {
-    const next = !timelineOpen;
-    if (!next) stopPlayback();
-    savePref(TIMELINE_OPEN_STORAGE_KEY, next ? '1' : '0');
-    setTimelineOpen(next);
-    setRedrawVersion((v) => v + 1);
-  }, [timelineOpen, stopPlayback]);
-
-  const handleOnionRangeChange = useCallback((range: number) => {
-    savePref(ONION_RANGE_STORAGE_KEY, String(range));
-    setOnionRange(range);
-  }, []);
+  // ── Animation ─────────────────────────────────────────────────────────────
+  const bumpRedraw = useCallback(() => setRedrawVersion((v) => v + 1), []);
+  const clearHighlight = useCallback(() => setHighlightedStrokeIndex(null), []);
+  const {
+    timelineOpen,
+    toggleTimeline: handleToggleTimeline,
+    onionRange,
+    changeOnionRange: handleOnionRangeChange,
+    playing,
+    shownIndex,
+    playbackFrameId,
+    stopPlayback,
+    cancelPlayback,
+    togglePlay: handleTogglePlay,
+    selectFrame: handleSelectFrame,
+    stepFrame,
+  } = useAnimationPlayback({
+    strokeManager,
+    requestRedraw: bumpRedraw,
+    onStrokesChanged,
+    clearHighlight,
+  });
 
   const handleUndo = useCallback(() => {
     stopPlayback();
@@ -563,95 +476,19 @@ export function DrawingPanel({
     [triggerRedraw, onTraceSyncAttempts],
   );
 
-  // ---- Rotoscope (docs/layers.md "Rotoscope") ----
-  // Frame i ↔ video time offset + i·step. Only live while the drawing's sync
-  // names the YouTube video that is the current reference.
-  const youtubeVideoId = referenceInfo?.source === 'youtube' ? referenceInfo.youtubeVideoId : null;
-  const videoSync = strokeManager.getVideoSync();
-  const syncActive = !!videoSync && youtubeVideoId !== null && videoSync.videoId === youtubeVideoId;
-  const syncOffset = syncActive ? videoSync.offset : null;
-  const syncStep = syncActive ? videoSync.step : null;
-  const currentFrameIndex = strokeManager.getCurrentFrameIndex();
-  const shownIndex = playing ? playIndex % frameCount : currentFrameIndex;
-  // Playback lets the video run when one frame step equals one playback tick
-  // (smooth, real speed); otherwise every tick seeks to the frame's moment.
-  const syncRealtime = syncStep !== null && Math.abs(syncStep * fps - 1) < 0.01;
-  // What the playback branch last aligned to; any change of mode or player
-  // readiness forces a fresh seek (a seek sent before the player was ready,
-  // or a switch into / out of realtime, must not wait for the next wrap).
-  const lastSyncedRef = useRef<{ index: number; realtime: boolean; ready: number } | null>(null);
-  // Re-park when the player becomes ready (seeks sent while it was still
-  // loading — e.g. right after a reload — are dropped).
-  const playerReadyVersion = useSyncExternalStore(
-    useCallback((cb: () => void) => videoBridge?.subscribeReady(cb) ?? (() => {}), [videoBridge]),
-    () => videoBridge?.getReadyVersion() ?? 0,
+  const handleSyncChanged = useCallback(
+    () => handleLayersChanged({ flush: true }),
+    [handleLayersChanged],
   );
-  useEffect(() => {
-    if (syncOffset === null || syncStep === null || !videoBridge) {
-      lastSyncedRef.current = null;
-      return;
-    }
-    // Only the mapping is needed here; the effect keys on these primitives
-    // (getVideoSync returns a fresh copy each render).
-    const sync = { offset: syncOffset, step: syncStep };
-    if (!playing) {
-      // Editing: park the video on the current frame's moment.
-      lastSyncedRef.current = null;
-      videoBridge.seekTo(frameVideoTime(sync, currentFrameIndex), { play: false });
-      return;
-    }
-    const prev = lastSyncedRef.current;
-    const fresh =
-      prev === null || prev.realtime !== syncRealtime || prev.ready !== playerReadyVersion;
-    lastSyncedRef.current = {
-      index: shownIndex,
-      realtime: syncRealtime,
-      ready: playerReadyVersion,
-    };
-    if (syncRealtime) {
-      // Start, every loop wrap, and any mode / readiness change re-align; in
-      // between the video runs.
-      if (fresh || shownIndex < prev.index) {
-        videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: true });
-      }
-    } else if (fresh || prev.index !== shownIndex) {
-      videoBridge.seekTo(frameVideoTime(sync, shownIndex), { play: false });
-    }
-  }, [
-    syncOffset,
-    syncStep,
-    syncRealtime,
+  const timelineVideoSync = useRotoscopeSync({
+    strokeManager,
+    youtubeVideoId: referenceInfo?.source === 'youtube' ? referenceInfo.youtubeVideoId : null,
+    videoBridge,
     playing,
     shownIndex,
-    currentFrameIndex,
-    videoBridge,
-    playerReadyVersion,
-  ]);
-
-  const handleToggleVideoSync = useCallback(() => {
-    if (!youtubeVideoId) return;
-    if (playStateRef.current.playing) stopPlayback();
-    if (syncActive) {
-      strokeManager.setVideoSync(null);
-      // Nothing drives the video after this — don't leave it running.
-      videoBridge?.pause();
-    } else {
-      // Anchor: the current frame = where the video is right now. No report
-      // from the player yet ⇒ refuse rather than silently anchor at 0 (the
-      // toggle is disabled in that state anyway).
-      const now = videoBridge?.getCurrentTime() ?? null;
-      if (now === null) return;
-      strokeManager.setVideoSync(
-        anchorVideoSync(
-          youtubeVideoId,
-          now,
-          strokeManager.getCurrentFrameIndex(),
-          strokeManager.getFps(),
-        ),
-      );
-    }
-    handleLayersChanged({ flush: true });
-  }, [youtubeVideoId, syncActive, strokeManager, videoBridge, stopPlayback, handleLayersChanged]);
+    stopPlayback,
+    onSyncChanged: handleSyncChanged,
+  });
 
   // Pen-down on a hidden / locked active layer: show a short explanation
   // instead of silently ignoring the pen.
@@ -793,8 +630,7 @@ export function DrawingPanel({
     (drawing: DrawingRecord) => {
       // Drop playback without committing a frame: the loaded drawing brings
       // its own current frame.
-      playStateRef.current = { playing: false, playIndex: 0 };
-      setPlaying(false);
+      cancelPlayback();
       setPendingLoadDrawing(null);
       setShowGallery(false);
       setHighlightedStrokeIndex(null);
@@ -808,7 +644,7 @@ export function DrawingPanel({
       onTraceResetScores?.();
       onLoadDrawing?.(drawing);
     },
-    [onLoadDrawing, onTraceResetScores],
+    [onLoadDrawing, onTraceResetScores, cancelPlayback],
   );
 
   // Gallery "continue this drawing": replacing an unsaved canvas is the one
@@ -1400,7 +1236,7 @@ export function DrawingPanel({
             fitSize={referenceSize ?? undefined}
             isFlipped={isFlipped ?? false}
             contentVersion={redrawVersion}
-            frameId={playing ? strokeManager.getFrames()[playIndex % frameCount] : undefined}
+            frameId={playbackFrameId ?? undefined}
             onResetRotation={handleResetRotation}
             // Clear the trace score badge pinned to the same corner.
             top={topRightOffset + (templateStrokes && templateStrokes.length > 0 ? 44 : 8)}
@@ -1445,7 +1281,7 @@ export function DrawingPanel({
             masksHidden={effectiveMasksHidden}
             pinchRotateEnabled={pinchRotateEnabled}
             rotationCommand={rotationCommand}
-            playbackFrameId={playing ? strokeManager.getFrames()[playIndex % frameCount] : null}
+            playbackFrameId={playbackFrameId}
             onionRange={timelineOpen ? onionRange : 0}
           />
         </Box>
@@ -1479,24 +1315,13 @@ export function DrawingPanel({
           strokeManager={strokeManager}
           contentVersion={redrawVersion + (historySyncVersion ?? 0)}
           playing={playing}
-          displayIndex={playing ? playIndex % frameCount : strokeManager.getCurrentFrameIndex()}
+          displayIndex={shownIndex}
           onTogglePlay={handleTogglePlay}
           onSelectFrame={handleSelectFrame}
           onChanged={() => handleLayersChanged({ flush: true })}
           onionRange={onionRange}
           onOnionRangeChange={handleOnionRangeChange}
-          videoSync={
-            youtubeVideoId
-              ? {
-                  active: syncActive,
-                  // Anchoring needs a reported position (re-evaluated when the
-                  // player turns ready — playerReadyVersion re-renders).
-                  canEnable: syncActive || (videoBridge?.getCurrentTime() ?? null) !== null,
-                  time: syncActive && videoSync ? frameVideoTime(videoSync, shownIndex) : null,
-                  onToggle: handleToggleVideoSync,
-                }
-              : undefined
-          }
+          videoSync={timelineVideoSync}
         />
       )}
 
