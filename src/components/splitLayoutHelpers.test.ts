@@ -378,7 +378,12 @@ describe('reference persistence round-trip (autosave draft)', () => {
         referenceMode: 'fixed',
         fixedImageUrl: 'data:image/png;base64,SF',
         localImageUrl: null,
-        referenceInfo: { ...base, source: 'sketchfab', sketchfabUid: 'u', imageUrl: 'data:SF' },
+        referenceInfo: {
+          ...base,
+          source: 'sketchfab',
+          sketchfabUid: 'u',
+          imageUrl: 'data:image/png;base64,SF',
+        },
       },
     ],
     [
@@ -388,7 +393,11 @@ describe('reference persistence round-trip (autosave draft)', () => {
         referenceMode: 'fixed',
         fixedImageUrl: 'data:image/png;base64,PO',
         localImageUrl: null,
-        referenceInfo: { ...base, source: 'pose', imageUrl: 'data:PO' } as ReferenceInfo,
+        referenceInfo: {
+          ...base,
+          source: 'pose',
+          imageUrl: 'data:image/png;base64,PO',
+        } as ReferenceInfo,
       },
     ],
   ];
