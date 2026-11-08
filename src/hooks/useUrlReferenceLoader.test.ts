@@ -242,21 +242,114 @@ describe('useUrlReferenceLoader', () => {
       expect(applied.map((a) => a.source)).toEqual(['youtube']);
     });
 
-    it('a history image decoded after a newer selection is dropped', async () => {
-      const { result, applied } = setup();
-      act(() =>
-        result.current.selectHistoryEntry({
-          url: 'local:abc',
-          type: 'image',
-          fileName: 'cat.png',
-          imageBlob: new Blob(['img'], { type: 'image/png' }),
+    describe('with a controllable FileReader', () => {
+      /** FileReader whose completion the test triggers explicitly. */
+      class FakeFileReader {
+        static instances: FakeFileReader[] = [];
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+        result: string | null = null;
+        constructor() {
+          FakeFileReader.instances.push(this);
+        }
+        readAsDataURL() {}
+        finish(dataUrl = 'data:image/png;base64,AAA') {
+          this.result = dataUrl;
+          this.onload?.();
+        }
+      }
+      const OriginalFileReader = globalThis.FileReader;
+      beforeEach(() => {
+        FakeFileReader.instances = [];
+        globalThis.FileReader = FakeFileReader as unknown as typeof FileReader;
+      });
+      afterEach(() => {
+        globalThis.FileReader = OriginalFileReader;
+      });
+
+      const imageEntry: UrlHistoryEntry = {
+        url: 'local:abc',
+        type: 'image',
+        fileName: 'cat.png',
+        imageBlob: new Blob(['img'], { type: 'image/png' }),
+        lastUsedAt: new Date(0),
+      };
+
+      it('a history image decoded after a newer selection is dropped', () => {
+        const { result, applied } = setup();
+        act(() => result.current.selectHistoryEntry(imageEntry));
+        // Newer synchronous load lands before the FileReader finishes.
+        act(() => result.current.loadFromUrl('https://youtu.be/dQw4w9WgXcQ'));
+        expect(FakeFileReader.instances).toHaveLength(1);
+        act(() => FakeFileReader.instances[0].finish());
+        expect(applied.map((a) => a.source)).toEqual(['youtube']);
+      });
+
+      it('a history image that is still current is applied', () => {
+        const { result, applied } = setup();
+        act(() => result.current.selectHistoryEntry(imageEntry));
+        act(() => FakeFileReader.instances[0].finish());
+        expect(applied.map((a) => a.source)).toEqual(['image']);
+      });
+
+      it('a blob load superseding a URL preload clears the spinner at once', () => {
+        const { result, applied } = setup();
+        act(() => result.current.loadFromUrl('https://a.example/slow.png'));
+        expect(result.current.urlLoading).toBe(true);
+        act(() => result.current.selectHistoryEntry(imageEntry));
+        expect(result.current.urlLoading).toBe(false);
+        act(() => FakeFileReader.instances[0].finish());
+        // The stale preload settling afterwards changes nothing.
+        act(() => byUrl('https://a.example/slow.png').succeed());
+        expect(result.current.urlLoading).toBe(false);
+        expect(applied.map((a) => a.source)).toEqual(['image']);
+      });
+    });
+
+    it('a Sketchfab paste does not load the model after the user has moved on', async () => {
+      const uid = '0123456789abcdef0123456789abcdef';
+      let resolveLookup!: (e: UrlHistoryEntry | undefined) => void;
+      vi.mocked(getUrlHistoryEntry).mockReturnValueOnce(new Promise((r) => (resolveLookup = r)));
+      const { result, opts } = setup();
+      act(() => result.current.loadFromUrl(`https://sketchfab.com/models/${uid}`));
+      act(() => opts.onReferenceChange(() => {})); // e.g. Close
+      await act(async () => {
+        resolveLookup({
+          url: `https://sketchfab.com/models/${uid}`,
+          type: 'sketchfab',
+          title: 'Teapot',
           lastUsedAt: new Date(0),
-        }),
-      );
-      // Newer synchronous load lands before the FileReader finishes.
-      act(() => result.current.loadFromUrl('https://youtu.be/dQw4w9WgXcQ'));
-      await new Promise((r) => setTimeout(r, 50));
-      expect(applied.map((a) => a.source)).toEqual(['youtube']);
+          sketchfabSearchContext: { query: 'tea', timeFilter: 'all' },
+        } as UrlHistoryEntry);
+      });
+      expect(opts.loadSketchfabModel).not.toHaveBeenCalled();
+      expect(opts.applySketchfabRestore).not.toHaveBeenCalled();
+    });
+
+    it("a Pexels photo's search context is not restored after the user has moved on", async () => {
+      vi.mocked(getPhoto).mockResolvedValueOnce({
+        id: 1,
+        alt: 'p',
+        photographer: 'P',
+        photographer_url: 'https://www.pexels.com/@p',
+        url: 'https://www.pexels.com/photo/p-1/',
+        src: { large2x: 'https://cdn/p.jpg', tiny: 'https://cdn/t.jpg' },
+      } as PexelsPhoto);
+      let resolveLookup!: (e: UrlHistoryEntry | undefined) => void;
+      vi.mocked(getUrlHistoryEntry).mockReturnValueOnce(new Promise((r) => (resolveLookup = r)));
+      const { result, opts, applied } = setup();
+      act(() => result.current.loadFromUrl('https://www.pexels.com/photo/p-1/'));
+      await waitFor(() => expect(applied.map((a) => a.source)).toEqual(['pexels']));
+      act(() => opts.onReferenceChange(() => {})); // moved on
+      await act(async () => {
+        resolveLookup({
+          url: 'https://www.pexels.com/photo/p-1/',
+          type: 'pexels',
+          lastUsedAt: new Date(0),
+          pexelsSearchContext: { query: 'cats', orientation: 'all' },
+        } as UrlHistoryEntry);
+      });
+      expect(opts.applyPexelsRestore).not.toHaveBeenCalled();
     });
   });
 });
