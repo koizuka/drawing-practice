@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from 'react';
 import { Autocomplete, Box, Button, IconButton, TextField, Typography } from '@mui/material';
 import { Boxes, Camera, Film, Image as ImageIcon, Trash2 } from 'lucide-react';
 import { ToolbarTooltip } from './ToolbarTooltip';
@@ -7,6 +6,7 @@ import { t } from '../i18n';
 import { parseYouTubeVideoId } from '../utils/youtube';
 import { parseSketchfabModelUrl } from '../utils/sketchfab';
 import type { UrlHistoryEntry, UrlHistoryType } from '../storage';
+import type { UrlHistoryThumbnails } from '../hooks/useUrlHistoryThumbnails';
 
 function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
   if (entry.type === 'image') {
@@ -33,9 +33,9 @@ function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondar
     return { primary: slug ? `Pexels · ${slug}` : entry.url, secondary: entry.url };
   }
   if (entry.type === 'sketchfab') {
-    const parsed = parseSketchfabModelUrl(entry.url);
+    const sketchfabMatch = parseSketchfabModelUrl(entry.url);
     return {
-      primary: parsed ? `Sketchfab · ${parsed.uid.slice(0, 8)}` : entry.url,
+      primary: sketchfabMatch ? `Sketchfab · ${sketchfabMatch.uid.slice(0, 8)}` : entry.url,
       secondary: entry.url,
     };
   }
@@ -55,6 +55,7 @@ const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'no
 
 interface UrlHistoryAutocompleteProps {
   history: readonly UrlHistoryEntry[];
+  thumbnails: UrlHistoryThumbnails;
   inputValue: string;
   /** User typed / cleared the input (selection-driven changes are not reported). */
   onInputChange: (value: string) => void;
@@ -68,11 +69,12 @@ interface UrlHistoryAutocompleteProps {
 
 /**
  * URL input with the URL-history dropdown (thumbnail / type icon, title,
- * per-row delete) plus the Load button. Owns the thumbnail ObjectURLs for
- * Blob-backed entries and the per-URL "thumbnail failed" suppression.
+ * per-row delete) plus the Load button. Thumbnail state comes from
+ * `useUrlHistoryThumbnails` in the parent.
  */
 export function UrlHistoryAutocomplete({
   history,
+  thumbnails,
   inputValue,
   onInputChange,
   onSelectEntry,
@@ -80,34 +82,7 @@ export function UrlHistoryAutocomplete({
   onDeleteEntry,
   loading,
 }: UrlHistoryAutocompleteProps) {
-  const [thumbErrors, setThumbErrors] = useState<Set<string>>(() => new Set());
-  // Drop suppression for entries no longer in history (prev-state-in-render);
-  // keep it for entries still present so a known-404 thumbnail isn't
-  // re-fetched on every history reload.
-  const [prunedFor, setPrunedFor] = useState(history);
-  if (prunedFor !== history) {
-    setPrunedFor(history);
-    if (thumbErrors.size > 0) {
-      const urls = new Set(history.map((e) => e.url));
-      const stillPresent = new Set([...thumbErrors].filter((u) => urls.has(u)));
-      if (stillPresent.size !== thumbErrors.size) setThumbErrors(stillPresent);
-    }
-  }
-
-  const blobThumbUrls = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const e of history) {
-      if ((e.type === 'image' || e.type === 'sketchfab') && e.imageBlob) {
-        map.set(e.url, URL.createObjectURL(e.imageBlob));
-      }
-    }
-    return map;
-  }, [history]);
-  useEffect(() => {
-    return () => {
-      for (const u of blobThumbUrls.values()) URL.revokeObjectURL(u);
-    };
-  }, [blobThumbUrls]);
+  const { blobThumbUrls, thumbErrors, markThumbError } = thumbnails;
 
   return (
     <Box sx={{ display: 'flex', gap: 1 }}>
@@ -165,14 +140,7 @@ export function UrlHistoryAutocomplete({
                     alt=""
                     loading="lazy"
                     referrerPolicy="no-referrer"
-                    onError={() => {
-                      setThumbErrors((prev) => {
-                        if (prev.has(option.url)) return prev;
-                        const next = new Set(prev);
-                        next.add(option.url);
-                        return next;
-                      });
-                    }}
+                    onError={() => markThumbError(option.url)}
                     sx={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                   />
                 ) : (

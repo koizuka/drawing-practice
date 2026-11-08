@@ -10,8 +10,8 @@ import type { ReferenceInfo } from '../types';
  * Reference-source attribution pill shown over the bottom-left of the
  * reference image. Collapses to a small info icon on user tap so it doesn't
  * cover the lower portion of the reference while drawing. Parent keys this
- * component by reference identity, so a new reference remounts it in the
- * expanded state.
+ * component by reference identity, so a new reference remounts it and
+ * re-applies `initialCollapsed` (collapsed during gesture sessions).
  */
 export function ReferenceInfoOverlay({
   refInfo,

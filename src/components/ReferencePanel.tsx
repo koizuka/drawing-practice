@@ -60,6 +60,7 @@ function LazyPanelFallback() {
 import { ReferenceInfoOverlay } from './ReferenceInfoOverlay';
 import { SourcePicker } from './SourcePicker';
 import { UrlHistoryAutocomplete } from './UrlHistoryAutocomplete';
+import { useUrlHistoryThumbnails } from '../hooks/useUrlHistoryThumbnails';
 import { parseYouTubeVideoId, fetchYouTubeTitle } from '../utils/youtube';
 import {
   buildPexelsReferenceInfo,
@@ -244,14 +245,21 @@ export function ReferencePanel({
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
   const [urlHistory, setUrlHistory] = useState<UrlHistoryEntry[]>([]);
+  // Lives here (not in the picker) so failed-thumbnail suppression survives
+  // leaving and re-entering the source picker.
+  const urlHistoryThumbnails = useUrlHistoryThumbnails(urlHistory);
+  const { pruneThumbErrors } = urlHistoryThumbnails;
 
   const reloadUrlHistory = useCallback(() => {
     getUrlHistory()
-      .then(setUrlHistory)
+      .then((list) => {
+        setUrlHistory(list);
+        pruneThumbErrors(list);
+      })
       .catch(() => {
         /* ignore storage errors */
       });
-  }, []);
+  }, [pruneThumbErrors]);
 
   const addAndReloadHistory = useCallback(
     (url: string, type: UrlHistoryType, titleOrOptions?: string | AddUrlHistoryOptions) => {
@@ -1347,6 +1355,7 @@ export function ReferencePanel({
             urlInput={
               <UrlHistoryAutocomplete
                 history={urlHistory}
+                thumbnails={urlHistoryThumbnails}
                 inputValue={urlInput}
                 onInputChange={(value) => {
                   setUrlInput(value);

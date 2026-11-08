@@ -48,6 +48,7 @@ function SourceButton({
       {button}
       <ToolbarTooltip title={settings.title}>
         <IconButton
+          aria-label={settings.title}
           onClick={settings.onClick}
           sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
         >
