@@ -1,14 +1,5 @@
-import { useState, useCallback, useRef, useEffect, useMemo, lazy, Suspense } from 'react';
-import {
-  Box,
-  Button,
-  CircularProgress,
-  IconButton,
-  Typography,
-  TextField,
-  Link as MuiLink,
-  Autocomplete,
-} from '@mui/material';
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from 'react';
+import { Box, Button, CircularProgress, IconButton, Typography } from '@mui/material';
 import { MaskRevealButton } from './MaskRevealButton';
 import { browseReference, loadedReference, resolveFixedImageUrl } from './splitLayoutHelpers';
 import type { ReferenceSnapshot } from '../drawing/types';
@@ -23,18 +14,9 @@ import {
   LocateFixed,
   Maximize,
   Minimize,
-  Info,
-  Film,
-  Camera,
-  Image as ImageIcon,
   Play,
   Pause,
   ZoomIn,
-  Boxes,
-  FolderOpen,
-  KeyRound,
-  Spline,
-  PersonStanding,
   SquareDashed,
   SquareX,
 } from 'lucide-react';
@@ -75,7 +57,10 @@ function LazyPanelFallback() {
     </Box>
   );
 }
-import { GitHubIcon } from './GitHubIcon';
+import { ReferenceInfoOverlay } from './ReferenceInfoOverlay';
+import { SourcePicker } from './SourcePicker';
+import { UrlHistoryAutocomplete } from './UrlHistoryAutocomplete';
+import { useUrlHistoryThumbnails } from '../hooks/useUrlHistoryThumbnails';
 import { parseYouTubeVideoId, fetchYouTubeTitle } from '../utils/youtube';
 import {
   buildPexelsReferenceInfo,
@@ -102,56 +87,12 @@ import {
   sha256Hex,
 } from '../utils/imageResize';
 import { resetPageZoom } from '../utils/resetPageZoom';
-import { resolveHistoryThumbnailSrc } from './urlHistoryThumbnail';
 import {
   canonicalSketchfabUrl,
   parseSketchfabModelUrl,
   type SketchfabCategorySlug,
   type SketchfabTimeFilter,
 } from '../utils/sketchfab';
-
-function describeHistoryUrl(entry: UrlHistoryEntry): { primary: string; secondary: string } {
-  if (entry.type === 'image') {
-    return {
-      primary: entry.fileName ?? entry.title ?? t('localImage'),
-      secondary: t('localImage'),
-    };
-  }
-  if (entry.title) return { primary: entry.title, secondary: entry.url };
-  if (entry.type === 'youtube') {
-    const id = parseYouTubeVideoId(entry.url);
-    return { primary: id ? `YouTube · ${id}` : entry.url, secondary: entry.url };
-  }
-  let parsed: URL;
-  try {
-    parsed = new URL(entry.url);
-  } catch {
-    return { primary: entry.url, secondary: '' };
-  }
-  const segments = parsed.pathname.split('/').filter(Boolean);
-  if (entry.type === 'pexels') {
-    const photoIndex = segments.indexOf('photo');
-    const slug = photoIndex >= 0 ? segments[photoIndex + 1] : undefined;
-    return { primary: slug ? `Pexels · ${slug}` : entry.url, secondary: entry.url };
-  }
-  if (entry.type === 'sketchfab') {
-    const parsed = parseSketchfabModelUrl(entry.url);
-    return {
-      primary: parsed ? `Sketchfab · ${parsed.uid.slice(0, 8)}` : entry.url,
-      secondary: entry.url,
-    };
-  }
-  const filename = segments.pop();
-  return { primary: filename || parsed.hostname, secondary: parsed.hostname };
-}
-
-function HistoryTypeIcon({ type }: { type: UrlHistoryType }) {
-  if (type === 'youtube') return <Film size={14} />;
-  if (type === 'pexels') return <Camera size={14} />;
-  if (type === 'sketchfab') return <Boxes size={14} />;
-  // 'image' and 'url' both render with the generic image glyph.
-  return <ImageIcon size={14} />;
-}
 
 import { useGuides } from '../guides/useGuides';
 import { GridModePopoverButton } from './GridModePopoverButton';
@@ -182,157 +123,6 @@ export interface ReferenceSetters {
    * `browseReference` / `loadedReference` (splitLayoutHelpers).
    */
   setAll: (state: ReferenceSnapshot) => void;
-}
-
-/**
- * Reference-source attribution pill shown over the bottom-left of the
- * reference image. Collapses to a small info icon on user tap so it doesn't
- * cover the lower portion of the reference while drawing. Parent keys this
- * component by reference identity, so a new reference remounts it in the
- * expanded state.
- */
-function ReferenceInfoOverlay({
-  refInfo,
-  initialCollapsed = false,
-}: {
-  refInfo: ReferenceInfo;
-  initialCollapsed?: boolean;
-}) {
-  const [collapsed, setCollapsed] = useState(initialCollapsed);
-  return (
-    <Box
-      sx={{
-        position: 'absolute',
-        bottom: 8,
-        left: 8,
-        // Cap the overall overlay width so long titles / author lines can't
-        // push the collapse button off-screen on narrow viewports. The 16px
-        // budget accounts for the 8px left offset plus an 8px right gutter.
-        maxWidth: 'calc(100% - 16px)',
-        zIndex: 5,
-        pointerEvents: 'none',
-      }}
-    >
-      {collapsed ? (
-        <ToolbarTooltip title={t('expandReferenceInfo')}>
-          <IconButton
-            size="small"
-            onClick={() => setCollapsed(false)}
-            aria-label={t('expandReferenceInfo')}
-            sx={{
-              pointerEvents: 'auto',
-              bgcolor: 'rgba(0,0,0,0.5)',
-              color: 'white',
-              '&:hover': { bgcolor: 'rgba(0,0,0,0.7)' },
-            }}
-          >
-            <Info size={18} />
-          </IconButton>
-        </ToolbarTooltip>
-      ) : (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 0.5,
-            pointerEvents: 'auto',
-            bgcolor: 'rgba(0,0,0,0.5)',
-            color: 'white',
-            pl: 1,
-            pr: 0.5,
-            py: 0.5,
-            borderRadius: 1,
-          }}
-        >
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            {refInfo.title && (
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  fontWeight: 'bold',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {refInfo.title}
-              </Typography>
-            )}
-            {(refInfo.author || (refInfo.source === 'sketchfab' && refInfo.sketchfabUid)) && (
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  opacity: 0.9,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                {refInfo.source === 'pexels' && refInfo.pexelsPhotographerUrl ? (
-                  <>
-                    {t('pexelsPhotoBy')}{' '}
-                    <MuiLink
-                      href={refInfo.pexelsPhotographerUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      sx={{ color: 'inherit', textDecoration: 'underline' }}
-                    >
-                      {refInfo.author}
-                    </MuiLink>
-                    {refInfo.pexelsPageUrl && (
-                      <>
-                        {' · '}
-                        <MuiLink
-                          href={refInfo.pexelsPageUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          sx={{ color: 'inherit', textDecoration: 'underline' }}
-                        >
-                          {t('pexelsViaPexels')}
-                        </MuiLink>
-                      </>
-                    )}
-                  </>
-                ) : refInfo.source === 'sketchfab' && refInfo.sketchfabUid ? (
-                  <>
-                    {refInfo.author}
-                    {refInfo.author && ' · '}
-                    <MuiLink
-                      href={canonicalSketchfabUrl(refInfo.sketchfabUid)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      sx={{ color: 'inherit', textDecoration: 'underline' }}
-                    >
-                      {t('sketchfabViaSketchfab')}
-                    </MuiLink>
-                  </>
-                ) : (
-                  refInfo.author
-                )}
-              </Typography>
-            )}
-          </Box>
-          <ToolbarTooltip title={t('collapseReferenceInfo')}>
-            <IconButton
-              size="small"
-              onClick={() => setCollapsed(true)}
-              aria-label={t('collapseReferenceInfo')}
-              sx={{
-                flexShrink: 0,
-                color: 'white',
-                p: 0.25,
-                '&:hover': { bgcolor: 'rgba(255,255,255,0.15)' },
-              }}
-            >
-              <X size={14} />
-            </IconButton>
-          </ToolbarTooltip>
-        </Box>
-      )}
-    </Box>
-  );
 }
 
 interface ReferencePanelProps {
@@ -455,41 +245,21 @@ export function ReferencePanel({
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
   const [urlHistory, setUrlHistory] = useState<UrlHistoryEntry[]>([]);
-  const [thumbErrors, setThumbErrors] = useState<Set<string>>(() => new Set());
+  // Lives here (not in the picker) so failed-thumbnail suppression survives
+  // leaving and re-entering the source picker.
+  const urlHistoryThumbnails = useUrlHistoryThumbnails(urlHistory);
+  const { pruneThumbErrors } = urlHistoryThumbnails;
 
   const reloadUrlHistory = useCallback(() => {
     getUrlHistory()
       .then((list) => {
         setUrlHistory(list);
-        // Drop suppression for entries no longer in history; keep it for entries
-        // still present so a known-404 thumbnail isn't re-fetched on every reload.
-        setThumbErrors((prev) => {
-          if (prev.size === 0) return prev;
-          const stillPresent = new Set<string>();
-          const urls = new Set(list.map((e) => e.url));
-          for (const u of prev) if (urls.has(u)) stillPresent.add(u);
-          return stillPresent;
-        });
+        pruneThumbErrors(list);
       })
       .catch(() => {
         /* ignore storage errors */
       });
-  }, []);
-
-  const blobThumbUrls = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const e of urlHistory) {
-      if ((e.type === 'image' || e.type === 'sketchfab') && e.imageBlob) {
-        map.set(e.url, URL.createObjectURL(e.imageBlob));
-      }
-    }
-    return map;
-  }, [urlHistory]);
-  useEffect(() => {
-    return () => {
-      for (const u of blobThumbUrls.values()) URL.revokeObjectURL(u);
-    };
-  }, [blobThumbUrls]);
+  }, [pruneThumbErrors]);
 
   const addAndReloadHistory = useCallback(
     (url: string, type: UrlHistoryType, titleOrOptions?: string | AddUrlHistoryOptions) => {
@@ -837,6 +607,113 @@ export function ReferencePanel({
       img.src = url;
     },
     [onReferenceChange, addAndReloadHistory, applySketchfabRestore],
+  );
+
+  // URL-history dropdown selection. Blob-backed image / sketchfab entries
+  // restore straight from the stored Blob; everything else goes through the
+  // normal URL flow.
+  const handleSelectHistoryEntry = useCallback(
+    (entry: UrlHistoryEntry) => {
+      setUrlError(null);
+      if (entry.type === 'image' && entry.imageBlob) {
+        const reader = new FileReader();
+        const blob = entry.imageBlob;
+        const fileName = entry.fileName ?? 'image';
+        const historyKey = entry.url;
+        reader.onload = () => {
+          const dataUrl = reader.result as string;
+          const info: ReferenceInfo = {
+            title: fileName,
+            author: '',
+            source: 'image',
+            fileName,
+            url: historyKey,
+          };
+          onReferenceChange((s) =>
+            s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl })),
+          );
+          setUrlInput('');
+          // Bump lastUsedAt with the Blob in hand so the upsert
+          // is self-contained (no redundant db read, and an
+          // evicted row between reads can't recreate a blobless
+          // entry).
+          void addAndReloadHistory(historyKey, 'image', {
+            fileName,
+            imageBlob: blob,
+          });
+        };
+        reader.readAsDataURL(blob);
+        return;
+      }
+      if (entry.type === 'sketchfab' && entry.imageBlob) {
+        // Mirror the gallery "Use this reference" UX: jump
+        // straight to fixed mode with the saved screenshot, and
+        // load the iframe in the background so "Change angle"
+        // still works.
+        const sketchfabUid = parseSketchfabModelUrl(entry.url)?.uid;
+        if (!sketchfabUid) {
+          // Malformed history key — fall through to URL flow
+          setUrlInput(entry.url);
+          handleLoadFromUrl(entry.url);
+          return;
+        }
+        const blob = entry.imageBlob;
+        const historyKey = entry.url;
+        const title = entry.title ?? '';
+        const ctx = entry.sketchfabSearchContext;
+        void blobToDataUrl(blob).then((dataUrl) => {
+          if (!dataUrl) return;
+          const info: ReferenceInfo = {
+            title,
+            author: '',
+            source: 'sketchfab',
+            sketchfabUid,
+            imageUrl: dataUrl,
+          };
+          onReferenceChange((s) =>
+            s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: dataUrl })),
+          );
+          setUrlInput('');
+          if (ctx) {
+            applySketchfabRestore({
+              query: ctx.query,
+              category: ctx.category,
+              timeFilter: ctx.timeFilter,
+            });
+          }
+          // Load the iframe in the background so "Change Angle"
+          // can transition to browse with the model already
+          // ready, just like the gallery path.
+          requestAnimationFrame(() => {
+            sfActionsRef.current?.loadModelByUid(
+              sketchfabUid,
+              title ? { name: title, author: '' } : undefined,
+            );
+          });
+          // Bump lastUsedAt with the Blob in hand so the upsert
+          // is self-contained.
+          void addAndReloadHistory(historyKey, 'sketchfab', {
+            title: title || undefined,
+            imageBlob: blob,
+          });
+        });
+        return;
+      }
+      setUrlInput(entry.url);
+      handleLoadFromUrl(entry.url);
+    },
+    [onReferenceChange, addAndReloadHistory, applySketchfabRestore, handleLoadFromUrl],
+  );
+
+  const handleDeleteHistoryEntry = useCallback(
+    (url: string) => {
+      deleteUrlHistory(url)
+        .then(reloadUrlHistory)
+        .catch(() => {
+          /* ignore */
+        });
+    },
+    [reloadUrlHistory],
   );
 
   const handleFixAngle = useCallback(
@@ -1465,431 +1342,32 @@ export function ReferencePanel({
       <Box sx={{ flex: 1, minHeight: 0, position: 'relative' }}>
         {/* No source: show selection buttons in center */}
         {isNone && (
-          <Box sx={{ height: '100%', overflowY: 'auto' }}>
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                minHeight: '100%',
-                gap: 1.5,
-                px: 2,
-                py: 2,
-              }}
-            >
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 1.5,
-                  width: '100%',
-                  maxWidth: 480,
+          <SourcePicker
+            onOpenSketchfab={handleOpenSketchfab}
+            onOpenPexels={handleOpenPexels}
+            onOpenPexelsKeySettings={() => setPexelsKeyDialogOpen(true)}
+            onLoadLocalImage={handleLoadLocalImage}
+            onOpenTraceTemplate={handleOpenTraceTemplate}
+            onOpenPose={handleOpenPose}
+            onOpenAnthropicKeySettings={() => setAnthropicKeyDialogOpen(true)}
+            urlLoading={urlLoading}
+            urlError={urlError}
+            urlInput={
+              <UrlHistoryAutocomplete
+                history={urlHistory}
+                thumbnails={urlHistoryThumbnails}
+                inputValue={urlInput}
+                onInputChange={(value) => {
+                  setUrlInput(value);
+                  setUrlError(null);
                 }}
-              >
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={handleOpenSketchfab}
-                  startIcon={<Boxes size={20} />}
-                  sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                >
-                  <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                      {t('sketchfab')}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: { xs: 'none', sm: 'block' } }}
-                    >
-                      {t('sketchfabDescription')}
-                    </Typography>
-                  </Box>
-                </Button>
-                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'stretch' }}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    onClick={handleOpenPexels}
-                    startIcon={<Camera size={20} />}
-                    sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                  >
-                    <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                        {t('pexels')}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: { xs: 'none', sm: 'block' } }}
-                      >
-                        {t('pexelsDescription')}
-                      </Typography>
-                    </Box>
-                  </Button>
-                  <ToolbarTooltip title={t('pexelsApiKeySettings')}>
-                    <IconButton
-                      onClick={() => setPexelsKeyDialogOpen(true)}
-                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
-                    >
-                      <KeyRound size={18} />
-                    </IconButton>
-                  </ToolbarTooltip>
-                </Box>
-                <Box sx={{ mt: 0.5 }}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    onClick={handleLoadLocalImage}
-                    startIcon={<FolderOpen size={20} />}
-                    sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                  >
-                    <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                        {t('image')}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: { xs: 'none', sm: 'block' } }}
-                      >
-                        {t('imageDescription')}
-                      </Typography>
-                    </Box>
-                  </Button>
-                </Box>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={handleOpenTraceTemplate}
-                  startIcon={<Spline size={20} />}
-                  sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                >
-                  <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                      {t('traceTemplate')}
-                    </Typography>
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ display: { xs: 'none', sm: 'block' } }}
-                    >
-                      {t('traceTemplateDescription')}
-                    </Typography>
-                  </Box>
-                </Button>
-                <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'stretch' }}>
-                  <Button
-                    variant="outlined"
-                    fullWidth
-                    onClick={handleOpenPose}
-                    startIcon={<PersonStanding size={20} />}
-                    sx={{ justifyContent: 'flex-start', py: 1, px: 2 }}
-                  >
-                    <Box sx={{ textAlign: 'left' }}>
-                      <Typography variant="body1" sx={{ fontWeight: 500, lineHeight: 1.2 }}>
-                        {t('pose')}
-                      </Typography>
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: { xs: 'none', sm: 'block' } }}
-                      >
-                        {t('poseDescription')}
-                      </Typography>
-                    </Box>
-                  </Button>
-                  <ToolbarTooltip title={t('anthropicApiKeyTitle')}>
-                    <IconButton
-                      onClick={() => setAnthropicKeyDialogOpen(true)}
-                      sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 1, px: 1.5 }}
-                    >
-                      <KeyRound size={18} />
-                    </IconButton>
-                  </ToolbarTooltip>
-                </Box>
-              </Box>
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 0.5,
-                  width: '100%',
-                  maxWidth: 480,
-                }}
-              >
-                <Typography variant="caption" color="text.secondary">
-                  {t('urlSectionLabel')}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Autocomplete<UrlHistoryEntry, false, false, true>
-                    freeSolo
-                    size="small"
-                    sx={{ flex: 1 }}
-                    fullWidth
-                    options={urlHistory}
-                    filterOptions={(x) => x}
-                    getOptionLabel={(option) => {
-                      if (typeof option === 'string') return option;
-                      // Synthetic `local:<hash>` keys are not meaningful to the
-                      // user; show the file name instead.
-                      if (option.type === 'image') return option.fileName ?? '';
-                      return option.url;
-                    }}
-                    isOptionEqualToValue={(a, b) =>
-                      typeof a !== 'string' && typeof b !== 'string' && a.url === b.url
-                    }
-                    inputValue={urlInput}
-                    onInputChange={(_, value, reason) => {
-                      if (reason === 'input' || reason === 'clear') {
-                        setUrlInput(value);
-                        setUrlError(null);
-                      }
-                    }}
-                    onChange={(_, value, reason) => {
-                      if (reason === 'selectOption' && value && typeof value !== 'string') {
-                        setUrlError(null);
-                        if (value.type === 'image' && value.imageBlob) {
-                          const reader = new FileReader();
-                          const blob = value.imageBlob;
-                          const fileName = value.fileName ?? 'image';
-                          const historyKey = value.url;
-                          reader.onload = () => {
-                            const dataUrl = reader.result as string;
-                            const info: ReferenceInfo = {
-                              title: fileName,
-                              author: '',
-                              source: 'image',
-                              fileName,
-                              url: historyKey,
-                            };
-                            onReferenceChange((s) =>
-                              s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl })),
-                            );
-                            setUrlInput('');
-                            // Bump lastUsedAt with the Blob in hand so the upsert
-                            // is self-contained (no redundant db read, and an
-                            // evicted row between reads can't recreate a blobless
-                            // entry).
-                            void addAndReloadHistory(historyKey, 'image', {
-                              fileName,
-                              imageBlob: blob,
-                            });
-                          };
-                          reader.readAsDataURL(blob);
-                          return;
-                        }
-                        if (value.type === 'sketchfab' && value.imageBlob) {
-                          // Mirror the gallery "Use this reference" UX: jump
-                          // straight to fixed mode with the saved screenshot, and
-                          // load the iframe in the background so "Change angle"
-                          // still works.
-                          const sketchfabUid = parseSketchfabModelUrl(value.url)?.uid;
-                          if (!sketchfabUid) {
-                            // Malformed history key — fall through to URL flow
-                            setUrlInput(value.url);
-                            handleLoadFromUrl(value.url);
-                            return;
-                          }
-                          const blob = value.imageBlob;
-                          const historyKey = value.url;
-                          const title = value.title ?? '';
-                          const ctx = value.sketchfabSearchContext;
-                          void blobToDataUrl(blob).then((dataUrl) => {
-                            if (!dataUrl) return;
-                            const info: ReferenceInfo = {
-                              title,
-                              author: '',
-                              source: 'sketchfab',
-                              sketchfabUid,
-                              imageUrl: dataUrl,
-                            };
-                            onReferenceChange((s) =>
-                              s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: dataUrl })),
-                            );
-                            setUrlInput('');
-                            if (ctx) {
-                              applySketchfabRestore({
-                                query: ctx.query,
-                                category: ctx.category,
-                                timeFilter: ctx.timeFilter,
-                              });
-                            }
-                            // Load the iframe in the background so "Change Angle"
-                            // can transition to browse with the model already
-                            // ready, just like the gallery path.
-                            requestAnimationFrame(() => {
-                              sfActionsRef.current?.loadModelByUid(
-                                sketchfabUid,
-                                title ? { name: title, author: '' } : undefined,
-                              );
-                            });
-                            // Bump lastUsedAt with the Blob in hand so the upsert
-                            // is self-contained.
-                            void addAndReloadHistory(historyKey, 'sketchfab', {
-                              title: title || undefined,
-                              imageBlob: blob,
-                            });
-                          });
-                          return;
-                        }
-                        setUrlInput(value.url);
-                        handleLoadFromUrl(value.url);
-                      }
-                    }}
-                    renderOption={(props, option) => {
-                      const { key, ...rest } = props as typeof props & { key: string };
-                      const { primary, secondary } = describeHistoryUrl(option);
-                      const thumbSrc = resolveHistoryThumbnailSrc(option, blobThumbUrls);
-                      const showThumb = thumbSrc !== null && !thumbErrors.has(option.url);
-                      return (
-                        <li
-                          key={key}
-                          {...rest}
-                          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                        >
-                          <Box
-                            sx={{
-                              width: 40,
-                              height: 40,
-                              flexShrink: 0,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              color: 'text.secondary',
-                              bgcolor: showThumb ? 'action.hover' : 'transparent',
-                              borderRadius: 0.5,
-                              overflow: 'hidden',
-                            }}
-                          >
-                            {showThumb ? (
-                              <Box
-                                component="img"
-                                src={thumbSrc}
-                                alt=""
-                                loading="lazy"
-                                referrerPolicy="no-referrer"
-                                onError={() => {
-                                  setThumbErrors((prev) => {
-                                    if (prev.has(option.url)) return prev;
-                                    const next = new Set(prev);
-                                    next.add(option.url);
-                                    return next;
-                                  });
-                                }}
-                                sx={{
-                                  width: '100%',
-                                  height: '100%',
-                                  objectFit: 'cover',
-                                  display: 'block',
-                                }}
-                              />
-                            ) : (
-                              <HistoryTypeIcon type={option.type} />
-                            )}
-                          </Box>
-                          <Box sx={{ flex: 1, minWidth: 0 }}>
-                            <Typography
-                              variant="body2"
-                              sx={{
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                              }}
-                            >
-                              {primary}
-                            </Typography>
-                            {secondary && (
-                              <Typography
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{
-                                  display: 'block',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                }}
-                              >
-                                {secondary}
-                              </Typography>
-                            )}
-                          </Box>
-                          <ToolbarTooltip title={t('urlHistoryDelete')}>
-                            <IconButton
-                              size="small"
-                              aria-label={t('urlHistoryDelete')}
-                              // Touch devices commit option selection on pointerdown
-                              // (before click), so we have to stop propagation there
-                              // too — not just on click.
-                              onPointerDown={(e) => {
-                                e.stopPropagation();
-                                e.preventDefault();
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                deleteUrlHistory(option.url)
-                                  .then(reloadUrlHistory)
-                                  .catch(() => {
-                                    /* ignore */
-                                  });
-                              }}
-                            >
-                              <Trash2 size={14} />
-                            </IconButton>
-                          </ToolbarTooltip>
-                        </li>
-                      );
-                    }}
-                    renderInput={(params) => (
-                      <TextField
-                        {...params}
-                        size="small"
-                        placeholder={t('urlPlaceholder')}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && urlInput) {
-                            e.preventDefault();
-                            handleLoadFromUrl(urlInput);
-                          }
-                        }}
-                      />
-                    )}
-                  />
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={() => handleLoadFromUrl(urlInput)}
-                    disabled={!urlInput || urlLoading}
-                  >
-                    {t('loadUrl')}
-                  </Button>
-                </Box>
-              </Box>
-              {urlLoading && (
-                <Typography variant="caption" color="text.secondary">
-                  {t('loading')}
-                </Typography>
-              )}
-              {urlError && (
-                <Typography variant="caption" color="error">
-                  {urlError}
-                </Typography>
-              )}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Typography variant="caption" color="text.disabled">
-                  {t('buildDate')}:{new Date(import.meta.env.BUILD_DATE as string).toLocaleString()}
-                </Typography>
-                <a
-                  href="https://github.com/koizuka/drawing-practice"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: 'flex', alignItems: 'center', color: '#888' }}
-                >
-                  <GitHubIcon />
-                </a>
-              </Box>
-            </Box>
-          </Box>
+                onSelectEntry={handleSelectHistoryEntry}
+                onSubmit={handleLoadFromUrl}
+                onDeleteEntry={handleDeleteHistoryEntry}
+                loading={urlLoading}
+              />
+            }
+          />
         )}
 
         {/* Sketchfab viewer (kept mounted when source is sketchfab).
