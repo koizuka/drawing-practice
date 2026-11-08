@@ -24,6 +24,23 @@ const ACTIVE_LINGER_MS = 2000;
 /** Point budget for the overview's stroke thumbnail (subsampled above this). */
 const STROKE_POINT_BUDGET = 3000;
 
+/**
+ * The world-up marker: a notched arrowhead (tip at y = -9, pointing up) in a
+ * 20×20 box centered on the origin. Not a plain ▲ — a near-equilateral
+ * triangle reads as ◀ / ▼ / ▶ at 30° / 60° / -30°, while the notch keeps the
+ * tip unmistakable at every angle. Shared by the ▲ button and the disc's rim
+ * marker so both read as the same thing.
+ */
+const UP_ARROW: readonly (readonly [number, number])[] = [
+  [0, -9],
+  [6.5, 7],
+  [0, 3.5],
+  [-6.5, 7],
+];
+const UP_ARROW_PATH = `M${UP_ARROW.map(([x, y]) => `${x} ${y}`).join(' L')} Z`;
+/** Rim marker: the arrow scaled to this height, tip just inside the disc edge. */
+const RIM_MARKER_HEIGHT = 10;
+
 const UPRIGHT_COLOR = '#2e7d32';
 const TILTED_COLOR = '#616161';
 const VIEWPORT_COLOR = '#1976d2';
@@ -351,9 +368,13 @@ export function CanvasNavigator({
     ctx.translate(half, half);
     ctx.rotate(markerAngle);
     ctx.beginPath();
-    ctx.moveTo(0, -half + 2);
-    ctx.lineTo(-5, -half + 10);
-    ctx.lineTo(5, -half + 10);
+    const arrowScale = RIM_MARKER_HEIGHT / 16;
+    UP_ARROW.forEach(([x, y], i) => {
+      const px = x * arrowScale;
+      const py = -half + 2 + (y + 9) * arrowScale;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
     ctx.closePath();
     ctx.fillStyle = markerUpright ? UPRIGHT_COLOR : TILTED_COLOR;
     ctx.fill();
@@ -428,13 +449,7 @@ export function CanvasNavigator({
               style={{ transform: `rotate(${upAngle}rad)`, display: 'block' }}
               aria-hidden
             >
-              {/* Notched arrowhead, not a plain ▲: a near-equilateral triangle
-                  reads as ◀ / ▼ / ▶ at 30° / 60° / -30°, while the notch keeps
-                  the tip unmistakable at every angle. */}
-              <path
-                d="M0 -9 L6.5 7 L0 3.5 L-6.5 7 Z"
-                fill={upright ? UPRIGHT_COLOR : TILTED_COLOR}
-              />
+              <path d={UP_ARROW_PATH} fill={upright ? UPRIGHT_COLOR : TILTED_COLOR} />
             </svg>
           </Box>
         </RoundButton>
