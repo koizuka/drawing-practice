@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReferenceSetters } from '../components/ReferencePanel';
 import type { SketchfabModelMeta } from '../components/SketchfabViewer';
 import { loadedReference } from '../components/splitLayoutHelpers';
@@ -45,6 +45,12 @@ interface UseUrlReferenceLoaderOptions {
   loadSketchfabModel: (uid: string, meta?: SketchfabModelMeta) => void;
   /** Hand the history reload to the parent (gallery "Use this reference" adds entries). */
   onRegisterReloadUrlHistory?: (fn: () => void) => void;
+  /**
+   * Start an async reference load; returns `isCurrent()`, false once the load
+   * has been superseded — by a newer load OR by any reference navigation
+   * (another source, Close, undo/redo, error reset). See SplitLayout.
+   */
+  beginReferenceLoad: () => () => boolean;
 }
 
 /**
@@ -54,6 +60,9 @@ interface UseUrlReferenceLoaderOptions {
  * (with its dropdown thumbnails).
  *
  * Every successful load is exactly ONE `onReferenceChange` (= one undo entry).
+ * Async loads (file read, image preload, Pexels lookup, history Blob decode)
+ * re-check `isCurrent()` on completion and drop a superseded result silently,
+ * so a slow earlier load can never overwrite a newer reference (#423).
  */
 export function useUrlReferenceLoader({
   onReferenceChange,
@@ -61,6 +70,7 @@ export function useUrlReferenceLoader({
   applyPexelsRestore,
   loadSketchfabModel,
   onRegisterReloadUrlHistory,
+  beginReferenceLoad,
 }: UseUrlReferenceLoaderOptions) {
   const [urlInput, setUrlInput] = useState('');
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -97,6 +107,21 @@ export function useUrlReferenceLoader({
     reloadUrlHistory();
   }, [reloadUrlHistory]);
 
+  // Id of our most recent async load. A superseded load clears the loading
+  // indicator only when no newer load of ours is still running (superseded by
+  // navigation rather than by another load), so the spinner can't stick.
+  const latestLoadIdRef = useRef(0);
+  const startLoad = useCallback(() => {
+    const id = ++latestLoadIdRef.current;
+    const isCurrent = beginReferenceLoad();
+    return {
+      isCurrent,
+      dropStale: () => {
+        if (id === latestLoadIdRef.current) setUrlLoading(false);
+      },
+    };
+  }, [beginReferenceLoad]);
+
   useEffect(() => {
     onRegisterReloadUrlHistory?.(reloadUrlHistory);
   }, [onRegisterReloadUrlHistory, reloadUrlHistory]);
@@ -113,12 +138,15 @@ export function useUrlReferenceLoader({
       // ReferenceInfo.url (so saved drawings can be reloaded from the gallery)
       // and the URL-history key (so repeat opens dedupe to one entry).
       const hashPromise = sha256Hex(file).catch(() => null);
+      const load = startLoad();
 
       // Read as data URL so it survives page reload (for autosave)
       const reader = new FileReader();
       reader.onload = async () => {
         const dataUrl = reader.result as string;
         const hash = await hashPromise;
+        // The history upsert below still runs: the user did pick this file.
+        if (!load.isCurrent()) return;
         const url = hash ? `local:${hash}` : undefined;
         const info: ReferenceInfo = {
           title: file.name,
@@ -161,7 +189,7 @@ export function useUrlReferenceLoader({
       })();
     };
     input.click();
-  }, [onReferenceChange, addAndReloadHistory]);
+  }, [onReferenceChange, addAndReloadHistory, startLoad]);
 
   const handleLoadFromUrl = useCallback(
     (rawUrl: string) => {
@@ -245,8 +273,11 @@ export function useUrlReferenceLoader({
       // Pexels photo URL: resolve via API to fetch the CDN URL + photographer.
       const pexelsMatch = parsePexelsPhotoUrl(url);
       if (pexelsMatch) {
-        getPhoto(pexelsMatch.id)
-          .then((photo) => {
+        const load = startLoad();
+        getPhoto(pexelsMatch.id).then(
+          (photo) => {
+            if (!load.isCurrent()) return load.dropStale();
+            setUrlLoading(false);
             const info = buildPexelsReferenceInfo(photo);
             onReferenceChange((s) =>
               s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: photo.src.large2x })),
@@ -269,18 +300,25 @@ export function useUrlReferenceLoader({
               .catch(() => {
                 /* best-effort */
               });
-          })
-          .catch((e) => setUrlError(t(mapPexelsErrorKey(e))))
-          .finally(() => setUrlLoading(false));
+          },
+          (e) => {
+            if (!load.isCurrent()) return load.dropStale();
+            setUrlError(t(mapPexelsErrorKey(e)));
+            setUrlLoading(false);
+          },
+        );
         return;
       }
 
+      const load = startLoad();
       const onFail = () => {
+        if (!load.isCurrent()) return load.dropStale();
         setUrlError(t('urlLoadFailed'));
         setUrlLoading(false);
       };
 
       const onSuccess = () => {
+        if (!load.isCurrent()) return load.dropStale();
         setUrlLoading(false);
         const title = url.split('/').pop()?.split('?')[0] ?? url;
         const info: ReferenceInfo = { title, author: '', source: 'url', imageUrl: url };
@@ -319,6 +357,7 @@ export function useUrlReferenceLoader({
       applySketchfabRestore,
       applyPexelsRestore,
       loadSketchfabModel,
+      startLoad,
     ],
   );
 
@@ -333,7 +372,9 @@ export function useUrlReferenceLoader({
         const blob = entry.imageBlob;
         const fileName = entry.fileName ?? 'image';
         const historyKey = entry.url;
+        const load = startLoad();
         reader.onload = () => {
+          if (!load.isCurrent()) return;
           const dataUrl = reader.result as string;
           const info: ReferenceInfo = {
             title: fileName,
@@ -374,8 +415,9 @@ export function useUrlReferenceLoader({
         const historyKey = entry.url;
         const title = entry.title ?? '';
         const ctx = entry.sketchfabSearchContext;
+        const load = startLoad();
         void blobToDataUrl(blob).then((dataUrl) => {
-          if (!dataUrl) return;
+          if (!dataUrl || !load.isCurrent()) return;
           const info: ReferenceInfo = {
             title,
             author: '',
@@ -416,6 +458,7 @@ export function useUrlReferenceLoader({
       applySketchfabRestore,
       handleLoadFromUrl,
       loadSketchfabModel,
+      startLoad,
     ],
   );
 

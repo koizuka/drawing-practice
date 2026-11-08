@@ -130,6 +130,11 @@ interface ReferencePanelProps {
    * it adds an entry itself (e.g. Gallery "use this reference" reload).
    */
   onRegisterReloadUrlHistory?: (fn: () => void) => void;
+  /**
+   * Start an async reference load; the returned `isCurrent()` turns false
+   * once a newer load or any reference navigation supersedes it.
+   */
+  beginReferenceLoad: () => () => boolean;
   /** Notifies the parent when the Sketchfab 3D viewer iframe is mounted/unmounted. */
   onSketchfabViewerStateChange?: (active: boolean) => void;
   /** Optional: enables the "Start gesture session" control inside Pexels
@@ -173,6 +178,7 @@ export function ReferencePanel({
   onReferenceResetOnError,
   onRegisterLoadSketchfabModel,
   onRegisterReloadUrlHistory,
+  beginReferenceLoad,
   onSketchfabViewerStateChange,
   onPexelsStartSession,
   collapseInfoOverlayByDefault = false,
@@ -334,6 +340,7 @@ export function ReferencePanel({
     applyPexelsRestore,
     loadSketchfabModel,
     onRegisterReloadUrlHistory,
+    beginReferenceLoad,
   });
 
   // videoInteractMode: overlay steps aside so the iframe receives clicks.
