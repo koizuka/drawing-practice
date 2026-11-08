@@ -1,6 +1,8 @@
 ---
 paths:
   - "src/components/ReferencePanel.tsx"
+  - "src/components/SplitLayout.tsx"
+  - "src/hooks/useUrlReferenceLoader.ts"
   - "src/components/SketchfabViewer.tsx"
   - "src/components/ImageViewer.tsx"
   - "src/components/YouTubeViewer.tsx"
@@ -24,6 +26,7 @@ Reference sources: Sketchfab 3D model, local image file, URL (auto-routed), YouT
 ## ReferencePanel
 
 - Reference state is **read-only from props**. All mutations route through `onReferenceChange(setters => ...)` so each change is recorded as an undo entry. (See `drawing-undo.md`.)
+- **Async loads must be generation-guarded.** Every async reference load (file read, URL image preload, Pexels `getPhoto`, URL-history Blob decode in `useUrlReferenceLoader`; gallery local-image in `SplitLayout.handleLoadReference`) calls `beginReferenceLoad()` at start and drops its result when the returned `isCurrent()` is false. Async follow-ups that run AFTER the load applied its reference (Sketchfab URL paste's history lookup → search restore + model load, Pexels' search-context restore) take a fresh `beginReferenceLoad()` right after `onReferenceChange` and check it too — the load's own check is already false by then, since the change advanced the generation. Starting a load AND every reference navigation (`changeReference`, error reset, undo/redo restore) advance the same `referenceGenerationRef`, so a slow earlier load can never overwrite a newer reference or resurrect one the user closed (#423). The URL loads (Pexels / image preload) own the `urlLoading` indicator: a superseded one clears it only if no newer URL load is running, and a non-URL load (file / history Blob) clears it when it starts.
 - URL input auto-detects: YouTube (`parseYouTubeVideoId`), Pexels photo (`parsePexelsPhotoUrl`), Sketchfab model (`parseSketchfabModelUrl` — supports `/3d-models/<slug>-<uid>` and `/models/<uid>`). Each routes to its dedicated source path instead of plain image preload.
 - **Sketchfab URL paste**: resolves the URL-history entry once and reuses it for both `sketchfabSearchContext` (search restoration) and `title` (passed to `loadModelByUid` to skip the redundant Data API fetch).
 - **URL-history dropdown sketchfab entry with `imageBlob`**: jumps straight to fixed mode with the saved screenshot Blob (FileReader → data URL), restores the search context, and loads the iframe in the background. Mirrors gallery "Use this reference" UX.

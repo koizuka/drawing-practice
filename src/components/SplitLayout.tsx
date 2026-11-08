@@ -290,6 +290,19 @@ function SplitLayoutInner() {
     setChangeVersion((v) => v + 1);
   }, [timer]);
 
+  /**
+   * Start an async reference load (gallery local image here; file / URL /
+   * history loads in ReferencePanel). Starting a load is itself a generation
+   * change, so when two loads race the earlier one loses even if it resolves
+   * last. The returned check is false once anything newer — another load or
+   * any reference navigation — has happened; callers re-check after every
+   * await and drop a stale result.
+   */
+  const beginReferenceLoad = useCallback(() => {
+    const generation = ++referenceGenerationRef.current;
+    return () => generation === referenceGenerationRef.current;
+  }, []);
+
   // Autosave suppression: stays true while restore is in flight AND while
   // the session lock is still `pending`. Setting it false before the lock
   // confirms could let the restore-triggered `flushVersion` bump (via the
@@ -787,13 +800,11 @@ function SplitLayoutInner() {
           if (!historyKey) return;
           // Abort if this load was superseded while an await was in flight —
           // applying a stale result (reference AND, on the gallery path,
-          // strokes via onApplied) would overwrite the newer state. The bump
-          // at capture time makes STARTING a load a generation change too, so
-          // when two async loads race, the earlier one loses even if it
-          // resolves last-to-first. Checked after every await.
-          const generation = ++referenceGenerationRef.current;
+          // strokes via onApplied) would overwrite the newer state. Checked
+          // after every await.
+          const isCurrent = beginReferenceLoad();
           const entry = await getUrlHistoryEntry(historyKey).catch(() => undefined);
-          if (generation !== referenceGenerationRef.current) return;
+          if (!isCurrent()) return;
           if (!entry?.imageBlob) {
             setToast(t('imageReferenceEvicted'));
             onApplied?.(false);
@@ -805,7 +816,7 @@ function SplitLayoutInner() {
             reader.onerror = () => resolve(null);
             reader.readAsDataURL(entry.imageBlob as Blob);
           });
-          if (generation !== referenceGenerationRef.current) return;
+          if (!isCurrent()) return;
           if (!dataUrl) {
             setToast(t('imageReferenceEvicted'));
             onApplied?.(false);
@@ -880,7 +891,7 @@ function SplitLayoutInner() {
           });
       }
     },
-    [changeReference],
+    [changeReference, beginReferenceLoad],
   );
 
   /**
@@ -1392,6 +1403,7 @@ function SplitLayoutInner() {
               onReferenceResetOnError={resetReferenceOnError}
               onRegisterLoadSketchfabModel={handleRegisterLoadSketchfabModel}
               onRegisterReloadUrlHistory={handleRegisterReloadUrlHistory}
+              beginReferenceLoad={beginReferenceLoad}
               onSketchfabViewerStateChange={setSketchfabViewerActive}
               onPexelsStartSession={handleStartGestureSession}
               collapseInfoOverlayByDefault={gestureSession.active}

@@ -271,6 +271,7 @@ describe('ReferencePanel mask toolbar', () => {
           }}
           onReferenceChange={() => {}}
           onReferenceResetOnError={() => {}}
+          beginReferenceLoad={() => () => true}
           {...props}
         />
       </GuideProvider>,
