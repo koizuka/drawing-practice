@@ -1,6 +1,11 @@
 import {
+  browseReference,
   computeFitLeader,
   isSameReferenceContent,
+  referenceImageDataOf,
+  referenceStateFromDraft,
+  referenceStateFromInfo,
+  referenceWillReportSize,
   resolveDrawingFitSize,
   resolveFixedImageUrl,
   shouldFullscreenReferenceBrowse,
@@ -286,5 +291,196 @@ describe('resolveFixedImageUrl', () => {
   it('returns null while the fixed URL is not set yet', () => {
     expect(resolveFixedImageUrl('url', 'fixed', null, null)).toBeNull();
     expect(resolveFixedImageUrl('image', 'fixed', FIXED, null)).toBeNull();
+  });
+});
+
+describe('referenceWillReportSize', () => {
+  it('is true for sources whose viewer always sizes the content', () => {
+    for (const src of ['image', 'url', 'pexels', 'youtube', 'trace-template'] as const) {
+      expect(referenceWillReportSize(src, false)).toBe(true);
+    }
+  });
+
+  it('needs a captured screenshot for sketchfab / pose', () => {
+    expect(referenceWillReportSize('sketchfab', true)).toBe(true);
+    expect(referenceWillReportSize('sketchfab', false)).toBe(false);
+    expect(referenceWillReportSize('pose', true)).toBe(true);
+    expect(referenceWillReportSize('pose', false)).toBe(false);
+  });
+
+  it('is false with no reference', () => {
+    expect(referenceWillReportSize('none', true)).toBe(false);
+  });
+});
+
+describe('reference persistence round-trip (autosave draft)', () => {
+  const base = { title: 'T', author: 'A' };
+  const liveStates: [string, ReferenceSnapshot][] = [
+    ['none', browseReference('none')],
+    [
+      'local image',
+      {
+        source: 'image',
+        referenceMode: 'fixed',
+        fixedImageUrl: null,
+        localImageUrl: 'data:image/png;base64,AAA',
+        referenceInfo: { ...base, source: 'image', fileName: 'a.png' },
+      },
+    ],
+    [
+      'url',
+      {
+        source: 'url',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'https://x/a.png',
+        localImageUrl: null,
+        referenceInfo: { ...base, source: 'url', imageUrl: 'https://x/a.png' },
+      },
+    ],
+    [
+      'pexels',
+      {
+        source: 'pexels',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'https://cdn/p.jpg',
+        localImageUrl: null,
+        referenceInfo: {
+          ...base,
+          source: 'pexels',
+          pexelsImageUrl: 'https://cdn/p.jpg',
+        } as ReferenceInfo,
+      },
+    ],
+    [
+      'youtube',
+      {
+        source: 'youtube',
+        referenceMode: 'browse',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: { ...base, source: 'youtube', youtubeVideoId: 'vid' },
+      },
+    ],
+    [
+      'trace template',
+      {
+        source: 'trace-template',
+        referenceMode: 'fixed',
+        fixedImageUrl: null,
+        localImageUrl: null,
+        referenceInfo: { ...base, source: 'trace-template', templateId: 'bundle:x' },
+      },
+    ],
+    [
+      'sketchfab fixed',
+      {
+        source: 'sketchfab',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'data:image/png;base64,SF',
+        localImageUrl: null,
+        referenceInfo: {
+          ...base,
+          source: 'sketchfab',
+          sketchfabUid: 'u',
+          imageUrl: 'data:image/png;base64,SF',
+        },
+      },
+    ],
+    [
+      'pose fixed',
+      {
+        source: 'pose',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'data:image/png;base64,PO',
+        localImageUrl: null,
+        referenceInfo: {
+          ...base,
+          source: 'pose',
+          imageUrl: 'data:image/png;base64,PO',
+        } as ReferenceInfo,
+      },
+    ],
+  ];
+
+  it.each(liveStates)('%s survives save → restore', (_, live) => {
+    const draft = {
+      source: live.source,
+      referenceInfo: live.referenceInfo,
+      referenceImageData: referenceImageDataOf(live),
+    };
+    expect(referenceStateFromDraft(draft)).toEqual(live);
+  });
+
+  it('stores image data only for content that cannot be re-fetched', () => {
+    const data = Object.fromEntries(liveStates.map(([name, s]) => [name, referenceImageDataOf(s)]));
+    expect(data).toEqual({
+      none: null,
+      'local image': 'data:image/png;base64,AAA',
+      url: null,
+      pexels: null,
+      youtube: null,
+      'trace template': null,
+      'sketchfab fixed': 'data:image/png;base64,SF',
+      'pose fixed': 'data:image/png;base64,PO',
+    });
+  });
+
+  it('restores a sketchfab draft without a screenshot into browse', () => {
+    const info: ReferenceInfo = { ...base, source: 'sketchfab', sketchfabUid: 'u' };
+    expect(
+      referenceStateFromDraft({
+        source: 'sketchfab',
+        referenceInfo: info,
+        referenceImageData: null,
+      }),
+    ).toEqual({
+      source: 'sketchfab',
+      referenceMode: 'browse',
+      fixedImageUrl: null,
+      localImageUrl: null,
+      referenceInfo: info,
+    });
+  });
+});
+
+describe('referenceStateFromInfo (gallery records)', () => {
+  const base = { title: 'T', author: 'A' };
+
+  it('restores each URL-backed source like its live state', () => {
+    expect(referenceStateFromInfo({ ...base, source: 'url', imageUrl: 'https://x/a.png' })).toEqual(
+      {
+        source: 'url',
+        referenceMode: 'fixed',
+        fixedImageUrl: 'https://x/a.png',
+        localImageUrl: null,
+        referenceInfo: { ...base, source: 'url', imageUrl: 'https://x/a.png' },
+      },
+    );
+    expect(
+      referenceStateFromInfo({ ...base, source: 'youtube', youtubeVideoId: 'v' }),
+    ).toMatchObject({ source: 'youtube', referenceMode: 'browse', fixedImageUrl: null });
+    expect(
+      referenceStateFromInfo({ ...base, source: 'trace-template', templateId: 'bundle:x' }),
+    ).toMatchObject({ source: 'trace-template', referenceMode: 'fixed', fixedImageUrl: null });
+  });
+
+  it('opens a sketchfab record in fixed mode only with a screenshot', () => {
+    expect(
+      referenceStateFromInfo({
+        ...base,
+        source: 'sketchfab',
+        sketchfabUid: 'u',
+        imageUrl: 'data:S',
+      }),
+    ).toMatchObject({ source: 'sketchfab', referenceMode: 'fixed', fixedImageUrl: 'data:S' });
+    expect(referenceStateFromInfo({ ...base, source: 'sketchfab', sketchfabUid: 'u' })).toEqual(
+      browseReference('sketchfab'),
+    );
+  });
+
+  it('returns null when the record cannot be restored here', () => {
+    // Local-file images resolve their Blob asynchronously from URL history.
+    expect(referenceStateFromInfo({ ...base, source: 'image', fileName: 'a.png' })).toBeNull();
+    expect(referenceStateFromInfo({ ...base, source: 'pose' } as ReferenceInfo)).toBeNull();
   });
 });

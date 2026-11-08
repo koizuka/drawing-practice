@@ -6,6 +6,7 @@ import { useTimer } from '../hooks/useTimer';
 import { useAutosave } from '../hooks/useAutosave';
 import { useSessionLock } from '../hooks/useSessionLock';
 import { useGestureSession } from '../hooks/useGestureSession';
+import { useReferenceState } from '../hooks/useReferenceState';
 import { GuideProvider } from '../guides/GuideContext';
 import { useGuides } from '../guides/useGuides';
 import { TraceScoringProvider } from '../trace/TraceScoringContext';
@@ -19,6 +20,10 @@ import {
   computeFitLeader,
   isSameReferenceContent,
   loadedReference,
+  referenceImageDataOf,
+  referenceStateFromDraft,
+  referenceStateFromInfo,
+  referenceWillReportSize,
   resolveFixedImageUrl,
   resolveDrawingFitSize,
   shouldFullscreenReferenceBrowse,
@@ -48,7 +53,7 @@ import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 import { visibleStrokes } from '../drawing/layers';
 import { pickStoredDocFields } from '../drawing/docState';
 import type { GuideState } from '../guides/types';
-import type { ReferenceInfo, ReferenceSource, ReferenceMode } from '../types';
+import type { ReferenceInfo } from '../types';
 
 function SplitLayoutInner() {
   const sessionLockStatus = useSessionLock();
@@ -79,15 +84,6 @@ function SplitLayoutInner() {
   // value, take the deferred-migration branch, and hang waiting for a size
   // event that identical content will never fire.
   const referenceSizeRef = useRef(referenceSize);
-  const [referenceInfo, setReferenceInfo] = useState<ReferenceInfo | null>(null);
-  /** Replace all five reference-state fields at once (setter identities are stable). */
-  const setReferenceState = useCallback((snap: ReferenceSnapshot) => {
-    setSource(snap.source);
-    setReferenceMode(snap.referenceMode);
-    setFixedImageUrl(snap.fixedImageUrl);
-    setLocalImageUrl(snap.localImageUrl);
-    setReferenceInfo(snap.referenceInfo);
-  }, []);
   const [toast, setToast] = useState<string | null>(null);
   // StrokeManager owned by SplitLayout (not DrawingPanel) so it exists from
   // mount and can receive `loadState` during draft restore even before the
@@ -104,10 +100,16 @@ function SplitLayoutInner() {
   const [videoBridge] = useState(() => new VideoSyncBridge());
 
   // Lifted state from ReferencePanel
-  const [source, setSource] = useState<ReferenceSource>('none');
-  const [referenceMode, setReferenceMode] = useState<ReferenceMode>('browse');
-  const [fixedImageUrl, setFixedImageUrl] = useState<string | null>(null);
-  const [localImageUrl, setLocalImageUrl] = useState<string | null>(null);
+  const {
+    source,
+    referenceMode,
+    fixedImageUrl,
+    localImageUrl,
+    referenceInfo,
+    setters: referenceSetters,
+    setReferenceState,
+    captureReferenceSnapshot,
+  } = useReferenceState();
   // Whether the Sketchfab 3D viewer iframe is currently mounted. While true,
   // the reference panel must stay at half-screen so the preview matches the
   // aspect ratio that "Fix This Angle" will capture.
@@ -315,32 +317,6 @@ function SplitLayoutInner() {
     suppressAutosaveRef.current = !(restoreCompleted && sessionLockStatus === 'acquired');
   }, [restoreCompleted, sessionLockStatus]);
 
-  // Keep a ref to the latest reference state so `captureReferenceSnapshot` can
-  // remain a stable callback (prevents unnecessary child re-renders).
-  const referenceStateRef = useRef({
-    source,
-    referenceMode,
-    fixedImageUrl,
-    localImageUrl,
-    referenceInfo,
-  });
-  useEffect(() => {
-    referenceStateRef.current = {
-      source,
-      referenceMode,
-      fixedImageUrl,
-      localImageUrl,
-      referenceInfo,
-    };
-  });
-
-  const captureReferenceSnapshot = useCallback(
-    (): ReferenceSnapshot => ({
-      ...referenceStateRef.current,
-    }),
-    [],
-  );
-
   // Forward declaration for the gesture-session exit callback. Wired up in
   // an effect once `gestureSession` exists below; changeReference uses it
   // to auto-end an active session whenever the user navigates the reference
@@ -455,14 +431,7 @@ function SplitLayoutInner() {
         strokeManager.tentativeClear();
         setHistorySyncVersion((v) => v + 1);
       }
-      mutate({
-        setSource,
-        setReferenceMode,
-        setFixedImageUrl,
-        setLocalImageUrl,
-        setReferenceInfo,
-        setAll: setReferenceState,
-      });
+      mutate(referenceSetters);
       pauseAndIncrementVersion();
       incrementFlushVersion();
       // setState identities are stable; listed only to satisfy React Compiler's
@@ -475,7 +444,7 @@ function SplitLayoutInner() {
       incrementFlushVersion,
       setHistorySyncVersion,
       setDrawingLoadInFlight,
-      setReferenceState,
+      referenceSetters,
     ],
   );
 
@@ -843,7 +812,7 @@ function SplitLayoutInner() {
             return;
           }
           changeReference((s) =>
-            s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl }) /*SRC 'image'*/),
+            s.setAll(loadedReference(info, 'fixed', { localImageUrl: dataUrl })),
           );
           onApplied?.(true);
           // Upsert with the Blob we already loaded so the call is self-
@@ -858,33 +827,17 @@ function SplitLayoutInner() {
         return;
       }
 
+      const next = referenceStateFromInfo(info);
       changeReference((s) => {
+        if (next) s.setAll(next);
         if (info.source === 'sketchfab' && info.sketchfabUid) {
           // The Sketchfab iframe stays mounted in fixed mode (display:none),
-          // so loadSketchfabModelFnRef below still readies "Change angle".
-          s.setAll(
-            info.imageUrl
-              ? loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl })
-              : browseReference('sketchfab'),
-          );
-          // Pass title/author to the viewer so Fix Angle from "Change angle"
-          // produces a non-empty ReferenceInfo even on legacy records.
+          // so loading the model still readies "Change angle". Pass
+          // title/author so Fix Angle from there produces a non-empty
+          // ReferenceInfo even on legacy records.
           const sfMeta: SketchfabModelMeta | undefined =
             info.title || info.author ? { name: info.title, author: info.author } : undefined;
           loadSketchfabModelFnRef.current?.(info.sketchfabUid, sfMeta);
-        } else if (info.source === 'url' && info.imageUrl) {
-          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl }));
-        } else if (info.source === 'youtube' && info.youtubeVideoId) {
-          s.setAll(loadedReference(info, 'browse'));
-        } else if (info.source === 'pexels' && info.pexelsImageUrl) {
-          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.pexelsImageUrl }));
-        } else if (info.source === 'trace-template' && info.templateId) {
-          s.setAll(loadedReference(info, 'fixed'));
-        } else if (info.source === 'pose' && info.imageUrl) {
-          // Restore the Fix-Angle screenshot directly into fixed mode. The
-          // pose/hint on the record also revive the mannequin state, so
-          // "Change angle" drops back into browse with the pose applied.
-          s.setAll(loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl }));
         }
       });
       onApplied?.(true);
@@ -956,17 +909,12 @@ function SplitLayoutInner() {
       pendingCameraRef.current = null;
       const ref = drawing.reference;
       const isLegacyCoords = (drawing.coordVersion ?? 1) < COORD_VERSION_CURRENT;
-      // Mirrors the draft-restore referenceWillSize logic: sources whose viewer
-      // reports onReferenceImageSize once content loads.
+      // Same rule as the draft restore: will a viewer report the size (and
+      // run loadContent) once the record's reference loads?
       const referenceWillSize =
         referenceApplied &&
         !!ref &&
-        (ref.source === 'image' ||
-          ref.source === 'url' ||
-          ref.source === 'pexels' ||
-          ref.source === 'youtube' ||
-          ref.source === 'trace-template' ||
-          ((ref.source === 'sketchfab' || ref.source === 'pose') && !!ref.imageUrl));
+        referenceWillReportSize(ref.source, 'imageUrl' in ref && !!ref.imageUrl);
       if (isLegacyCoords && referenceWillSize && !knownSize) {
         // Legacy strokes need the (-W/2, -H/2) shift, and the reference's size
         // is only known once the viewer loads it — defer via pendingMigrationRef.
@@ -1091,12 +1039,7 @@ function SplitLayoutInner() {
       elapsedMs: timerElapsedRef.current,
       source,
       referenceInfo,
-      referenceImageData:
-        source === 'image' && localImageUrl
-          ? localImageUrl
-          : (source === 'sketchfab' || source === 'pose') && fixedImageUrl
-            ? fixedImageUrl
-            : null,
+      referenceImageData: referenceImageDataOf({ source, fixedImageUrl, localImageUrl }),
       grid,
       lines,
       masks,
@@ -1273,16 +1216,10 @@ function SplitLayoutInner() {
         // directly-applied camera. Sketchfab browse without a captured
         // screenshot does neither, and its strokes were drawn against an
         // unscaled panel coord space that already matches the new convention.
-        const referenceWillSize =
-          draft.source === 'image' ||
-          draft.source === 'url' ||
-          draft.source === 'pexels' ||
-          draft.source === 'youtube' ||
-          draft.source === 'trace-template' ||
-          (draft.source === 'sketchfab' && draft.referenceImageData !== null) ||
-          // Pose browse mounts the free-orbit 3D viewer (no size, no
-          // loadContent); only the fixed screenshot goes through ImageViewer.
-          (draft.source === 'pose' && draft.referenceImageData !== null);
+        const referenceWillSize = referenceWillReportSize(
+          draft.source,
+          draft.referenceImageData !== null,
+        );
         const isLegacyCoords = (draft.coordVersion ?? 1) < COORD_VERSION_CURRENT;
         const deferStrokesForMigration = isLegacyCoords && referenceWillSize;
 
@@ -1345,35 +1282,9 @@ function SplitLayoutInner() {
           }
         }
 
-        // Restore reference state
+        // Restore reference state (the initial state already is 'none').
         if (draft.source !== 'none') {
-          setSource(draft.source);
-          setReferenceInfo(draft.referenceInfo);
-
-          const info = draft.referenceInfo;
-          if (draft.source === 'image' && draft.referenceImageData) {
-            setLocalImageUrl(draft.referenceImageData);
-            setReferenceMode('fixed');
-          } else if (
-            (draft.source === 'sketchfab' || draft.source === 'pose') &&
-            draft.referenceImageData
-          ) {
-            setFixedImageUrl(draft.referenceImageData);
-            setReferenceMode('fixed');
-          } else if (info?.source === 'url') {
-            setFixedImageUrl(info.imageUrl);
-            setReferenceMode('fixed');
-          } else if (info?.source === 'youtube') {
-            setReferenceMode('browse');
-          } else if (info?.source === 'pexels') {
-            setFixedImageUrl(info.pexelsImageUrl);
-            setReferenceMode('fixed');
-          } else if (info?.source === 'trace-template') {
-            // No fixed/local URL to restore — the templateId on referenceInfo is
-            // enough for ReferencePanel to look up the bundled template. Just
-            // make sure we land in fixed mode (otherwise the picker shows).
-            setReferenceMode('fixed');
-          }
+          setReferenceState(referenceStateFromDraft(draft));
         }
 
         setRestoreVersion((v) => v + 1);
