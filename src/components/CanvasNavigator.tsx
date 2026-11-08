@@ -38,6 +38,9 @@ const UP_ARROW: readonly (readonly [number, number])[] = [
   [-6.5, 7],
 ];
 const UP_ARROW_PATH = `M${UP_ARROW.map(([x, y]) => `${x} ${y}`).join(' L')} Z`;
+/** Tip (topmost y) and full height of {@link UP_ARROW}, for the rim marker's scaling. */
+const UP_ARROW_TIP_Y = Math.min(...UP_ARROW.map(([, y]) => y));
+const UP_ARROW_HEIGHT = Math.max(...UP_ARROW.map(([, y]) => y)) - UP_ARROW_TIP_Y;
 /** Rim marker: the arrow scaled to this height, tip just inside the disc edge. */
 const RIM_MARKER_HEIGHT = 10;
 
@@ -368,10 +371,11 @@ export function CanvasNavigator({
     ctx.translate(half, half);
     ctx.rotate(markerAngle);
     ctx.beginPath();
-    const arrowScale = RIM_MARKER_HEIGHT / 16;
+    const arrowScale = RIM_MARKER_HEIGHT / UP_ARROW_HEIGHT;
     UP_ARROW.forEach(([x, y], i) => {
+      // Tip lands 2px inside the disc edge whatever the arrow's geometry.
       const px = x * arrowScale;
-      const py = -half + 2 + (y + 9) * arrowScale;
+      const py = -half + 2 + (y - UP_ARROW_TIP_Y) * arrowScale;
       if (i === 0) ctx.moveTo(px, py);
       else ctx.lineTo(px, py);
     });
