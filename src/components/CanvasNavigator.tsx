@@ -381,13 +381,38 @@ export function CanvasNavigator({
     >
       {/* Also kept up while the disc lingers, so a reset that lands fully at
           home still shows the upright pulse before the ▲ goes away. */}
+      {/* DOM order = visual order (⟲ ⟳ ▲) for focus / screen readers. */}
+      {showRotateButtons && onRotateStep && (
+        <>
+          <RoundButton
+            label={t('rotateViewLeft')}
+            right={8 + 2 * (COMPACT_SIZE + BUTTON_GAP)}
+            top={top}
+            onClick={() => onRotateStep(-1)}
+          >
+            <RotateCcw size={18} aria-hidden />
+          </RoundButton>
+          <RoundButton
+            label={t('rotateViewRight')}
+            right={8 + COMPACT_SIZE + BUTTON_GAP}
+            top={top}
+            onClick={() => onRotateStep(1)}
+          >
+            <RotateCw size={18} aria-hidden />
+          </RoundButton>
+        </>
+      )}
       {(dirty || showDisc || showRotateButtons) && (
         <RoundButton
           label={t('resetRotation')}
           right={8}
           top={top}
           borderColor={upright ? UPRIGHT_COLOR : undefined}
-          onClick={onResetRotation}
+          // Already upright (the green ▲): nothing to do — skip the command so
+          // a tap doesn't emit a no-op 'userRotate' (and its autosave flush).
+          onClick={() => {
+            if (!upright) onResetRotation();
+          }}
         >
           <Box
             key={pulseKey}
@@ -407,26 +432,6 @@ export function CanvasNavigator({
             </svg>
           </Box>
         </RoundButton>
-      )}
-      {showRotateButtons && onRotateStep && (
-        <>
-          <RoundButton
-            label={t('rotateViewRight')}
-            right={8 + COMPACT_SIZE + BUTTON_GAP}
-            top={top}
-            onClick={() => onRotateStep(1)}
-          >
-            <RotateCw size={18} aria-hidden />
-          </RoundButton>
-          <RoundButton
-            label={t('rotateViewLeft')}
-            right={8 + 2 * (COMPACT_SIZE + BUTTON_GAP)}
-            top={top}
-            onClick={() => onRotateStep(-1)}
-          >
-            <RotateCcw size={18} aria-hidden />
-          </RoundButton>
-        </>
       )}
       {showDisc && (
         <Box

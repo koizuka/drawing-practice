@@ -142,5 +142,17 @@ describe('CanvasNavigator', () => {
       fireEvent.click(screen.getByRole('button', { name: t('rotateViewRight') }));
       expect(onRotateStep.mock.calls).toEqual([[-1], [1]]);
     });
+
+    it('tapping the green ▲ at upright issues no reset', () => {
+      const { onResetRotation } = renderNavigator(new ViewTransform(), false, true);
+      fireEvent.click(screen.getByRole('button', { name: t('resetRotation') }));
+      expect(onResetRotation).not.toHaveBeenCalled();
+    });
+
+    it('are in visual order in the DOM: ⟲, ⟳, ▲', () => {
+      renderNavigator(new ViewTransform(), false, true);
+      const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+      expect(names).toEqual([t('rotateViewLeft'), t('rotateViewRight'), t('resetRotation')]);
+    });
   });
 });
