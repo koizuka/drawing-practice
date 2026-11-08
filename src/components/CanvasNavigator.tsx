@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { RotateCcw, RotateCw } from 'lucide-react';
 import { visibleStrokes } from '../drawing/layers';
 import { Box, Typography } from '@mui/material';
 import { keyframes } from '@mui/material/styles';
@@ -14,8 +15,10 @@ import { t } from '../i18n';
 const NAV_SIZE = 120;
 /** Gap between the disc edge and the content area, room for the rim marker. */
 const NAV_RIM = 10;
-/** Size of the always-on (while off-home) ▲ button. */
+/** Size of the round buttons (▲, and the ⟲ / ⟳ step buttons). */
 const COMPACT_SIZE = 36;
+/** Gap between the round buttons in the top row. */
+const BUTTON_GAP = 6;
 /** How long the overview lingers after the last camera gesture. */
 const ACTIVE_LINGER_MS = 2000;
 /** Point budget for the overview's stroke thumbnail (subsampled above this). */
@@ -47,8 +50,63 @@ interface CanvasNavigatorProps {
   frameId?: string;
   /** Rotate back upright (the ▲ tap). */
   onResetRotation: () => void;
+  /**
+   * Show ⟲ / ⟳ step buttons left of the ▲ (same as keys 4 / 6) — the only
+   * way to rotate in steps without a keyboard. The ▲ then stays up too, so
+   * the row doesn't jump as the view goes off / back to home.
+   */
+  showRotateButtons?: boolean;
+  /** One rotation step in SCREEN direction (-1 = ⟲ / key 4, +1 = ⟳ / key 6). */
+  onRotateStep?: (dir: 1 | -1) => void;
   /** Top offset (CSS px) so the widget clears other top-right overlays. */
   top?: number;
+}
+
+/** Round, pointer-active button used for the ▲ and the step buttons. */
+function RoundButton({
+  label,
+  right,
+  top,
+  borderColor = 'rgba(0, 0, 0, 0.25)',
+  onClick,
+  children,
+}: {
+  label: string;
+  right: number;
+  top: number;
+  borderColor?: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Box
+      component="button"
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      sx={{
+        position: 'absolute',
+        top,
+        right,
+        width: COMPACT_SIZE,
+        height: COMPACT_SIZE,
+        p: 0,
+        border: '1px solid',
+        borderColor,
+        borderRadius: '50%',
+        bgcolor: 'rgba(255, 255, 255, 0.92)',
+        color: TILTED_COLOR,
+        cursor: 'pointer',
+        pointerEvents: 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      {children}
+    </Box>
+  );
 }
 
 /**
@@ -72,6 +130,8 @@ export function CanvasNavigator({
   contentVersion,
   frameId,
   onResetRotation,
+  showRotateButtons = false,
+  onRotateStep,
   top = 8,
 }: CanvasNavigatorProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -321,29 +381,37 @@ export function CanvasNavigator({
     >
       {/* Also kept up while the disc lingers, so a reset that lands fully at
           home still shows the upright pulse before the ▲ goes away. */}
-      {(dirty || showDisc) && (
-        <Box
-          component="button"
-          type="button"
-          aria-label={t('resetRotation')}
-          title={t('resetRotation')}
-          onClick={onResetRotation}
-          sx={{
-            position: 'absolute',
-            top,
-            right: 8,
-            width: COMPACT_SIZE,
-            height: COMPACT_SIZE,
-            p: 0,
-            border: '1px solid',
-            borderColor: upright ? UPRIGHT_COLOR : 'rgba(0, 0, 0, 0.25)',
-            borderRadius: '50%',
-            bgcolor: 'rgba(255, 255, 255, 0.92)',
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
+      {/* DOM order = visual order (⟲ ⟳ ▲) for focus / screen readers. */}
+      {showRotateButtons && onRotateStep && (
+        <>
+          <RoundButton
+            label={t('rotateViewLeft')}
+            right={8 + 2 * (COMPACT_SIZE + BUTTON_GAP)}
+            top={top}
+            onClick={() => onRotateStep(-1)}
+          >
+            <RotateCcw size={18} aria-hidden />
+          </RoundButton>
+          <RoundButton
+            label={t('rotateViewRight')}
+            right={8 + COMPACT_SIZE + BUTTON_GAP}
+            top={top}
+            onClick={() => onRotateStep(1)}
+          >
+            <RotateCw size={18} aria-hidden />
+          </RoundButton>
+        </>
+      )}
+      {(dirty || showDisc || showRotateButtons) && (
+        <RoundButton
+          label={t('resetRotation')}
+          right={8}
+          top={top}
+          borderColor={upright ? UPRIGHT_COLOR : undefined}
+          // Already upright (the green ▲): nothing to do — skip the command so
+          // a tap doesn't emit a no-op 'userRotate' (and its autosave flush).
+          onClick={() => {
+            if (!upright) onResetRotation();
           }}
         >
           <Box
@@ -363,13 +431,13 @@ export function CanvasNavigator({
               <path d="M0 -8 L-7 6 L7 6 Z" fill={upright ? UPRIGHT_COLOR : TILTED_COLOR} />
             </svg>
           </Box>
-        </Box>
+        </RoundButton>
       )}
       {showDisc && (
         <Box
           sx={{
             position: 'absolute',
-            top: top + COMPACT_SIZE + 6,
+            top: top + COMPACT_SIZE + BUTTON_GAP,
             right: 8,
             display: 'flex',
             flexDirection: 'column',

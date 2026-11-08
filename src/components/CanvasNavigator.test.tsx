@@ -38,8 +38,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderNavigator(vt: ViewTransform, isFlipped = false) {
+function renderNavigator(vt: ViewTransform, isFlipped = false, showRotateButtons = false) {
   const onResetRotation = vi.fn();
+  const onRotateStep = vi.fn();
   render(
     <CanvasNavigator
       viewTransform={vt}
@@ -47,9 +48,11 @@ function renderNavigator(vt: ViewTransform, isFlipped = false) {
       isFlipped={isFlipped}
       contentVersion={0}
       onResetRotation={onResetRotation}
+      showRotateButtons={showRotateButtons}
+      onRotateStep={onRotateStep}
     />,
   );
-  return { onResetRotation };
+  return { onResetRotation, onRotateStep };
 }
 
 describe('CanvasNavigator', () => {
@@ -115,5 +118,41 @@ describe('CanvasNavigator', () => {
       vt.applyGesture(200, 150, 1, 30, 0, C, 1, { rotated: true });
     });
     expect(screen.getByText(new RegExp(`✓ ${t('viewUpright')}.*${t('viewFlipped')}`))).toBeTruthy();
+  });
+
+  describe('rotate step buttons', () => {
+    it('are hidden unless enabled', () => {
+      const vt = new ViewTransform();
+      vt.restoreCamera(0, 0, 1, deg(30));
+      renderNavigator(vt);
+      expect(screen.queryByRole('button', { name: t('rotateViewLeft') })).toBeNull();
+      expect(screen.queryByRole('button', { name: t('rotateViewRight') })).toBeNull();
+    });
+
+    it('show at home together with the ▲ when enabled, so rotation can start from 0°', () => {
+      renderNavigator(new ViewTransform(), false, true);
+      expect(screen.getByRole('button', { name: t('rotateViewLeft') })).toBeTruthy();
+      expect(screen.getByRole('button', { name: t('rotateViewRight') })).toBeTruthy();
+      expect(screen.getByRole('button', { name: t('resetRotation') })).toBeTruthy();
+    });
+
+    it('request one step in screen direction, like keys 4 / 6', () => {
+      const { onRotateStep } = renderNavigator(new ViewTransform(), false, true);
+      fireEvent.click(screen.getByRole('button', { name: t('rotateViewLeft') }));
+      fireEvent.click(screen.getByRole('button', { name: t('rotateViewRight') }));
+      expect(onRotateStep.mock.calls).toEqual([[-1], [1]]);
+    });
+
+    it('tapping the green ▲ at upright issues no reset', () => {
+      const { onResetRotation } = renderNavigator(new ViewTransform(), false, true);
+      fireEvent.click(screen.getByRole('button', { name: t('resetRotation') }));
+      expect(onResetRotation).not.toHaveBeenCalled();
+    });
+
+    it('are in visual order in the DOM: ⟲, ⟳, ▲', () => {
+      renderNavigator(new ViewTransform(), false, true);
+      const names = screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+      expect(names).toEqual([t('rotateViewLeft'), t('rotateViewRight'), t('resetRotation')]);
+    });
   });
 });

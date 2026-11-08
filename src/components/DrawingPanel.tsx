@@ -238,6 +238,10 @@ export function DrawingPanel({
     () => requestRotation({ kind: 'reset' }),
     [requestRotation],
   );
+  const handleRotateStep = useCallback(
+    (dir: 1 | -1) => requestRotation({ kind: 'step', dir }),
+    [requestRotation],
+  );
   const handleTogglePinchRotate = useCallback(() => {
     const next = !pinchRotateEnabled;
     savePref(PINCH_ROTATE_STORAGE_KEY, next ? '1' : '0');
@@ -674,8 +678,8 @@ export function DrawingPanel({
         onEraseTool: handleEraseTool,
         onSave: handleSave,
         onResetZoom: () => setViewResetVersion((v) => v + 1),
-        onRotateLeft: () => requestRotation({ kind: 'step', dir: -1 }),
-        onRotateRight: () => requestRotation({ kind: 'step', dir: 1 }),
+        onRotateLeft: () => handleRotateStep(-1),
+        onRotateRight: () => handleRotateStep(1),
         onResetRotation: handleResetRotation,
         onPrevFrame: () => stepFrame(-1),
         onNextFrame: () => stepFrame(1),
@@ -686,7 +690,7 @@ export function DrawingPanel({
         handlePenTool,
         handleEraseTool,
         handleSave,
-        requestRotation,
+        handleRotateStep,
         handleResetRotation,
         stepFrame,
       ],
@@ -1224,6 +1228,10 @@ export function DrawingPanel({
             contentVersion={redrawVersion}
             frameId={playbackFrameId ?? undefined}
             onResetRotation={handleResetRotation}
+            // Step buttons for keyboard-less devices (iPad), shown with the
+            // pinch-rotation switch — the rotation features' opt-in.
+            showRotateButtons={pinchRotateEnabled}
+            onRotateStep={handleRotateStep}
             // Clear the trace score badge pinned to the same corner.
             top={topRightOffset + (templateStrokes && templateStrokes.length > 0 ? 44 : 8)}
           />
