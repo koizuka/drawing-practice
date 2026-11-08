@@ -172,3 +172,123 @@ export function loadedReference(
     referenceInfo: info,
   };
 }
+
+/**
+ * True when the active source mounts a viewer that reports
+ * `onReferenceImageSize` and calls `loadContent(0, 0, 1)` once its content
+ * loads (ImageViewer for fixed images, YouTubeViewer, TraceTemplateViewer).
+ * Callers defer two things behind it: the legacy-coord stroke migration
+ * (needs the size) and a camera restore (would be stomped by loadContent).
+ *
+ * Sketchfab / pose only go through ImageViewer with a captured screenshot
+ * (`hasImage`); their browse modes (iframe / free-orbit 3D) do neither.
+ */
+export function referenceWillReportSize(source: ReferenceSource, hasImage: boolean): boolean {
+  switch (source) {
+    case 'image':
+    case 'url':
+    case 'pexels':
+    case 'youtube':
+    case 'trace-template':
+      return true;
+    case 'sketchfab':
+    case 'pose':
+      return hasImage;
+    default:
+      return false;
+  }
+}
+
+/**
+ * The `referenceImageData` the autosave draft stores for a reference: image
+ * data that can't be re-fetched after a reload (local-file data URL, Sketchfab
+ * / pose Fix-Angle screenshot). URL-backed sources store null — their
+ * `referenceInfo` carries the URL. Inverse of {@link referenceStateFromDraft}.
+ */
+export function referenceImageDataOf(
+  state: Pick<ReferenceSnapshot, 'source' | 'fixedImageUrl' | 'localImageUrl'>,
+): string | null {
+  if (state.source === 'image' && state.localImageUrl) return state.localImageUrl;
+  if ((state.source === 'sketchfab' || state.source === 'pose') && state.fixedImageUrl) {
+    return state.fixedImageUrl;
+  }
+  return null;
+}
+
+/**
+ * Reference state to restore from an autosave draft. Mode / URL come from the
+ * stored image data for image / sketchfab / pose, otherwise from
+ * `referenceInfo` (url / pexels → fixed on their URL, trace-template → fixed
+ * with no image, youtube → browse). Anything else lands in browse.
+ */
+export function referenceStateFromDraft(draft: {
+  source: ReferenceSource;
+  referenceInfo: ReferenceInfo | null;
+  referenceImageData: string | null;
+}): ReferenceSnapshot {
+  if (draft.source === 'none') return browseReference('none');
+  const info = draft.referenceInfo;
+  const state: ReferenceSnapshot = {
+    source: draft.source,
+    referenceMode: 'browse',
+    fixedImageUrl: null,
+    localImageUrl: null,
+    referenceInfo: info,
+  };
+  const data = draft.referenceImageData;
+  if (draft.source === 'image' && data) {
+    return { ...state, referenceMode: 'fixed', localImageUrl: data };
+  }
+  if ((draft.source === 'sketchfab' || draft.source === 'pose') && data) {
+    return { ...state, referenceMode: 'fixed', fixedImageUrl: data };
+  }
+  if (info?.source === 'url') {
+    return { ...state, referenceMode: 'fixed', fixedImageUrl: info.imageUrl };
+  }
+  if (info?.source === 'pexels') {
+    return { ...state, referenceMode: 'fixed', fixedImageUrl: info.pexelsImageUrl };
+  }
+  if (info?.source === 'trace-template') {
+    // No image — the templateId is enough for ReferencePanel; just make sure
+    // we land in fixed mode (otherwise the picker shows).
+    return { ...state, referenceMode: 'fixed' };
+  }
+  return state; // youtube (browse) and anything without restorable content
+}
+
+/**
+ * Reference state for a gallery record's `ReferenceInfo` ("Use this
+ * reference" / "continue this drawing"), or null when the record doesn't
+ * carry enough to restore it. Local-file images are NOT handled here — their
+ * Blob comes asynchronously from URL history.
+ */
+export function referenceStateFromInfo(info: ReferenceInfo): ReferenceSnapshot | null {
+  switch (info.source) {
+    case 'sketchfab':
+      if (!info.sketchfabUid) return null;
+      // Without a screenshot, open the model in browse (the viewer loads it).
+      return info.imageUrl
+        ? loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl })
+        : browseReference('sketchfab');
+    case 'url':
+      return info.imageUrl
+        ? loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl })
+        : null;
+    case 'youtube':
+      return info.youtubeVideoId ? loadedReference(info, 'browse') : null;
+    case 'pexels':
+      return info.pexelsImageUrl
+        ? loadedReference(info, 'fixed', { fixedImageUrl: info.pexelsImageUrl })
+        : null;
+    case 'trace-template':
+      return info.templateId ? loadedReference(info, 'fixed') : null;
+    case 'pose':
+      // The Fix-Angle screenshot restores straight into fixed mode; the pose
+      // on the record revives the mannequin for "Change angle".
+      return info.imageUrl
+        ? loadedReference(info, 'fixed', { fixedImageUrl: info.imageUrl })
+        : null;
+    default:
+      return null;
+  }
+}

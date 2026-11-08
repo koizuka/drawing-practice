@@ -86,7 +86,7 @@ Bundled curve practice. `browse` mode shows `BundledTemplatePicker` (5 templates
 
 **No URL-history entry.** Template selection records nothing in `urlHistory`; the dropdown doesn't surface trace templates. The bundle is enough.
 
-**Autosave restore takes a trace branch.** `loadDraft`'s else-if chain has a `info?.source === 'trace-template'` arm that just calls `setReferenceMode('fixed')` (no `setFixedImageUrl` — there's no image). `referenceWillSize` includes `'trace-template'` so the camera restore path defers behind `TraceTemplateViewer.onTemplateLoaded` → `pendingCameraRef` → `restoreCamera` lands after the viewer's `loadContent(0,0,1)`. Without these two pieces, reload either reverts to the picker or stomps the saved pan/zoom.
+**Autosave restore takes a trace branch.** `referenceStateFromDraft` (`splitLayoutHelpers.ts`, used by `loadDraft`) has a `info?.source === 'trace-template'` arm that lands in `referenceMode: 'fixed'` with no image URL (there's no image). `referenceWillReportSize` includes `'trace-template'` so the camera restore path defers behind `TraceTemplateViewer.onTemplateLoaded` → `pendingCameraRef` → `restoreCamera` lands after the viewer's `loadContent(0,0,1)`. Without these two pieces, reload either reverts to the picker or stomps the saved pan/zoom.
 
 **Gallery integration.** `canLoadReference` returns true for trace-template (bundled IDs never get evicted), and `handleLoadReference` has a trace-template branch mirroring `handleSelectTraceTemplate`. So "Use this reference" on a gallery record drawn with a trace template restores the active template + fixed mode.
 

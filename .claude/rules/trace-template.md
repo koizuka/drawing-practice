@@ -91,7 +91,7 @@ In portrait, the picker occupies the full viewport and hides the still-mounted d
 ## Gallery / autosave wiring
 
 - `SplitLayout.loadDraft` has a `'trace-template'` else-if branch that sets `referenceMode='fixed'` (no fixedImageUrl to restore — `templateId` on `referenceInfo` is enough).
-- `referenceWillSize` includes `'trace-template'` so `pendingCameraRef` defers the camera restore until after the viewer's `loadContent(0,0,1)`.
+- `referenceWillReportSize` (`splitLayoutHelpers.ts`) includes `'trace-template'` so `pendingCameraRef` defers the camera restore until after the viewer's `loadContent(0,0,1)`.
 - `galleryGrouping.canLoadReference` and `SplitLayout.handleLoadReference` both have trace-template branches so "Use this reference" in the gallery restores the active template into fixed mode.
 - `urlHistory` is NOT touched for trace templates — the bundle is enough and the dropdown stays free of trace entries.
 
