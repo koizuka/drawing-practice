@@ -64,7 +64,11 @@ export function useRotationAnimation({
     [cancelRotationAnim, viewTransformRef],
   );
 
-  /** Animate the rotation to `target` about canvas-space pivot `(pivotX, pivotY)`. */
+  /**
+   * Animate the rotation to `target` about the screen pivot `(pivotX, pivotY)`
+   * (rotated-frame screen coords of the drawing panel — see
+   * `ViewTransform.setRotationAbout`).
+   */
   const animateRotationTo = useCallback(
     (target: number, pivotX: number, pivotY: number) => {
       cancelRotationAnim();

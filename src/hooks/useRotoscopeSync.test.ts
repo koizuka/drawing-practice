@@ -95,4 +95,28 @@ describe('useRotoscopeSync', () => {
     rerender({ ...props, playing: true, shownIndex: 1 });
     expect(control.seekTo).toHaveBeenLastCalledWith(10.5, { play: false });
   });
+
+  it('re-aligns immediately when playback switches between realtime and per-frame seeking', () => {
+    const { sm, control, props } = setup(12);
+    // step 1/8 s at the default 8 fps = one frame per tick → realtime: the video runs.
+    sm.setVideoSync({ videoId: 'vid', offset: 10, step: 0.125 });
+    const playing = { ...props, playing: true, shownIndex: 1 };
+    const { rerender } = renderHook((p) => useRotoscopeSync(p), { initialProps: playing });
+    expect(control.seekTo).toHaveBeenLastCalledWith(10.125, { play: true });
+
+    // fps change mid-playback → no longer realtime: seek paused right away,
+    // without waiting for the next frame / loop wrap.
+    vi.mocked(control.seekTo).mockClear();
+    sm.setFps(12);
+    rerender({ ...playing });
+    expect(control.seekTo).toHaveBeenCalledTimes(1);
+    expect(control.seekTo).toHaveBeenLastCalledWith(10.125, { play: false });
+
+    // Back to realtime → seek and let it play again.
+    vi.mocked(control.seekTo).mockClear();
+    sm.setFps(8);
+    rerender({ ...playing });
+    expect(control.seekTo).toHaveBeenCalledTimes(1);
+    expect(control.seekTo).toHaveBeenLastCalledWith(10.125, { play: true });
+  });
 });

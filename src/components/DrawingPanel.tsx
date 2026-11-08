@@ -71,22 +71,6 @@ import type { Stroke, ReferenceSnapshot } from '../drawing/types';
 // unintended twist while zooming is the failure mode this guards against.
 const PINCH_ROTATE_STORAGE_KEY = 'drawing.pinchRotateEnabled';
 
-function loadPinchRotateEnabled(): boolean {
-  try {
-    return localStorage.getItem(PINCH_ROTATE_STORAGE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
-function persistPinchRotateEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(PINCH_ROTATE_STORAGE_KEY, enabled ? '1' : '0');
-  } catch {
-    /* ignore */
-  }
-}
-
 const LAYER_PANEL_OPEN_STORAGE_KEY = 'drawing.layerPanelOpen';
 const LAYER_PANEL_CORNER_STORAGE_KEY = 'drawing.layerPanelCorner';
 
@@ -241,7 +225,9 @@ export function DrawingPanel({
   const [strokeEditVersion, setStrokeEditVersion] = useState(0);
   const [viewResetVersion, setViewResetVersion] = useState(0);
   const [, setViewTick] = useState(0);
-  const [pinchRotateEnabled, setPinchRotateEnabled] = useState(loadPinchRotateEnabled);
+  const [pinchRotateEnabled, setPinchRotateEnabled] = useState(
+    () => loadPref(PINCH_ROTATE_STORAGE_KEY, '0') === '1',
+  );
   const [rotationCommand, setRotationCommand] = useState<RotationCommand | null>(null);
   const rotationSeqRef = useRef(0);
   const requestRotation = useCallback((cmd: { kind: 'reset' } | { kind: 'step'; dir: 1 | -1 }) => {
@@ -254,7 +240,7 @@ export function DrawingPanel({
   );
   const handleTogglePinchRotate = useCallback(() => {
     const next = !pinchRotateEnabled;
-    persistPinchRotateEnabled(next);
+    savePref(PINCH_ROTATE_STORAGE_KEY, next ? '1' : '0');
     setPinchRotateEnabled(next);
   }, [pinchRotateEnabled]);
   const [showGallery, setShowGallery] = useState(false);

@@ -23,7 +23,10 @@ export class LassoState {
    * deleted" feedback). Null while there is no closed polygon yet.
    */
   selected: Set<number> | null = null;
-  /** Marching-ants phase in world units, advanced per animation frame. */
+  /**
+   * Marching-ants phase in screen px, advanced per animation frame (the
+   * renderer divides by the view scale to get the world-space dash offset).
+   */
   dashPhase = 0;
   /**
    * Running bbox of the polygon, updated incrementally on each append so the
