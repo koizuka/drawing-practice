@@ -7,16 +7,14 @@ import { ViewTransform, type ContainerSize } from '../drawing/ViewTransform';
 import {
   computeBaseScale,
   GRID_CENTER,
-  pointInPolygon,
   emptyBoundingBox,
   extendBoundingBox,
-  type BoundingBox,
 } from '../drawing/canvasUtils';
 import { TRACKPAD_ZOOM_SPEED } from '../drawing/constants';
+import { LassoState } from '../drawing/lassoState';
+import { useRotationAnimation, type RotationCommand } from '../hooks/useRotationAnimation';
 import {
-  nextRotationStep,
   PINCH_ROTATE_START_THRESHOLD,
-  ROTATION_ANIM_MS,
   screenToCanvasRotation,
   shortestAngleDelta,
   snapRotationTarget,
@@ -33,15 +31,7 @@ import { loadReferenceImage } from '../utils/loadReferenceImage';
 // .claude/rules/drawing-undo.md and the erase-pending machinery below.
 export type DrawingMode = 'pen' | 'erase';
 
-/**
- * Discrete rotation request from outside the canvas (keyboard shortcut,
- * navigator ▲ tap). `seq` must increase per request so repeating the same
- * command re-fires. `dir` is a SCREEN direction (+1 = clockwise as seen);
- * the canvas converts for the horizontal flip.
- */
-export type RotationCommand =
-  | { seq: number; kind: 'reset' }
-  | { seq: number; kind: 'step'; dir: 1 | -1 };
+export type { RotationCommand };
 
 interface DrawingCanvasProps {
   mode: DrawingMode;
@@ -247,20 +237,11 @@ export function DrawingCanvas({
   }
   const hasStylusRef = useRef(false);
   const rafIdRef = useRef<number>(0);
-  // Lasso (free-form selection) state. Points are in world coordinates so the
-  // selection follows the camera while the user draws; null when inactive.
-  const lassoPointsRef = useRef<Point[] | null>(null);
-  // Running bbox of the lasso polygon, updated incrementally on each append
-  // so per-move enclosure recomputation is O(1) in polygon size.
-  const lassoBboxRef = useRef<BoundingBox | null>(null);
-  // Marching-ants animation phase (in world units). Advanced on every rAF
-  // tick while lasso is active so the dashes appear to flow along the path.
-  const dashPhaseRef = useRef(0);
+  // Erase-mode lasso (path, live selection, marching-ants phase). Lazily
+  // created once — `useRef(new X())` would construct a throwaway per render.
+  const lassoRef = useRef<LassoState>(null!);
+  if (lassoRef.current === null) lassoRef.current = new LassoState();
   const marchingRafRef = useRef<number>(0);
-  // Indices of strokes currently enclosed by the in-progress lasso. Recomputed
-  // whenever the lasso path grows so the user gets live "would-be-deleted"
-  // feedback in red. Null when no lasso is active.
-  const lassoSelectedRef = useRef<Set<number> | null>(null);
   // Erase-mode pending state: held from pointerdown until the press either
   // crosses ERASE_LASSO_THRESHOLD (promoting to a lasso) or releases as a tap.
   // startWorld seeds the lasso polygon's first vertex on promotion; the client
@@ -375,7 +356,7 @@ export function DrawingCanvas({
     }
 
     const strokes = strokeManager.getStrokes();
-    const lassoSelected = lassoSelectedRef.current;
+    const lassoSelected = lassoRef.current.selected;
     // Strokes tagged as scored attempts render at reduced opacity so the
     // semi-transparent template guide stays readable underneath when the
     // user starts re-tracing. Highlighted (lasso-preselected or eraser-
@@ -467,10 +448,10 @@ export function DrawingCanvas({
     // In-progress lasso (marching ants). Drawn on top of strokes/grid so the
     // selection outline is always visible. Line width compensates for zoom so
     // the outline thickness stays visually constant.
-    const lasso = lassoPointsRef.current;
+    const lasso = lassoRef.current.points;
     if (lasso && lasso.length >= 2) {
       const worldLineWidth = 1.5 / projected.scale;
-      renderer.drawLasso(lasso, dashPhaseRef.current / projected.scale, worldLineWidth);
+      renderer.drawLasso(lasso, lassoRef.current.dashPhase / projected.scale, worldLineWidth);
     }
 
     // Reset to DPR-only transform
@@ -605,111 +586,14 @@ export function DrawingCanvas({
     });
   }, [redrawAll]);
 
-  // Rotation animation (snap on pinch release, ▲ reset, keyboard steps).
-  // Intermediate frames emit 'gesture' (tail-debounced save), the last frame
-  // 'userRotate' (immediate save). `rotationAnimTargetRef` lets a key press
-  // that arrives mid-animation step from where the view is heading, not from
-  // the in-between angle.
-  const rotationAnimRafRef = useRef(0);
-  const rotationAnimTargetRef = useRef<number | null>(null);
-  const cancelRotationAnim = useCallback(() => {
-    if (rotationAnimRafRef.current) {
-      cancelAnimationFrame(rotationAnimRafRef.current);
-      rotationAnimRafRef.current = 0;
-    }
-    rotationAnimTargetRef.current = null;
-  }, []);
-  useEffect(() => cancelRotationAnim, [cancelRotationAnim]);
-  // A reset / content load / restore that lands mid-animation wins: without
-  // this the next frame would re-apply the stale target over it.
-  useEffect(
-    () =>
-      viewTransformRef.current.subscribe((intent) => {
-        if (intent === 'userReset' || intent === 'contentLoad' || intent === 'restore') {
-          cancelRotationAnim();
-        }
-      }),
-    [cancelRotationAnim],
-  );
-
-  /** Animate the rotation to `target` about canvas-space pivot `(pivotX, pivotY)`. */
-  const animateRotationTo = useCallback(
-    (target: number, pivotX: number, pivotY: number) => {
-      cancelRotationAnim();
-      const vt = viewTransformRef.current;
-      const from = vt.getRotation();
-      const delta = shortestAngleDelta(from, target);
-      const finish = () => {
-        rotationAnimRafRef.current = 0;
-        rotationAnimTargetRef.current = null;
-        vt.setRotationAbout(
-          target,
-          pivotX,
-          pivotY,
-          containerSizeRef.current,
-          getBaseScale(),
-          'userRotate',
-        );
-        requestRedraw();
-      };
-      if (delta === 0) {
-        finish();
-        return;
-      }
-      rotationAnimTargetRef.current = target;
-      const start = performance.now();
-      const step = (now: number) => {
-        const t = Math.min(1, (now - start) / ROTATION_ANIM_MS);
-        if (t >= 1) {
-          finish();
-          return;
-        }
-        const eased = 1 - (1 - t) ** 3;
-        vt.setRotationAbout(
-          from + delta * eased,
-          pivotX,
-          pivotY,
-          containerSizeRef.current,
-          getBaseScale(),
-          'gesture',
-        );
-        requestRedraw();
-        rotationAnimRafRef.current = requestAnimationFrame(step);
-      };
-      rotationAnimRafRef.current = requestAnimationFrame(step);
-    },
-    [cancelRotationAnim, getBaseScale, requestRedraw],
-  );
-
-  // Discrete rotation requests (keyboard 4/5/6, navigator ▲ tap). Pivot is
-  // the canvas center. Not gated by pinchRotateEnabled — that switch only
-  // guards against an unintended twist during a pinch; an explicit key press
-  // or tap is always deliberate.
-  const isFlippedRef = useRef(isFlipped);
-  useEffect(() => {
-    isFlippedRef.current = isFlipped;
+  const { cancelRotationAnim, animateRotationTo } = useRotationAnimation({
+    viewTransformRef,
+    containerSizeRef,
+    getBaseScale,
+    requestRedraw,
+    rotationCommand,
+    isFlipped,
   });
-  const animateRotationToRef = useRef(animateRotationTo);
-  useEffect(() => {
-    animateRotationToRef.current = animateRotationTo;
-  });
-  // Seeded with the mount-time seq so a remount (restore gate, panel swap)
-  // doesn't replay a command that was already applied.
-  const handledRotationSeqRef = useRef(rotationCommand?.seq ?? 0);
-  useEffect(() => {
-    if (!rotationCommand || rotationCommand.seq <= handledRotationSeqRef.current) return;
-    handledRotationSeqRef.current = rotationCommand.seq;
-    const container = containerSizeRef.current;
-    const cx = container.width / 2;
-    const cy = container.height / 2;
-    if (rotationCommand.kind === 'reset') {
-      animateRotationToRef.current(0, cx, cy);
-      return;
-    }
-    const from = rotationAnimTargetRef.current ?? viewTransformRef.current.getRotation();
-    const canvasDir = (isFlippedRef.current ? -rotationCommand.dir : rotationCommand.dir) as 1 | -1;
-    animateRotationToRef.current(nextRotationStep(from, canvasDir), cx, cy);
-  }, [rotationCommand]);
 
   // Load the underlay image only while it is wanted; a cached bitmap for the
   // same URL survives toggling off/on without a refetch. Prop changes
@@ -742,17 +626,15 @@ export function DrawingCanvas({
   }, []);
 
   // Drives the marching-ants animation while a lasso is being drawn. The loop
-  // self-stops once `lassoPointsRef.current` becomes null.
+  // self-stops once the lasso goes inactive.
   const startMarching = useCallback(() => {
     if (marchingRafRef.current) return;
     const tick = () => {
-      if (!lassoPointsRef.current) {
+      if (!lassoRef.current.active) {
         marchingRafRef.current = 0;
         return;
       }
-      // ~1px / frame in screen space. Multiplied by some constant so motion
-      // is visible without being distracting.
-      dashPhaseRef.current = (dashPhaseRef.current + 0.5) % 1024;
+      lassoRef.current.advanceDash();
       requestRedraw();
       marchingRafRef.current = requestAnimationFrame(tick);
     };
@@ -760,10 +642,8 @@ export function DrawingCanvas({
   }, [requestRedraw]);
 
   const cancelLasso = useCallback(() => {
-    if (!lassoPointsRef.current) return;
-    lassoPointsRef.current = null;
-    lassoBboxRef.current = null;
-    lassoSelectedRef.current = null;
+    if (!lassoRef.current.active) return;
+    lassoRef.current.clear();
     stopMarching();
     requestRedraw();
   }, [stopMarching, requestRedraw]);
@@ -805,7 +685,7 @@ export function DrawingCanvas({
 
   const resetTouchSession = useCallback(() => {
     const hadCurrentStroke = Boolean(strokeManager.getCurrentStroke());
-    const hadLasso = Boolean(lassoPointsRef.current) || Boolean(erasePendingRef.current);
+    const hadLasso = lassoRef.current.active || Boolean(erasePendingRef.current);
     const hadTouchState = activeTouchesRef.current.size > 0 || Boolean(pinchRef.current);
 
     activeTouchesRef.current.clear();
@@ -818,9 +698,7 @@ export function DrawingCanvas({
     }
     if (hadLasso) {
       erasePendingRef.current = null;
-      lassoPointsRef.current = null;
-      lassoBboxRef.current = null;
-      lassoSelectedRef.current = null;
+      lassoRef.current.clear();
       stopMarching();
     }
     if (hadCurrentStroke || hadLasso || hadTouchState) {
@@ -828,61 +706,10 @@ export function DrawingCanvas({
     }
   }, [strokeManager, onCurrentStrokeChange, stopMarching, requestRedraw]);
 
-  /** Begin a new lasso path at the given world-space point. */
-  const startLasso = useCallback((point: Point) => {
-    lassoPointsRef.current = [point];
-    const bb = emptyBoundingBox();
-    extendBoundingBox(bb, point);
-    lassoBboxRef.current = bb;
-    lassoSelectedRef.current = null;
-    dashPhaseRef.current = 0;
-  }, []);
-
-  /** Append a point to the lasso path and refresh the running bbox. */
-  const appendLasso = useCallback((point: Point) => {
-    const polygon = lassoPointsRef.current;
-    const bb = lassoBboxRef.current;
-    if (!polygon || !bb) return;
-    polygon.push(point);
-    extendBoundingBox(bb, point);
-  }, []);
-
-  /**
-   * Recompute which strokes are fully enclosed by the current lasso path, so
-   * `redrawAll` can render them in the highlight color. The lasso bbox is
-   * already maintained incrementally; the per-stroke loop uses it as a cheap
-   * reject before falling back to the ray-cast.
-   */
   const recomputeLassoSelection = useCallback(() => {
-    const polygon = lassoPointsRef.current;
-    const bb = lassoBboxRef.current;
-    if (!polygon || polygon.length < 3 || !bb) {
-      lassoSelectedRef.current = null;
-      return;
-    }
-    const strokes = strokeManager.getStrokes();
-    const selected = new Set<number>();
-    for (let i = 0; i < strokes.length; i++) {
-      // Lasso only erases on the drawable active layer (same rule as the tap).
-      if (!strokeManager.isStrokeEditable(strokes[i])) continue;
-      const pts = strokes[i].points;
-      if (pts.length === 0) continue;
-      let allInside = true;
-      for (const p of pts) {
-        if (
-          p.x < bb.minX ||
-          p.x > bb.maxX ||
-          p.y < bb.minY ||
-          p.y > bb.maxY ||
-          !pointInPolygon(p, polygon)
-        ) {
-          allInside = false;
-          break;
-        }
-      }
-      if (allInside) selected.add(i);
-    }
-    lassoSelectedRef.current = selected;
+    lassoRef.current.recomputeSelection(strokeManager.getStrokes(), (st) =>
+      strokeManager.isStrokeEditable(st),
+    );
   }, [strokeManager]);
 
   // Apply the just-drawn lasso path: delete every stroke flagged as enclosed
@@ -890,17 +717,12 @@ export function DrawingCanvas({
   // selection cache (kept up to date by recomputeLassoSelection on each move)
   // so the release path doesn't redo the per-stroke geometry pass.
   const finishLasso = useCallback(() => {
-    const polygon = lassoPointsRef.current;
-    const selected = lassoSelectedRef.current;
-    lassoPointsRef.current = null;
-    lassoBboxRef.current = null;
-    lassoSelectedRef.current = null;
+    const targets = lassoRef.current.finish();
     stopMarching();
-    if (!polygon || polygon.length < 3 || !selected || selected.size === 0) {
+    if (!targets) {
       requestRedraw();
       return;
     }
-    const targets = Array.from(selected).sort((a, b) => a - b);
     strokeManager.lassoDelete(targets);
     // Discrete erase — persist immediately like the undo/redo/clear buttons.
     onStrokeCountChange({ flush: true });
@@ -915,7 +737,7 @@ export function DrawingCanvas({
   useEffect(() => {
     if (mode !== 'erase') {
       erasePendingRef.current = null;
-      if (lassoPointsRef.current) {
+      if (lassoRef.current.active) {
         cancelLasso();
       }
     }
@@ -1016,15 +838,15 @@ export function DrawingCanvas({
         // highlight so the Delete/Cancel confirmation goes away and the lasso
         // selection is the only thing on screen.
         if (highlightedStrokeIndex !== null) onHighlightStroke(null);
-        startLasso(pend.startWorld);
-        appendLasso(worldPoint);
+        lassoRef.current.start(pend.startWorld);
+        lassoRef.current.append(worldPoint);
         startMarching();
         recomputeLassoSelection();
         requestRedraw();
         return;
       }
-      if (lassoPointsRef.current) {
-        appendLasso(worldPoint);
+      if (lassoRef.current.active) {
+        lassoRef.current.append(worldPoint);
         recomputeLassoSelection();
         requestRedraw();
       }
@@ -1032,8 +854,6 @@ export function DrawingCanvas({
     [
       highlightedStrokeIndex,
       onHighlightStroke,
-      startLasso,
-      appendLasso,
       startMarching,
       recomputeLassoSelection,
       requestRedraw,
@@ -1065,7 +885,7 @@ export function DrawingCanvas({
       }
       return;
     }
-    if (lassoPointsRef.current) {
+    if (lassoRef.current.active) {
       finishLasso();
     }
   }, [
@@ -1230,7 +1050,7 @@ export function DrawingCanvas({
         // closing a selection. Drop both so camera control wins.
         if (mode === 'erase') {
           erasePendingRef.current = null;
-          if (lassoPointsRef.current) {
+          if (lassoRef.current.active) {
             cancelLasso();
           }
         }
@@ -1376,7 +1196,7 @@ export function DrawingCanvas({
 
       // Erase mode: drive the tap-vs-lasso decision (pending) or extend an
       // already-promoted lasso path.
-      if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      if (mode === 'erase' && (erasePendingRef.current || lassoRef.current.active)) {
         const touch = e.changedTouches[0] as Touch & { touchType?: string };
         if (hasStylusRef.current && touch.touchType !== 'stylus') {
           return;
@@ -1437,7 +1257,7 @@ export function DrawingCanvas({
 
       if (mode === 'pen') {
         commitPenStroke();
-      } else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      } else if (mode === 'erase' && (erasePendingRef.current || lassoRef.current.active)) {
         if (e.type === 'touchcancel') {
           // A system-cancelled touch (palm rejection, incoming call, OS edge
           // gesture) is NOT a deliberate tap/lasso — discard the pending state
@@ -1538,7 +1358,7 @@ export function DrawingCanvas({
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (!isMouseDownRef.current) return;
-      if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+      if (mode === 'erase' && (erasePendingRef.current || lassoRef.current.active)) {
         const point = getCanvasPoint(e.clientX, e.clientY);
         advanceErasePending(e.clientX, e.clientY, point);
         return;
@@ -1555,7 +1375,7 @@ export function DrawingCanvas({
 
     if (mode === 'pen') {
       commitPenStroke();
-    } else if (mode === 'erase' && (erasePendingRef.current || lassoPointsRef.current)) {
+    } else if (mode === 'erase' && (erasePendingRef.current || lassoRef.current.active)) {
       endErasePending();
     }
   }, [mode, commitPenStroke, endErasePending]);
@@ -1566,7 +1386,7 @@ export function DrawingCanvas({
   // or an in-progress pen stroke commits like a normal release.
   const handleMouseLeave = useCallback(() => {
     if (!isMouseDownRef.current) return;
-    if (mode === 'erase' && erasePendingRef.current && !lassoPointsRef.current) {
+    if (mode === 'erase' && erasePendingRef.current && !lassoRef.current.active) {
       erasePendingRef.current = null;
       isMouseDownRef.current = false;
       return;
