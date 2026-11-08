@@ -428,7 +428,13 @@ export function CanvasNavigator({
               style={{ transform: `rotate(${upAngle}rad)`, display: 'block' }}
               aria-hidden
             >
-              <path d="M0 -8 L-7 6 L7 6 Z" fill={upright ? UPRIGHT_COLOR : TILTED_COLOR} />
+              {/* Notched arrowhead, not a plain ▲: a near-equilateral triangle
+                  reads as ◀ / ▼ / ▶ at 30° / 60° / -30°, while the notch keeps
+                  the tip unmistakable at every angle. */}
+              <path
+                d="M0 -9 L6.5 7 L0 3.5 L-6.5 7 Z"
+                fill={upright ? UPRIGHT_COLOR : TILTED_COLOR}
+              />
             </svg>
           </Box>
         </RoundButton>
