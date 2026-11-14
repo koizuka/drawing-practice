@@ -257,7 +257,11 @@ describe('SketchfabViewer unified search/UID input', () => {
   // would normally instantiate a viewer.
   function stubSketchfabClient() {
     const init = vi.fn();
-    (window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(() => ({ init }));
+    // `function`, not an arrow: SketchfabViewer calls `new window.Sketchfab(iframe)`,
+    // and arrow implementations are not constructible.
+    (window as unknown as { Sketchfab?: unknown }).Sketchfab = vi.fn(function () {
+      return { init };
+    });
     return { init };
   }
 
