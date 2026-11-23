@@ -1,0 +1,50 @@
+name: Dependabot auto-merge
+
+# Enable auto-merge on Dependabot PRs that only update build-time tooling
+# (TypeScript compiler, type definitions, linters, test tools), except
+# semver-major updates. These are fully verified by CI; anything that can
+# change the built app (UI libraries, CSS, bundler) stays manual.
+# The PR is merged only after the required status checks pass.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+
+      - name: Check that every updated dependency is tooling
+        id: tooling
+        if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        env:
+          NAMES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          tooling='^(typescript|@types/.+|typescript-eslint|@typescript-eslint/.+|eslint|eslint-(plugin|config)-.+|@eslint/.+|globals|oxlint|oxlint-.+|oxfmt|@biomejs/.+|prettier|vitest|@vitest/.+|@testing-library/.+|jsdom|happy-dom)$'
+          ok=true
+          [ -n "$NAMES" ] || ok=false
+          IFS=',' read -ra names <<< "$NAMES"
+          for name in "${names[@]}"; do
+            name="${name//[[:space:]]/}"
+            if [[ ! "$name" =~ $tooling ]]; then
+              echo "Not tooling, leaving for manual review: $name"
+              ok=false
+            fi
+          done
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        if: steps.tooling.outputs.ok == 'true'
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr merge --auto --squash "$PR_URL"
