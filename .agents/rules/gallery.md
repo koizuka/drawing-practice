@@ -1,6 +1,6 @@
 ---
 trigger: glob
-globs: "src/components/Gallery.tsx, src/storage/exportDrawing.ts, src/storage/storageUsage.ts"
+globs: "src/components/Gallery.tsx, src/components/galleryGrouping.ts, src/storage/exportDrawing.ts, src/storage/storageUsage.ts"
 description: "Gallery modal, grouping modes, thumbnail resolution, export, and restored-reference rules"
 ---
 

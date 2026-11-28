@@ -42,4 +42,4 @@ Perform these steps immediately without asking for confirmation unless the workt
 
 ## Failure Handling
 
-If `git pull` or `git remote prune origin` fails because the sandbox blocks network access (or Git metadata writes), request approval and rerun only that command with escalation / sandbox bypass before stopping. For other git command failures, stop and summarize the failing command and relevant output. Do not retry destructive branch deletion with a different target unless the user explicitly asks.
+If `git pull` or `git remote prune origin` fails because the sandbox blocks network access (or Git metadata writes), request approval and rerun only that command with escalation before stopping. For other git command failures, stop and summarize the failing command and relevant output. Do not retry destructive branch deletion with a different target unless the user explicitly asks.
