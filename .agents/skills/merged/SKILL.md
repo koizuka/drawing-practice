@@ -1,6 +1,6 @@
 ---
 name: merged
-description: Clean up the local repository after a PR branch has been merged. Use when the user says merged, "マージした", "後始末して", "clean up", or otherwise asks Codex to switch back to main, pull the latest main, delete the merged local branch, and prune stale remote-tracking branches.
+description: Clean up the local repository after a PR branch has been merged. Use when the user says merged, "マージした", "後始末して", "clean up", or otherwise asks the agent to switch back to main, pull the latest main, delete the merged local branch, and prune stale remote-tracking branches.
 ---
 
 # Merged Cleanup
@@ -42,4 +42,4 @@ Perform these steps immediately without asking for confirmation unless the workt
 
 ## Failure Handling
 
-If any git command fails, stop and summarize the failing command and relevant output. Do not retry destructive branch deletion with a different target unless the user explicitly asks.
+If `git pull` or `git remote prune origin` fails because the sandbox blocks network access (or Git metadata writes), request approval and rerun only that command with escalation / sandbox bypass before stopping. For other git command failures, stop and summarize the failing command and relevant output. Do not retry destructive branch deletion with a different target unless the user explicitly asks.

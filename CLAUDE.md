@@ -57,7 +57,7 @@ These apply codebase-wide. Violating them breaks alignment, persistence, or undo
 
 ## Detailed area rules
 
-Path-scoped rules in `.claude/rules/` load automatically when you read matching files:
+Path-scoped rules in `.claude/rules/` load automatically when you read matching files (Antigravity / `agy` mirrors these via `.agents/rules/*.md` using `@[...]` includes — keep `.agents/rules/` in sync if you add, rename, or re-scope files here):
 
 - `storage.md` — `src/storage/**` (Dexie tables, urlHistory key/cap design, addUrlHistory semantics, storageUsage)
 - `drawing-undo.md` — `src/drawing/**`, `SplitLayout.tsx`, `DrawingPanel.tsx` (StrokeManager, reference-snapshot wiring, MAX_REFERENCE_HISTORY)
