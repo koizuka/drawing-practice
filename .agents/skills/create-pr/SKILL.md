@@ -1,13 +1,13 @@
 ---
 name: create-pr
-description: Create a pull request for this repository from the current local changes. Use when the user says create-pr, asks to make a PR, says "PRにして", "pull requestを作って", or otherwise wants Codex to check, branch, commit, push, and open a GitHub PR for the current work.
+description: Create a pull request for this repository from the current local changes. Use when the user says create-pr, asks to make a PR, says "PRにして", "pull requestを作って", or otherwise wants the agent to check, branch, commit, push, and open a GitHub PR for the current work.
 ---
 
 # Create PR
 
 ## Overview
 
-Run the repository's pre-PR checks, optionally update project docs if the change affects them, create a `codex/` branch, commit all intended changes, push it, and open a PR against `main`.
+Run the repository's pre-PR checks, optionally update project docs if the change affects them, create a feature branch, commit all intended changes, push it, and open a PR against `main`.
 
 ## Workflow
 
@@ -28,24 +28,26 @@ Perform these steps immediately without asking for confirmation unless a command
 
 3. Check docs before committing:
    - Read `CLAUDE.md` if the change affects architecture, file structure, major components, or agent-facing workflow.
-   - Read `AGENTS.md` if the change affects Codex-facing workflow, repository instructions, agent skills, or project structure.
+   - Read `AGENTS.md` if the change affects agent-facing workflow, repository instructions, skills, or project structure.
+   - If any file in `.claude/rules/` was added, removed, renamed, or had its `paths` changed, always sync the corresponding `.agents/rules/` wrapper regardless of whether architecture docs changed.
    - Read `README.md` if the change affects user-facing features, development commands, stack, setup, or usage.
-   - Update those files only when the change materially requires it.
+   - Update those files only when the change materially requires it (except `.agents/rules/` sync above, which is always required when `.claude/rules/` changes).
 
 4. Create the branch and commit:
-   - Generate a concise branch name from the change, prefixed with `codex/`.
+   - Generate a concise branch name from the change, using an agent prefix when applicable (`codex/<name>` in Codex, `agy/<name>` in Antigravity, or a user-requested prefix).
    - Prefer creating a new branch. If the generated branch already exists locally or remotely, inspect it before reusing it: compare its commits and diff against `main`, check whether it already has an open PR, and only reuse it when it clearly represents the same current change set. Otherwise generate a different branch name.
-   - If creating `codex/<name>` fails with `unable to create directory for .git/refs/heads/codex/<name>` or `.git/index.lock: Operation not permitted`, treat it as a likely sandbox write-permission issue and rerun the same git command with approval/escalation. Do not infer that a plain `codex` branch exists unless `git branch --list 'codex'` or `git show-ref --verify refs/heads/codex` confirms it.
+   - If creating `<prefix>/<name>` fails with `unable to create directory for .git/refs/heads/<prefix>/<name>` or `.git/index.lock: Operation not permitted`, treat it as a likely sandbox write-permission issue and rerun only that git command with approval/escalation. Do not infer that a plain `<prefix>` branch exists unless `git branch --list '<prefix>'` or `git show-ref --verify refs/heads/<prefix>` confirms it.
    - Stage all intended changes. Use `git add .` only after confirming it will not sweep in unrelated user work.
    - Generate a commit message that describes the purpose of the change. Mention doc updates if `CLAUDE.md`, `AGENTS.md`, or `README.md` changed.
    - Commit the staged changes.
 
 5. Push and open the PR:
    - Push the branch to `origin`.
-   - Create a PR against `main`.
+   - Create a PR against `main` (e.g. `gh pr create --base main ...`).
+   - Note: `git push` and `gh pr create` require network access; in sandboxed environments, rerun only those failing commands with approval/escalation if blocked.
    - Use a PR body with a short summary and the validation results from the prechecks.
    - Report the PR URL.
 
 ## Failure Handling
 
-If a command fails because the sandbox cannot write Git metadata, request approval and rerun the same command with escalation before stopping. For other command failures, stop at the failing step and summarize the command, the relevant output, and what needs to be fixed. Do not continue to later GitHub steps after failed checks or failed git commands.
+If a command fails because the sandbox blocks Git metadata writes or network access, request approval and rerun only that command with escalation before stopping. For other command failures, stop at the failing step and summarize the command, the relevant output, and what needs to be fixed. Do not continue to later GitHub steps after failed checks or failed git commands.

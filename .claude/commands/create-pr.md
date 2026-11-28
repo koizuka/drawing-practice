@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git checkout:*), Bash(git push:*), Bash(gh pr create:*), Bash(npm run:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git diff:*), Read, Edit
+allowed-tools: Bash(git add:*), Bash(git status:*), Bash(git commit:*), Bash(git checkout:*), Bash(git push:*), Bash(gh pr create:*), Bash(npm run:*), Bash(git rev-parse:*), Bash(git branch:*), Bash(git diff:*), Read, Edit, Write
 Description: create a pull request
 ---
 
@@ -19,10 +19,13 @@ Description: create a pull request
 
    ※エラーがあった場合のみ、ユーザーに報告して中断してください。
 
-2. **CLAUDE.md更新チェック**：
-   - 変更内容がアーキテクチャ、ファイル構成、主要コンポーネントに影響する場合
-   - CLAUDE.mdを読み、更新が必要か判断
+2. **CLAUDE.md / AGENTS.md 更新チェック**：
+   - 変更内容がアーキテクチャ、ファイル構成、主要コンポーネント、エージェント運用に影響する場合
+   - CLAUDE.md・AGENTS.md を読み、更新が必要か判断
    - 必要であれば更新（新しいコンポーネント、パターン、ファイル構成の変更を反映）
+
+   **`.agents/rules/` 同期チェック（必須）**：
+   - `.claude/rules/` の追加・削除・リネーム・`paths` 変更が含まれる場合は、上記条件に関係なく対応する `.agents/rules/` のラッパーも必ず同期する
 
    **README.md更新チェック**：
    - 変更内容がユーザー向け機能（Features）、開発コマンド、Tech Stackに影響する場合
